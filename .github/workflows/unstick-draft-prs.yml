@@ -1,0 +1,122 @@
+name: Unstick Draft PRs
+
+# One-shot workflow to mark all Copilot draft PRs as ready, approve, and merge.
+# Run manually when draft PRs are stuck.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  unstick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process all Copilot draft PRs
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // List all open PRs
+            const { data: prs } = await github.rest.pulls.list({
+              owner, repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            const copilotPRs = prs.filter(pr =>
+              pr.user.login === 'copilot-swe-agent[bot]'
+            );
+
+            core.info(`Found ${copilotPRs.length} open Copilot PRs`);
+
+            for (const pr of copilotPRs) {
+              core.info(`\n--- Processing PR #${pr.number}: ${pr.title} (draft: ${pr.draft}) ---`);
+
+              // Step 1: Mark ready for review if draft
+              if (pr.draft) {
+                try {
+                  const mutation = `mutation($id: ID!) {
+                    markPullRequestReadyForReview(input: { pullRequestId: $id }) {
+                      pullRequest { id number isDraft }
+                    }
+                  }`;
+                  await github.graphql(mutation, { id: pr.node_id });
+                  core.info(`  Marked PR #${pr.number} as ready for review`);
+                } catch (err) {
+                  core.warning(`  Could not mark ready: ${err.message}`);
+                  continue;
+                }
+              }
+
+              // Step 2: Approve workflow runs
+              try {
+                const runs = await github.rest.actions.listWorkflowRunsForRepo({
+                  owner, repo,
+                  head_sha: pr.head.sha,
+                  status: 'action_required',
+                });
+                for (const run of runs.data.workflow_runs) {
+                  try {
+                    await github.rest.actions.approveWorkflowRun({ owner, repo, run_id: run.id });
+                    core.info(`  Approved workflow run ${run.id}`);
+                  } catch (err) {
+                    core.warning(`  Could not approve run ${run.id}: ${err.message}`);
+                  }
+                }
+              } catch (err) {
+                core.warning(`  Failed listing runs: ${err.message}`);
+              }
+
+              // Step 3: Add labels
+              try {
+                const labels = pr.labels.map(l => l.name);
+                const toAdd = [];
+                if (!labels.includes('agent-task')) toAdd.push('agent-task');
+                if (!labels.includes('agent-automerge')) toAdd.push('agent-automerge');
+                if (toAdd.length > 0) {
+                  await github.rest.issues.addLabels({
+                    owner, repo,
+                    issue_number: pr.number,
+                    labels: toAdd,
+                  });
+                  core.info(`  Added labels: ${toAdd.join(', ')}`);
+                }
+              } catch (err) {
+                core.warning(`  Label error: ${err.message}`);
+              }
+
+              // Step 4: Approve PR
+              try {
+                await github.rest.pulls.createReview({
+                  owner, repo,
+                  pull_number: pr.number,
+                  event: 'APPROVE',
+                  body: 'Auto-approved: unsticking Copilot draft PR.',
+                });
+                core.info(`  Approved PR #${pr.number}`);
+              } catch (err) {
+                core.warning(`  Could not approve: ${err.message}`);
+              }
+
+              // Step 5: Wait and merge
+              await new Promise(r => setTimeout(r, 5000));
+              try {
+                await github.rest.pulls.merge({
+                  owner, repo,
+                  pull_number: pr.number,
+                  merge_method: 'squash',
+                });
+                core.info(`  Merged PR #${pr.number}`);
+              } catch (err) {
+                core.warning(`  Merge not ready: ${err.message}`);
+                core.info(`  PR will be merged by copilot-auto-approve on next event.`);
+              }
+            }
+
+            core.info(`\nDone. Processed ${copilotPRs.length} Copilot PRs.`);
