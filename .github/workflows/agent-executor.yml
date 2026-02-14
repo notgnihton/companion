@@ -87,9 +87,15 @@ jobs:
           
       - name: Install Codex CLI
         run: |
-          npm install -g @openai/codex || echo "Codex install failed, will use fallback"
+          npm install -g @openai/codex || echo "Codex CLI install failed, will use fallback"
 
-      - name: Execute agent logic (Codex CLI priority)
+      - name: Setup GitHub Copilot CLI
+        run: |
+          gh extension install github/gh-copilot 2>/dev/null || echo "GitHub Copilot CLI already installed or unavailable"
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PAT }}
+
+      - name: Execute agent logic
         env:
           ISSUE_NUMBER: ${{ inputs.issue_number }}
           ISSUE_TITLE: ${{ inputs.issue_title }}
@@ -97,6 +103,8 @@ jobs:
           ISSUE_SCOPE: ${{ steps.issue.outputs.scope }}
           ISSUE_DELIVERABLE: ${{ steps.issue.outputs.deliverable }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GH_TOKEN: ${{ secrets.AGENT_PAT }}
+          GITHUB_TOKEN: ${{ secrets.AGENT_PAT }}
         run: |
           node .github/scripts/agent-executor.js
 

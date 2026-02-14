@@ -256,26 +256,48 @@ Focus on:
 4. Documentation needs
 5. Performance optimizations`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4-turbo-preview',
-        messages: [
-          { role: 'system', content: 'You are a senior software architect analyzing a codebase.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 2000
-      })
-    });
+    // Model fallback chain: strong models only
+    const MODEL_CHAIN = [
+      'gpt-5.3-codex',
+      'claude-sonnet-4.5',
+      'claude-4',
+      'gpt-5.2-codex',
+      'gpt-5'
+    ];
     
-    if (!response.ok) {
-      const error = await response.text();
-      console.log(`   API error: ${response.status} - ${error}`);
+    let response = null;
+    for (const model of MODEL_CHAIN) {
+      console.log(`   🔄 Trying model: ${model}...`);
+      try {
+        response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENAI_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: 'system', content: 'You are a senior software architect analyzing a codebase.' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.7,
+            max_tokens: 2000
+          })
+        });
+        
+        if (response.ok) {
+          console.log(`   ✅ Model ${model} responded`);
+          break;
+        }
+        console.log(`   ⚠️  Model ${model} failed: ${response.status}`);
+      } catch (err) {
+        console.log(`   ⚠️  Model ${model} error: ${err.message}`);
+      }
+    }
+    
+    if (!response || !response.ok) {
+      console.log(`   All models failed`);
       return [];
     }
     

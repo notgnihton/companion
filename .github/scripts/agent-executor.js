@@ -25,7 +25,7 @@ console.log('🤖 Agent Executor Started');
 console.log(`📋 Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}`);
 console.log(`📦 Scope: ${ISSUE_SCOPE}`);
 console.log(`🎯 Deliverable: ${ISSUE_DELIVERABLE}`);
-console.log(`🧠 Agent Priority: Codex CLI → Playwright → OpenAI API (gpt-5.3-codex) → Pattern-based`);
+console.log(`🧠 Agent Priority: Codex CLI → GitHub Copilot CLI → OpenAI API (strong models only) → Pattern-based`);
 
 /**
  * Task analyzers - pattern match issue content to determine task type
@@ -82,6 +82,20 @@ function isCodexAvailable() {
 }
 
 /**
+ * Check if GitHub Copilot CLI is available
+ */
+function isGitHubCopilotAvailable() {
+  try {
+    const { execSync } = require('child_process');
+    execSync('which gh', { stdio: 'ignore' });
+    execSync('gh copilot --version 2>/dev/null || gh copilot --help', { stdio: 'ignore', timeout: 5000 });
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
  * Try Codex CLI agent
  */
 async function tryCodexAgent(issue) {
@@ -112,6 +126,46 @@ async function tryCodexAgent(issue) {
     
   } catch (error) {
     console.log(`❌ Codex CLI failed: ${error.message}`);
+    return { success: false, reason: error.message };
+  }
+}
+
+/**
+ * Try GitHub Copilot CLI agent
+ */
+async function tryGitHubCopilotAgent(issue) {
+  if (!isGitHubCopilotAvailable()) {
+    console.log('⏭️  GitHub Copilot CLI not available');
+    return { success: false, reason: 'GitHub Copilot CLI not installed' };
+  }
+  
+  console.log('🚀 Attempting GitHub Copilot CLI agent...');
+  
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync('node .github/scripts/github-copilot-agent.js', {
+      encoding: 'utf-8',
+      env: {
+        ...process.env,
+        ISSUE_NUMBER: issue.number,
+        ISSUE_TITLE: issue.title,
+        ISSUE_BODY: issue.body,
+        ISSUE_SCOPE: issue.scope,
+        ISSUE_DELIVERABLE: issue.deliverable
+      },
+      timeout: 300000 // 5 minutes
+    });
+    
+    console.log('✅ GitHub Copilot CLI succeeded');
+    return { success: true, output: result };
+    
+  } catch (error) {
+    // Exit code 2 means unavailable, not an error
+    if (error.status === 2) {
+      console.log('⏭️  GitHub Copilot CLI unavailable');
+      return { success: false, reason: 'GitHub Copilot CLI not available' };
+    }
+    console.log(`❌ GitHub Copilot CLI failed: ${error.message}`);
     return { success: false, reason: error.message };
   }
 }
@@ -169,30 +223,60 @@ Focus on:
 3. Being conservative - only change what's necessary
 4. Adding appropriate comments and types`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.3-codex',  // Use Codex model, not GPT-4
-        messages: [
-          { role: 'system', content: 'You are an expert software engineer. Always respond with valid JSON.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 4000
-      })
-    });
+    // Model priority chain: strongest first, fallback to still-strong models
+    // NEVER use weaker models (gpt-4, gpt-3.5, claude-3, etc.)
+    const MODEL_CHAIN = [
+      'gpt-5.3-codex',       // #1 - strongest code model
+      'claude-sonnet-4.5',   // #2 - strongest Claude
+      'claude-4',            // #3 - fallback strong Claude
+      'gpt-5.2-codex',       // #4 - fallback strong Codex
+      'gpt-5',               // #5 - fallback strong GPT
+    ];
     
-    if (!response.ok) {
-      const error = await response.text();
-      console.log(`   ❌ OpenAI API error: ${response.status} - ${error}`);
-      return { success: false, reason: 'API error' };
+    let data = null;
+    let lastError = null;
+    
+    for (const model of MODEL_CHAIN) {
+      console.log(`   🔄 Trying model: ${model}...`);
+      try {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENAI_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: 'system', content: 'You are an expert software engineer. Always respond with valid JSON.' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.3,
+            max_tokens: 4000
+          })
+        });
+        
+        if (!response.ok) {
+          const error = await response.text();
+          console.log(`   ⚠️  Model ${model} failed: ${response.status} - ${error}`);
+          lastError = `${model}: ${response.status}`;
+          continue; // Try next model
+        }
+        
+        data = await response.json();
+        console.log(`   ✅ Model ${model} responded successfully`);
+        break; // Success, stop trying
+      } catch (fetchError) {
+        console.log(`   ⚠️  Model ${model} error: ${fetchError.message}`);
+        lastError = `${model}: ${fetchError.message}`;
+        continue;
+      }
     }
     
-    const data = await response.json();
+    if (!data) {
+      console.log(`   ❌ All models failed. Last error: ${lastError}`);
+      return { success: false, reason: `All models failed: ${lastError}` };
+    }
     const content = data.choices[0].message.content;
     
     // Extract JSON
@@ -323,8 +407,9 @@ async function main() {
     // PRIORITY 1: Try Codex CLI first (best integration)
     console.log('🔄 Agent Priority Order:');
     console.log('   1. Codex CLI (primary)');
-    console.log('   2. OpenAI API with gpt-5.3-codex');
-    console.log('   3. Pattern-based handlers');
+    console.log('   2. GitHub Copilot CLI (GPT-5 / Claude Sonnet 4.5)');
+    console.log('   3. OpenAI API (gpt-5.3-codex / claude-sonnet-4.5 only)');
+    console.log('   4. Pattern-based handlers');
     console.log('');
     
     const codexResult = await tryCodexAgent(issue);
@@ -333,13 +418,21 @@ async function main() {
       return;
     }
     
-    // PRIORITY 2: Try AI-powered handling with gpt-5.3-codex
+    // PRIORITY 2: Try GitHub Copilot CLI (native GitHub integration)
+    console.log('🧠 Codex CLI unavailable, trying GitHub Copilot CLI...');
+    const copilotResult = await tryGitHubCopilotAgent(issue);
+    if (copilotResult.success) {
+      console.log('✅ GitHub Copilot CLI completed task successfully');
+      return;
+    }
+    
+    // PRIORITY 3: Try AI-powered handling with strong models only
     if (AI_ENABLED) {
-      console.log('🧠 Codex CLI unavailable, trying OpenAI API (gpt-5.3-codex)...');
+      console.log('🧠 GitHub Copilot unavailable, trying OpenAI API (strong models only)...');
       const aiResult = await handleWithAI(issue);
       
       if (aiResult.success) {
-        console.log('✅ OpenAI API (gpt-5.3-codex) successfully generated code');
+        console.log('✅ OpenAI API (strong model) successfully generated code');
         if (aiResult.files) {
           console.log(`📝 Modified files: ${aiResult.files.join(', ')}`);
         }
@@ -352,7 +445,7 @@ async function main() {
       console.log('⚠️  OpenAI API failed, falling back to pattern-based handlers...');
     }
     
-    // PRIORITY 3: Fall back to pattern-based handlers
+    // PRIORITY 4: Fall back to pattern-based handlers
     console.log('🔧 Using pattern-based handlers...');
     const issueContent = `${ISSUE_TITLE} ${ISSUE_BODY}`.toLowerCase();
     
