@@ -5,9 +5,6 @@ const agentNames: AgentName[] = [
   "notes",
   "lecture-plan",
   "assignment-tracker",
-  "food-tracking",
-  "social-highlights",
-  "video-editor",
   "orchestrator"
 ];
 
@@ -74,16 +71,15 @@ export class RuntimeStore {
 
   getSnapshot(): DashboardSnapshot {
     const pendingDeadlines = this.events.filter((evt) => evt.eventType === "assignment.deadline").length;
-    const mealEvents = this.events.filter((evt) => evt.eventType === "food.nudge").length;
-    const digestReady = this.events.some((evt) => evt.eventType === "video.digest-ready");
+    const activeAgents = this.agentStates.filter((a) => a.status === "running").length;
 
     return {
       generatedAt: nowIso(),
       summary: {
         todayFocus: this.computeFocus(),
         pendingDeadlines,
-        mealCompliance: Math.max(10, 100 - mealEvents * 8),
-        digestReady
+        activeAgents,
+        journalStreak: 0
       },
       agentStates: this.agentStates,
       notifications: this.notifications,

@@ -18,6 +18,6 @@
 
 ## Definition of Done
 
-- Server starts with `npm run dev --workspace @axis/server`.
-- `npm run typecheck --workspace @axis/server` passes.
+- Server starts with `npm run dev --workspace @companion/server`.
+- `npm run typecheck --workspace @companion/server` passes.
 - Changes are backward compatible or migration documented.

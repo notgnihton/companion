@@ -1,4 +1,4 @@
-# AXIS API Contracts
+# Companion API Contracts
 
 This file is the source of truth for payload shapes used by `apps/server` and `apps/web`.
 
@@ -20,8 +20,8 @@ Response:
   "summary": {
     "todayFocus": "Deep work + assignment completion",
     "pendingDeadlines": 3,
-    "mealCompliance": 76,
-    "digestReady": true
+    "activeAgents": 2,
+    "journalStreak": 5
   },
   "agentStates": [
     {

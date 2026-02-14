@@ -18,6 +18,6 @@
 
 ## Definition of Done
 
-- `npm run dev --workspace @axis/web` renders without runtime errors.
-- `npm run typecheck --workspace @axis/web` passes.
+- `npm run dev --workspace @companion/web` renders without runtime errors.
+- `npm run typecheck --workspace @companion/web` passes.
 - UI works at `390x844` and desktop widths.

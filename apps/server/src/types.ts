@@ -2,9 +2,6 @@ export type AgentName =
   | "notes"
   | "lecture-plan"
   | "assignment-tracker"
-  | "food-tracking"
-  | "social-highlights"
-  | "video-editor"
   | "orchestrator";
 
 export type Priority = "low" | "medium" | "high" | "critical";
@@ -39,8 +36,8 @@ export interface DashboardSnapshot {
   summary: {
     todayFocus: string;
     pendingDeadlines: number;
-    mealCompliance: number;
-    digestReady: boolean;
+    activeAgents: number;
+    journalStreak: number;
   };
   agentStates: AgentState[];
   notifications: Notification[];

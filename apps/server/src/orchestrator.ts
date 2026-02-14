@@ -1,10 +1,7 @@
 import { BaseAgent } from "./agent-base.js";
 import { AssignmentTrackerAgent } from "./agents/assignment-agent.js";
-import { FoodTrackingAgent } from "./agents/food-agent.js";
 import { LecturePlanAgent } from "./agents/lecture-plan-agent.js";
 import { NotesAgent } from "./agents/notes-agent.js";
-import { SocialHighlightsAgent } from "./agents/social-agent.js";
-import { VideoEditorAgent } from "./agents/video-agent.js";
 import { RuntimeStore } from "./store.js";
 import { AgentEvent } from "./types.js";
 
@@ -13,10 +10,7 @@ export class OrchestratorRuntime {
   private readonly agents: BaseAgent[] = [
     new NotesAgent(),
     new LecturePlanAgent(),
-    new AssignmentTrackerAgent(),
-    new FoodTrackingAgent(),
-    new SocialHighlightsAgent(),
-    new VideoEditorAgent()
+    new AssignmentTrackerAgent()
   ];
 
   constructor(private readonly store: RuntimeStore) {}
@@ -105,8 +99,8 @@ export class OrchestratorRuntime {
   private emitBootNotification(): void {
     this.store.pushNotification({
       source: "orchestrator",
-      title: "AXIS online",
-      message: "All base agents scheduled and running.",
+      title: "Companion online",
+      message: "All agents scheduled and running.",
       priority: "medium"
     });
   }
