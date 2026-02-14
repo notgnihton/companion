@@ -65,7 +65,7 @@ async function main() {
   try {
     // Navigate to GitHub dashboard (triggers session validation + potential refresh)
     console.log('Loading GitHub dashboard...');
-    await page.goto('https://github.com', { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto('https://github.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
     const loggedIn = await page.evaluate(() =>
       document.querySelector('meta[name="user-login"]')?.content || null
