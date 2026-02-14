@@ -47,4 +47,3 @@ The test should complete successfully with output showing:
 ## Related Files
 
 - [orchestrator.js](./orchestrator.js) - Contains the production agent assignment logic
-- [../../docs/project-brief.md](../../docs/project-brief.md) - Project documentation with roadmap

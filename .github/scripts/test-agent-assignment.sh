@@ -35,6 +35,10 @@ QUERY='query($owner: String!, $name: String!) {
 }'
 
 # Split repo into owner and name
+if [[ ! "$REPO" =~ ^[^/]+/[^/]+$ ]]; then
+  echo "Error: GITHUB_REPOSITORY must be in 'owner/name' format"
+  exit 1
+fi
 IFS='/' read -r OWNER REPO_NAME <<< "$REPO"
 
 echo "GraphQL query defined:"
@@ -65,6 +69,7 @@ echo "--------------------------------------------------"
 
 # This test verifies the structure of the agent_assignment payload
 # that would be sent to the GitHub API for Copilot agent assignment
+# Note: The 'model' field is intentionally empty to use the default model
 cat <<'EOF' > /tmp/agent_assignment_payload.json
 {
   "assignees": ["copilot-swe-agent[bot]"],
