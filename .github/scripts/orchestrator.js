@@ -8,12 +8,14 @@
  *
  * For each "⬜ todo" row without a matching open issue, creates a GitHub issue
  * and triggers an AI coding agent with fallback:
- *   Claude → Codex → Copilot (round-robin)
+ *   Copilot → Codex (round-robin)
  *
  * Each agent has a different trigger mechanism:
  *   - Copilot: REST API `agent_assignment` payload on POST /assignees
- *   - Claude:  @claude comment (triggers claude-code-action workflow)
  *   - Codex:   @codex comment  (triggers chatgpt-codex-connector app)
+ *
+ * Note: Claude can only be triggered via the GitHub UI (internal dispatch).
+ * There is no public API to trigger it programmatically.
  *
  * Issues are distributed round-robin across providers to spread load.
  *
@@ -39,13 +41,12 @@ const LOW_TODO_THRESHOLD = 2; // When <= this many todos remain, generate ideas
 // ── AI Agent providers (round-robin order) ──────────────────────────
 // Each provider has a different trigger mechanism:
 //   copilot:  REST API agent_assignment payload
-//   claude:   @claude comment (requires ANTHROPIC_API_KEY secret + claude.yml workflow)
 //   codex:    @codex comment  (chatgpt-codex-connector GitHub App handles it)
+//   claude:   UI-only (no public API trigger exists)
 
 const AGENT_PROVIDERS = [
-  { name: 'Claude',  trigger: 'comment', mention: '@claude',  display: 'Claude (Anthropic)' },
-  { name: 'Codex',   trigger: 'comment', mention: '@codex',   display: 'Codex (OpenAI)' },
   { name: 'Copilot', trigger: 'assign',  botUser: 'copilot-swe-agent[bot]', display: 'Copilot (GitHub)' },
+  { name: 'Codex',   trigger: 'comment', mention: '@codex',   display: 'Codex (OpenAI)' },
 ];
 
 // ── GitHub REST API helper ──────────────────────────────────────────
