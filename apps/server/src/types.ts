@@ -54,3 +54,9 @@ export interface UserContext {
   energyLevel: "low" | "medium" | "high";
   mode: "focus" | "balanced" | "recovery";
 }
+
+export interface JournalEntry {
+  id: string;
+  content: string;
+  timestamp: string;
+}

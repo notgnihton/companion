@@ -28,6 +28,10 @@ const contextSchema = z.object({
   mode: z.enum(["focus", "balanced", "recovery"]).optional()
 });
 
+const journalEntrySchema = z.object({
+  content: z.string().min(1).max(10000)
+});
+
 app.post("/api/context", (req, res) => {
   const parsed = contextSchema.safeParse(req.body ?? {});
 
@@ -37,6 +41,29 @@ app.post("/api/context", (req, res) => {
 
   const updated = store.setUserContext(parsed.data);
   return res.json({ context: updated });
+});
+
+app.post("/api/journal", (req, res) => {
+  const parsed = journalEntrySchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid journal entry", issues: parsed.error.issues });
+  }
+
+  const entry = store.recordJournalEntry(parsed.data.content);
+  return res.json({ entry });
+});
+
+app.get("/api/journal", (req, res) => {
+  const limitParam = req.query.limit;
+  const limit = limitParam ? parseInt(limitParam as string, 10) : undefined;
+
+  if (limit !== undefined && (isNaN(limit) || limit <= 0)) {
+    return res.status(400).json({ error: "Invalid limit parameter" });
+  }
+
+  const entries = store.getJournalEntries(limit);
+  return res.json({ entries });
 });
 
 const server = app.listen(config.PORT, () => {

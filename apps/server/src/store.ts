@@ -1,4 +1,4 @@
-import { AgentEvent, AgentName, AgentState, DashboardSnapshot, Notification, UserContext } from "./types.js";
+import { AgentEvent, AgentName, AgentState, DashboardSnapshot, JournalEntry, Notification, UserContext } from "./types.js";
 import { makeId, nowIso } from "./utils.js";
 
 const agentNames: AgentName[] = [
@@ -11,8 +11,10 @@ const agentNames: AgentName[] = [
 export class RuntimeStore {
   private readonly maxEvents = 100;
   private readonly maxNotifications = 40;
+  private readonly maxJournalEntries = 100;
   private events: AgentEvent[] = [];
   private notifications: Notification[] = [];
+  private journalEntries: JournalEntry[] = [];
   private agentStates: AgentState[] = agentNames.map((name) => ({
     name,
     status: "idle",
@@ -67,6 +69,23 @@ export class RuntimeStore {
 
   getUserContext(): UserContext {
     return this.userContext;
+  }
+
+  recordJournalEntry(content: string): JournalEntry {
+    const entry: JournalEntry = {
+      id: makeId("journal"),
+      content,
+      timestamp: nowIso()
+    };
+    this.journalEntries = [entry, ...this.journalEntries].slice(0, this.maxJournalEntries);
+    return entry;
+  }
+
+  getJournalEntries(limit?: number): JournalEntry[] {
+    if (limit !== undefined && limit > 0) {
+      return this.journalEntries.slice(0, limit);
+    }
+    return this.journalEntries;
   }
 
   getSnapshot(): DashboardSnapshot {
