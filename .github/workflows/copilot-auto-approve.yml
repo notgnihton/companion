@@ -1,7 +1,7 @@
 name: Auto-approve Copilot Agent PRs
 
-# Triggers when Copilot coding agent opens/updates draft PRs.
-# Uses pull_request_target to get write permissions even for PRs from copilot/ branches.
+# Triggers when Copilot coding agent opens/updates PRs (including drafts).
+# Uses pull_request_target to get write permissions for PRs from copilot/ branches.
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review]
@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   approve-agent-work:
-    # Only run for PRs created by copilot-swe-agent[bot]
+    # Run for PRs created by copilot-swe-agent[bot] — no draft filter here
     if: github.event.pull_request.user.login == 'copilot-swe-agent[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -60,62 +60,79 @@ jobs:
               core.warning(`Failed to list workflow runs: ${err.message}`);
             }
 
-      - name: Add agent-task label
+      - name: Mark draft as ready for review
+        if: github.event.pull_request.draft == true
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request;
+            core.info(`PR #${pr.number} is a draft. Converting to ready for review...`);
+
+            // GraphQL is required — REST API cannot mark PRs ready for review
+            const mutation = `mutation($id: ID!) {
+              markPullRequestReadyForReview(input: { pullRequestId: $id }) {
+                pullRequest { id number isDraft }
+              }
+            }`;
+
+            try {
+              const result = await github.graphql(mutation, { id: pr.node_id });
+              core.info(`Marked PR #${pr.number} as ready for review`);
+            } catch (err) {
+              core.warning(`Could not mark ready: ${err.message}`);
+            }
+
+      - name: Add labels
         uses: actions/github-script@v7
         with:
           script: |
             const pr = context.payload.pull_request;
             const labels = pr.labels.map(l => l.name);
+            const toAdd = [];
 
-            if (!labels.includes('agent-task')) {
+            if (!labels.includes('agent-task')) toAdd.push('agent-task');
+            if (!labels.includes('agent-automerge')) toAdd.push('agent-automerge');
+
+            if (toAdd.length > 0) {
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: pr.number,
-                labels: ['agent-task'],
+                labels: toAdd,
               });
-              core.info('Added agent-task label');
-            }
-
-            if (!labels.includes('agent-automerge')) {
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: pr.number,
-                labels: ['agent-automerge'],
-              });
-              core.info('Added agent-automerge label');
+              core.info(`Added labels: ${toAdd.join(', ')}`);
             }
 
       - name: Approve PR
-        if: github.event.pull_request.draft == false
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
           script: |
             const pr = context.payload.pull_request;
 
-            // Submit an approving review
             try {
               await github.rest.pulls.createReview({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: pr.number,
                 event: 'APPROVE',
-                body: 'Auto-approved: PR from copilot-swe-agent[bot] with agent-task label.',
+                body: 'Auto-approved: PR from copilot-swe-agent[bot].',
               });
               core.info(`Approved PR #${pr.number}`);
             } catch (err) {
               core.warning(`Could not approve PR: ${err.message}`);
             }
 
-      - name: Enable auto-merge
-        if: github.event.pull_request.draft == false
+      - name: Merge PR
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
           script: |
             const pr = context.payload.pull_request;
+
+            // Wait a moment for the ready_for_review status to propagate
+            await new Promise(r => setTimeout(r, 5000));
 
             try {
               await github.rest.pulls.merge({
@@ -126,8 +143,6 @@ jobs:
               });
               core.info(`Merged PR #${pr.number}`);
             } catch (err) {
-              // If merge fails (checks pending, draft, etc.), that's fine
-              // The agent-pr-automation workflow will handle merge later
               core.info(`Merge not ready yet: ${err.message}`);
-              core.info('The agent-pr-automation workflow will handle merge when ready.');
+              core.info('Will be handled by agent-pr-automation when ready.');
             }

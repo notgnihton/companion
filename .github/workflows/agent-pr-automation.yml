@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   auto-rebase:
-    if: contains(github.event.pull_request.labels.*.name, 'agent-task') && github.event.pull_request.draft == false
+    if: contains(github.event.pull_request.labels.*.name, 'agent-task')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR branch
@@ -30,7 +30,7 @@ jobs:
           git push --force-with-lease origin ${{ github.event.pull_request.head.ref }}
 
   auto-merge:
-    if: contains(github.event.pull_request.labels.*.name, 'agent-task') && contains(github.event.pull_request.labels.*.name, 'agent-automerge') && github.event.pull_request.draft == false
+    if: contains(github.event.pull_request.labels.*.name, 'agent-task') && contains(github.event.pull_request.labels.*.name, 'agent-automerge')
     runs-on: ubuntu-latest
     needs: auto-rebase
     steps:
