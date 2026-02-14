@@ -1,4 +1,4 @@
-import { AgentEvent, AgentName, AgentState, DashboardSnapshot, Notification, UserContext } from "./types.js";
+import { AgentEvent, AgentName, AgentState, DashboardSnapshot, Notification, UserContext, ScheduleEntry, Deadline } from "./types.js";
 import { makeId, nowIso } from "./utils.js";
 
 const agentNames: AgentName[] = [
@@ -24,6 +24,9 @@ export class RuntimeStore {
     energyLevel: "medium",
     mode: "balanced"
   };
+
+  private schedules: ScheduleEntry[] = [];
+  private deadlines: Deadline[] = [];
 
   markAgentRunning(name: AgentName): void {
     this.updateAgent(name, {
@@ -101,5 +104,73 @@ export class RuntimeStore {
 
   private updateAgent(name: AgentName, patch: Partial<AgentState>): void {
     this.agentStates = this.agentStates.map((agent) => (agent.name === name ? { ...agent, ...patch } : agent));
+  }
+
+  // Schedule CRUD
+  createSchedule(entry: Omit<ScheduleEntry, "id" | "createdAt">): ScheduleEntry {
+    const schedule: ScheduleEntry = {
+      ...entry,
+      id: makeId("schedule"),
+      createdAt: nowIso()
+    };
+    this.schedules.push(schedule);
+    return schedule;
+  }
+
+  getSchedules(): ScheduleEntry[] {
+    return this.schedules;
+  }
+
+  updateSchedule(id: string, patch: Partial<Omit<ScheduleEntry, "id" | "createdAt">>): ScheduleEntry | null {
+    const index = this.schedules.findIndex((s) => s.id === id);
+    if (index === -1) return null;
+
+    this.schedules[index] = {
+      ...this.schedules[index],
+      ...patch
+    };
+    return this.schedules[index];
+  }
+
+  deleteSchedule(id: string): boolean {
+    const index = this.schedules.findIndex((s) => s.id === id);
+    if (index === -1) return false;
+
+    this.schedules.splice(index, 1);
+    return true;
+  }
+
+  // Deadline CRUD
+  createDeadline(deadline: Omit<Deadline, "id" | "createdAt">): Deadline {
+    const full: Deadline = {
+      ...deadline,
+      id: makeId("deadline"),
+      createdAt: nowIso()
+    };
+    this.deadlines.push(full);
+    return full;
+  }
+
+  getDeadlines(): Deadline[] {
+    return this.deadlines;
+  }
+
+  updateDeadline(id: string, patch: Partial<Omit<Deadline, "id" | "createdAt">>): Deadline | null {
+    const index = this.deadlines.findIndex((d) => d.id === id);
+    if (index === -1) return null;
+
+    this.deadlines[index] = {
+      ...this.deadlines[index],
+      ...patch
+    };
+    return this.deadlines[index];
+  }
+
+  deleteDeadline(id: string): boolean {
+    const index = this.deadlines.findIndex((d) => d.id === id);
+    if (index === -1) return false;
+
+    this.deadlines.splice(index, 1);
+    return true;
   }
 }

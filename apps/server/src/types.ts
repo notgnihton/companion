@@ -54,3 +54,25 @@ export interface UserContext {
   energyLevel: "low" | "medium" | "high";
   mode: "focus" | "balanced" | "recovery";
 }
+
+export interface ScheduleEntry {
+  id: string;
+  title: string;
+  dayOfWeek: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+  startTime: string;
+  endTime: string;
+  location?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface Deadline {
+  id: string;
+  course: string;
+  title: string;
+  dueDate: string;
+  priority: Priority;
+  completed: boolean;
+  notes?: string;
+  createdAt: string;
+}
