@@ -46,3 +46,29 @@ jobs:
             echo "✗ Session expired or invalid!"
             echo "  Run locally: node .github/scripts/refresh-session.mjs"
           fi
+
+      - name: Create issue on session expiry
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PAT }}
+        run: |
+          # Only create if no open refresh issue exists
+          EXISTING=$(gh issue list -R ${{ github.repository }} --label "session-refresh" --state open --json number -q '.[0].number')
+          if [ -z "$EXISTING" ]; then
+            gh issue create -R ${{ github.repository }} \
+              --title "🔑 GitHub session cookie expired — Claude assignments will fail" \
+              --label "session-refresh" \
+              --body "The \`GH_SESSION_COOKIE\` secret has expired. Claude cannot be assigned to issues until it's refreshed.
+
+          **To fix (takes 30 seconds):**
+
+          \`\`\`bash
+          cd companion
+          npx playwright install chromium  # first time only
+          node .github/scripts/refresh-session.mjs
+          \`\`\`
+
+          This opens a browser → log into GitHub → press Enter → done.
+
+          _This issue was created automatically by the refresh-session workflow._"
+          fi
