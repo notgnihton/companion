@@ -26,7 +26,29 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-          git rebase origin/main
+
+          # Try rebase; on conflict, accept main's version and continue
+          if ! git rebase origin/main; then
+            echo "Rebase conflict detected — resolving automatically"
+            while true; do
+              # Remove files deleted on main
+              for f in $(git diff --name-only --diff-filter=U); do
+                if ! git show origin/main:"$f" > /dev/null 2>&1; then
+                  echo "  Removing $f (deleted on main)"
+                  git rm "$f"
+                else
+                  echo "  Accepting main version of $f"
+                  git checkout origin/main -- "$f"
+                  git add "$f"
+                fi
+              done
+              # Continue rebase; break if done or no more conflicts
+              if git rebase --continue --no-edit 2>/dev/null; then
+                break
+              fi
+            done
+          fi
+
           git push --force-with-lease origin ${{ github.event.pull_request.head.ref }}
 
   auto-merge:
