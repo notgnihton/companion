@@ -7,9 +7,9 @@
 
 ## Executive Summary
 
-The orchestrator successfully scanned the codebase and identified **8 actionable work items** across missing test coverage and code quality improvements. The scan found:
+The orchestrator successfully scanned the codebase and identified **3 actionable issues** covering **8 files** that need work. The scan found:
 
-- **7 files** missing test coverage (agent-base.ts, orchestrator.ts, and 6 agent files)
+- **8 files** missing test coverage (agent-base.ts, orchestrator.ts, and 6 agent files)
 - **1 large file** requiring refactoring (store.test.ts at 495 lines)
 - **0 TODOs/FIXMEs** requiring attention
 - **0 documentation gaps** (all core docs exist)
@@ -259,10 +259,7 @@ Orchestrator complete
 ============================================================
 ```
 
-**Note:** The orchestrator script found 2 issues in dry run mode. However, manual analysis revealed that the first issue title was incorrect (those files already have tests). The correct issues are:
-1. Add tests for agent-base.ts and orchestrator.ts
-2. Add tests for agent implementations (6 agent files)
-3. Refactor store.test.ts
+**Note:** The orchestrator script's `findMissingTests()` function currently has a limitation - it lists test files as needing tests, which is incorrect. Manual analysis confirmed the correct untested files are: agent-base.ts, orchestrator.ts, and the 6 agent implementation files. The orchestrator script should be improved in a future iteration to better distinguish between source files and test files.
 
 ---
 
