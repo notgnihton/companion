@@ -108,7 +108,28 @@ jobs:
                 core.warning(`  Label error: ${err.message}`);
               }
 
-              // Step 4: Approve PR
+              // Step 4: Check for merge conflicts — close if unmergeable
+              const { data: prDetail } = await github.rest.pulls.get({
+                owner, repo,
+                pull_number: pr.number,
+              });
+
+              if (prDetail.mergeable === false) {
+                core.warning(`  PR #${pr.number} has merge conflicts — closing`);
+                await github.rest.pulls.update({
+                  owner, repo,
+                  pull_number: pr.number,
+                  state: 'closed',
+                });
+                await github.rest.issues.createComment({
+                  owner, repo,
+                  issue_number: pr.number,
+                  body: 'Auto-closed: merge conflicts with main. The orchestrator will recreate this task.',
+                });
+                continue;
+              }
+
+              // Step 5: Approve PR
               try {
                 await github.rest.pulls.createReview({
                   owner, repo,
@@ -121,7 +142,7 @@ jobs:
                 core.warning(`  Could not approve: ${err.message}`);
               }
 
-              // Step 5: Wait and merge
+              // Step 6: Wait and merge
               await new Promise(r => setTimeout(r, 5000));
               try {
                 await github.rest.pulls.merge({
@@ -135,7 +156,5 @@ jobs:
                 core.info(`  Will retry on next scheduled run.`);
               }
             }
-
-            core.info(`\nDone. Processed ${copilotPRs.length} Copilot PRs.`);
 
             core.info(`\nDone. Processed ${copilotPRs.length} Copilot PRs.`);
