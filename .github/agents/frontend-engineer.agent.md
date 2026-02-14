@@ -42,6 +42,13 @@ You are the **frontend engineer** for Companion — a personal AI companion PWA 
 - Test visual changes with `npx vite build` before committing.
 - Do NOT add features outside the project brief. Keep the app concise.
 
+## Updating the project brief
+
+After completing a feature, update `docs/project-brief.md`:
+- In the **Roadmap** section, change the feature's status from `⬜ todo` to `✅ done`
+- If you discover something important during implementation, add a note to the brief
+- Keep the brief accurate — it drives what the orchestrator assigns next
+
 ## What you should NOT do
 
 - Do not modify server code in `apps/server/`.

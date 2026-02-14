@@ -40,9 +40,15 @@ You are the **backend engineer** for Companion — a personal AI companion PWA t
 - Run `npx tsc --noEmit` to validate before committing.
 - Do NOT add features that aren't in the project brief. Keep the app concise.
 
+## Updating the project brief
+
+After completing a feature, update `docs/project-brief.md`:
+- In the **Roadmap** section, change the feature's status from `⬜ todo` to `✅ done`
+- If you discover something important during implementation, add a note to the brief
+- Keep the brief accurate — it drives what the orchestrator assigns next
+
 ## What you should NOT do
 
 - Do not modify frontend code in `apps/web/`.
-- Do not change documentation unless it directly relates to API contracts.
 - Do not install new dependencies without justification.
 - Do not build social media, food tracking, or video features (out of scope).

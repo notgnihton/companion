@@ -1,24 +1,23 @@
 #!/usr/bin/env node
 
 /**
- * Agent Orchestrator
+ * Feature-Driven Agent Orchestrator
  *
- * 1. Scan codebase for improvements
- * 2. Create well-scoped GitHub issues via REST API
- * 3. Assign each to copilot-swe-agent[bot] (with optional custom_agent routing)
- * 4. Re-create itself as an issue for the recursive loop
+ * Reads docs/project-brief.md for the feature roadmap, checks which features
+ * are already implemented or have open issues, and creates well-scoped issues
+ * for the next batch of work. Assigns each to Copilot's coding agent with the
+ * appropriate custom agent profile.
  *
- * Uses GitHub REST API directly (no gh CLI) to avoid shell escaping issues.
- * Assignee: copilot-swe-agent[bot] — the official Copilot Coding Agent bot.
- * Third-party agents (Claude, Codex) routed via agent_assignment.custom_agent.
+ * This replaces the old scan-based approach (TODOs, missing tests, big files)
+ * which produced low-value busywork. Now every issue maps to a product feature.
  */
 
-const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
-// AGENT_PAT = user PAT (required to trigger Copilot agent sessions)
-// GITHUB_TOKEN = Actions token (can create issues but NOT trigger agents)
+// ── Config ──────────────────────────────────────────────────────────
+
 const AGENT_PAT = process.env.AGENT_PAT || '';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || AGENT_PAT;
 const REPO = process.env.GITHUB_REPOSITORY || 'lucyscript/companion';
@@ -26,11 +25,7 @@ const [OWNER, REPO_NAME] = REPO.split('/');
 const DRY_RUN = process.env.DRY_RUN === 'true';
 const API = 'https://api.github.com';
 const CAN_ASSIGN_AGENTS = Boolean(AGENT_PAT);
-
-// ── Custom agent profiles (→ .github/agents/<name>.agent.md) ───────
-// All issues go through copilot-swe-agent[bot]; custom_agent selects the profile.
-// Available agents: backend-engineer, frontend-engineer, docs-writer, test-engineer
-const DEFAULT_AGENT = 'backend-engineer';
+const MAX_ISSUES_PER_RUN = 3;
 
 // ── GitHub REST API helper ──────────────────────────────────────────
 
@@ -52,33 +47,260 @@ async function githubAPI(endpoint, method = 'GET', body = null, token = GITHUB_T
   return text ? JSON.parse(text) : null;
 }
 
+// ── Feature Roadmap ─────────────────────────────────────────────────
+// Ordered by priority. Each feature defines:
+//   - id: unique slug (used to track status in the brief)
+//   - title: issue title
+//   - agent: which custom agent profile to assign
+//   - body: full issue body with scope, deliverable, verification
+//   - check: function that returns true if the feature is already implemented
+
+const FEATURES = [
+  {
+    id: 'journal-api',
+    title: 'Implement journal API endpoints',
+    agent: 'backend-engineer',
+    body: `## Context
+Read \`docs/project-brief.md\` first — this is the Companion app.
+
+## Scope
+Build the journal API in \`apps/server/src/\`:
+- \`POST /api/journal\` — create a journal entry (text, optional mood tag)
+- \`GET /api/journal\` — list entries (paginated, newest first)
+- \`GET /api/journal/:id\` — get a single entry
+- Store entries in RuntimeStore (add a \`journalEntries\` collection)
+
+## Out of Scope
+- Frontend UI (separate issue)
+- Push notifications
+- Voice input
+
+## Deliverable
+- New route handlers in \`index.ts\` or a new \`routes/journal.ts\`
+- Types added to \`types.ts\`: \`JournalEntry { id, text, mood?, createdAt }\`
+- RuntimeStore extended with journal storage
+- Update \`docs/project-brief.md\` roadmap to mark this feature as done
+
+## Verification
+- \`curl POST /api/journal\` creates an entry
+- \`curl GET /api/journal\` returns entries
+- Types compile (\`npm run typecheck\`)`,
+    check: () => fileContains('apps/server/src/index.ts', 'journal') ||
+                 fileExists('apps/server/src/routes/journal.ts'),
+  },
+  {
+    id: 'journal-ui',
+    title: 'Build journal UI component',
+    agent: 'frontend-engineer',
+    body: `## Context
+Read \`docs/project-brief.md\` first — this is the Companion app.
+
+## Scope
+Build the journal interface in \`apps/web/src/\`:
+- A \`JournalView\` component: text input, submit button, entry list
+- Entries stored in localStorage (the API may not be deployed yet)
+- Quick-entry feel: tap, type, done
+- Evening reflection prompt: "Ready to journal? Here's what you did today..."
+- Mobile-first layout that works on iPhone
+
+## Out of Scope
+- Voice input (future)
+- Push notification triggers
+- Backend API integration (use localStorage for now)
+
+## Deliverable
+- \`components/JournalView.tsx\` — the main journal interface
+- \`lib/storage.ts\` extended with journal entry persistence
+- \`types.ts\` updated with \`JournalEntry\` type
+- Journal accessible from the main App layout
+- Update \`docs/project-brief.md\` roadmap to mark this feature as done
+
+## Verification
+- Can type and submit an entry
+- Entries persist across page reloads (localStorage)
+- Layout works on mobile viewport`,
+    check: () => fileExists('apps/web/src/components/JournalView.tsx'),
+  },
+  {
+    id: 'schedule-api',
+    title: 'Implement schedule & deadline API endpoints',
+    agent: 'backend-engineer',
+    body: `## Context
+Read \`docs/project-brief.md\` first — this is the Companion app.
+
+## Scope
+Build schedule/deadline APIs in \`apps/server/src/\`:
+- \`POST /api/schedule\` — add a recurring event (lecture, meeting)
+- \`GET /api/schedule\` — list events for a date range
+- \`POST /api/deadlines\` — add an assignment deadline
+- \`GET /api/deadlines\` — list upcoming deadlines (sorted by due date)
+- \`PATCH /api/deadlines/:id\` — mark as complete
+- Store in RuntimeStore
+
+## Out of Scope
+- Notification scheduling (separate issue)
+- Frontend UI
+- Calendar import/export
+
+## Deliverable
+- Route handlers (new file or added to index.ts)
+- Types: \`ScheduleEvent { id, title, dayOfWeek, startTime, endTime, room? }\`
+- Types: \`Deadline { id, title, dueDate, course?, completed, createdAt }\`
+- RuntimeStore extended
+- Update \`docs/project-brief.md\` roadmap to mark this feature as done
+
+## Verification
+- CRUD operations work via curl
+- Deadlines sort by due date
+- Types compile`,
+    check: () => fileContains('apps/server/src/index.ts', '/api/schedule') ||
+                 fileContains('apps/server/src/index.ts', '/api/deadlines') ||
+                 fileExists('apps/server/src/routes/schedule.ts'),
+  },
+  {
+    id: 'schedule-ui',
+    title: 'Build schedule & deadline tracking UI',
+    agent: 'frontend-engineer',
+    body: `## Context
+Read \`docs/project-brief.md\` first — this is the Companion app.
+
+## Scope
+Build schedule/deadline UI in \`apps/web/src/\`:
+- \`ScheduleView\` component: show today's lectures/events as a timeline
+- \`DeadlineList\` component: upcoming deadlines with urgency indicators
+- Add/edit forms for events and deadlines
+- Store in localStorage (API may not be deployed)
+- Color-code by urgency: green (>3 days), yellow (1-3 days), red (<1 day)
+
+## Out of Scope
+- Calendar import
+- Push notifications
+- Backend API calls (use localStorage)
+
+## Deliverable
+- \`components/ScheduleView.tsx\`
+- \`components/DeadlineList.tsx\`
+- localStorage persistence via \`lib/storage.ts\`
+- Types in \`types.ts\`
+- Integrated into main App layout
+- Update \`docs/project-brief.md\` roadmap to mark this feature as done
+
+## Verification
+- Can add a lecture and see it on the timeline
+- Can add a deadline and see urgency color
+- Data persists across reloads`,
+    check: () => fileExists('apps/web/src/components/ScheduleView.tsx') ||
+                 fileExists('apps/web/src/components/DeadlineList.tsx'),
+  },
+  {
+    id: 'push-notifications',
+    title: 'Implement web push notification infrastructure',
+    agent: 'backend-engineer',
+    body: `## Context
+Read \`docs/project-brief.md\` first — this is the Companion app.
+This is the most important feature: push notifications to iPhone.
+
+## Scope
+Build push notification infrastructure:
+- Generate VAPID keys (server-side)
+- \`POST /api/push/subscribe\` — store a push subscription
+- \`POST /api/push/send\` — send a notification (internal, used by agents)
+- Service worker registration in the frontend for push events
+- Use the \`web-push\` npm package
+
+## Out of Scope
+- Notification scheduling logic (handled by agents)
+- Specific notification content/triggers
+
+## Deliverable
+- VAPID key generation script or config
+- Push subscription API endpoints
+- Service worker (\`apps/web/public/sw.js\`) handling push events
+- Frontend: \`lib/push.ts\` for subscription management
+- \`package.json\` updated with \`web-push\` dependency
+- Update \`docs/project-brief.md\` roadmap to mark this feature as done
+
+## Verification
+- Can subscribe for notifications in the browser
+- Can send a test notification via API
+- Service worker receives and displays it`,
+    check: () => fileExists('apps/web/public/sw.js') ||
+                 fileContains('apps/server/src/index.ts', 'push') ||
+                 fileExists('apps/server/src/routes/push.ts'),
+  },
+  {
+    id: 'nudge-engine',
+    title: 'Build context-aware nudge engine',
+    agent: 'backend-engineer',
+    body: `## Context
+Read \`docs/project-brief.md\` first — this is the Companion app.
+
+## Scope
+Build the nudge engine that generates smart notifications:
+- Morning summary: today's schedule + suggested focus areas
+- Deadline escalation: increasing urgency as deadlines approach
+- Gap detection: find free time between lectures for study suggestions
+- Context-awareness: adapt tone based on stress/energy/mode
+- Journal prompts: evening reflection nudges
+
+## Out of Scope
+- Push notification delivery (uses existing push infrastructure)
+- UI components
+
+## Deliverable
+- \`apps/server/src/nudge-engine.ts\` — core logic
+- Integration with schedule + deadline data
+- Integration with context (stress/energy/mode)
+- Generates NotificationPayload objects for the push system
+- Update \`docs/project-brief.md\` roadmap to mark this feature as done
+
+## Verification
+- Given a schedule and deadlines, generates appropriate nudges
+- Tone changes with context settings
+- Unit tests for nudge logic`,
+    check: () => fileExists('apps/server/src/nudge-engine.ts'),
+  },
+  {
+    id: 'api-docs',
+    title: 'Document all API endpoints',
+    agent: 'docs-writer',
+    body: `## Context
+Read \`docs/project-brief.md\` first — this is the Companion app.
+
+## Scope
+Create \`docs/api.md\` documenting all REST API endpoints:
+- For each endpoint: method, path, request body, response, example curl
+- Group by domain: journal, schedule, deadlines, push, context
+- Only document endpoints that actually exist in the code
+
+## Out of Scope
+- Don't document planned/future endpoints that aren't implemented yet
+
+## Deliverable
+- \`docs/api.md\` with complete endpoint documentation
+- Update \`docs/project-brief.md\` roadmap to mark this feature as done
+
+## Verification
+- Every endpoint in \`apps/server/src/index.ts\` is documented
+- Example requests are accurate
+- No hallucinated endpoints`,
+    check: () => fileExists('docs/api.md'),
+  },
+];
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function pickAgent(title, body = '', file = '') {
-  const t = title.toLowerCase();
+function fileExists(filePath) {
+  return fs.existsSync(path.resolve(filePath));
+}
 
-  // 1. Title-based intent takes priority (what KIND of task is this?)
-  if (t.startsWith('document') || t.includes('readme') || t.includes('guide')) return 'docs-writer';
-  if (t.includes('test') || t.includes('spec') || t.includes('coverage')) return 'test-engineer';
-  if (t.includes('refactor')) {
-    // Refactoring routes by file location
-    if (file.includes('apps/web/')) return 'frontend-engineer';
-    return 'backend-engineer';
+function fileContains(filePath, needle) {
+  try {
+    const content = fs.readFileSync(path.resolve(filePath), 'utf-8');
+    return content.toLowerCase().includes(needle.toLowerCase());
+  } catch {
+    return false;
   }
-
-  // 2. Route by file path
-  if (file) {
-    if (file.startsWith('docs/') || file.endsWith('.md')) return 'docs-writer';
-    if (file.includes('.test.') || file.includes('.spec.')) return 'test-engineer';
-    if (file.includes('apps/web/')) return 'frontend-engineer';
-    if (file.includes('apps/server/') || file.includes('.github/')) return 'backend-engineer';
-  }
-
-  // 3. Title keyword fallback
-  if (t.includes('component') || t.includes('react') || t.includes('css') || t.includes('ui ')) return 'frontend-engineer';
-  if (t.includes('server') || t.includes('agent') || t.includes('orchestrat')) return 'backend-engineer';
-
-  return DEFAULT_AGENT;
 }
 
 async function getExistingIssueTitles() {
@@ -93,183 +315,22 @@ async function getExistingIssueTitles() {
   }
 }
 
-// ── Discovery functions ─────────────────────────────────────────────
+// ── Issue creation ──────────────────────────────────────────────────
 
-function findTodos() {
-  const issues = [];
-  try {
-    // Exclude this script and .github/scripts/ to avoid self-matching
-    const output = execSync(
-      'git grep -n -E "TODO|FIXME|HACK|XXX" -- "*.ts" "*.tsx" ":!.github/scripts/*" ":!node_modules/*" 2>/dev/null || true',
-      { encoding: 'utf-8', maxBuffer: 5 * 1024 * 1024 }
-    );
-
-    for (const line of output.trim().split('\n').filter(Boolean)) {
-      const match = line.match(/^(.+?):(\d+):.*(?:TODO|FIXME|HACK|XXX)[:\s]*(.+)/i);
-      if (match) {
-        const [, file, lineNum, comment] = match;
-        const clean = comment.trim().replace(/\*\/\s*$/, '').trim();
-        if (clean.length > 10) {
-          issues.push({
-            title: `Fix: ${clean.slice(0, 80)}`,
-            body: [
-              '## Scope',
-              `Address TODO/FIXME found in \`${file}:${lineNum}\`:`,
-              `> ${clean}`,
-              '',
-              '## Deliverable',
-              'Remove the TODO/FIXME comment by implementing the described change.',
-              '',
-              '## Verification',
-              '- The TODO/FIXME is removed',
-              '- The described improvement is implemented',
-              '- No regressions introduced',
-            ].join('\n'),
-            file,
-          });
-        }
-      }
-    }
-  } catch (e) {
-    console.log('TODO scan skipped:', e.message);
-  }
-  return issues;
-}
-
-function findMissingTests() {
-  const issues = [];
-  try {
-    const srcFiles = execSync(
-      'find apps/server/src apps/web/src -name "*.ts" -o -name "*.tsx" 2>/dev/null | grep -v node_modules | grep -v ".d.ts" | grep -v ".test." | grep -v ".spec."',
-      { encoding: 'utf-8' }
-    ).trim().split('\n').filter(Boolean);
-
-    const testFiles = new Set();
-    try {
-      execSync('find . -name "*.test.*" -o -name "*.spec.*" 2>/dev/null', { encoding: 'utf-8' })
-        .trim().split('\n').filter(Boolean)
-        .forEach(f => testFiles.add(path.basename(f).replace(/\.(test|spec)\./, '.')));
-    } catch { /* no test files yet */ }
-
-    const untested = srcFiles.filter(f => {
-      const base = path.basename(f);
-      return !testFiles.has(base) && !base.includes('index') && !base.includes('types');
-    });
-
-    if (untested.length > 0) {
-      const priority = untested.slice(0, 3);
-      issues.push({
-        title: `Add tests for ${priority.map(f => path.basename(f)).join(', ')}`,
-        body: [
-          '## Scope',
-          'Add unit tests for these untested source files:',
-          ...priority.map(f => `- \`${f}\``),
-          '',
-          '## Deliverable',
-          'Create test files with meaningful test cases covering core functionality.',
-          '',
-          '## Verification',
-          '- Test files exist and are runnable',
-          '- Tests cover happy path and edge cases',
-          '- Tests pass',
-        ].join('\n'),
-        file: priority[0],
-      });
-    }
-  } catch (e) {
-    console.log('Test scan skipped:', e.message);
-  }
-  return issues;
-}
-
-function findDocGaps() {
-  const issues = [];
-  const wantedDocs = [
-    { path: 'docs/api.md', title: 'Document API endpoints and request/response examples' },
-  ];
-
-  for (const doc of wantedDocs) {
-    if (!fs.existsSync(doc.path)) {
-      issues.push({
-        title: doc.title,
-        body: [
-          '## Scope',
-          `Create \`${doc.path}\` based on the actual code in \`apps/server/src/index.ts\`.`,
-          'Read `docs/project-brief.md` first to understand what the app does.',
-          '',
-          '## Deliverable',
-          'A well-structured markdown document covering the topic.',
-          '',
-          '## Verification',
-          `- File exists at \`${doc.path}\``,
-          '- Content is accurate and helpful',
-          '- Follows existing doc style',
-        ].join('\n'),
-        file: doc.path,
-      });
-    }
-  }
-  return issues;
-}
-
-function findCodeImprovements() {
-  const issues = [];
-  try {
-    const bigFiles = execSync(
-      'find apps -name "*.ts" -o -name "*.tsx" 2>/dev/null | xargs wc -l 2>/dev/null | sort -rn | head -5',
-      { encoding: 'utf-8' }
-    ).trim().split('\n').filter(l => !l.includes('total'));
-
-    for (const line of bigFiles) {
-      const match = line.trim().match(/^(\d+)\s+(.+)/);
-      if (match && parseInt(match[1]) > 200) {
-        const [, lines, file] = match;
-        issues.push({
-          title: `Refactor ${path.basename(file)} (${lines} lines)`,
-          body: [
-            '## Scope',
-            `Refactor \`${file}\` which has ${lines} lines. Break into smaller, focused modules.`,
-            '',
-            '## Deliverable',
-            '- Split into logical sub-modules',
-            '- Maintain all existing functionality',
-            '- Improve readability',
-            '',
-            '## Verification',
-            '- Original functionality preserved',
-            '- File sizes under 150 lines each',
-            '- Clear module boundaries',
-          ].join('\n'),
-          file,
-        });
-      }
-    }
-  } catch (e) {
-    console.log('Code improvement scan skipped:', e.message);
-  }
-  return issues;
-}
-
-// ── Core: Create issue, then assign agent in a separate step ────────
-// Step 1: Create issue with GITHUB_TOKEN (always works)
-// Step 2: Assign copilot-swe-agent[bot] with AGENT_PAT (user token required)
-//         GitHub docs: "authenticate with a user token" to trigger agent sessions
-
-async function createAndAssignIssue(issue, customAgent) {
-  console.log(`\n  Creating: "${issue.title}"`);
-  console.log(`   Custom agent: ${customAgent}`);
+async function createAndAssignIssue(feature) {
+  console.log(`\n  Creating: "${feature.title}"`);
+  console.log(`   Agent: ${feature.agent}`);
 
   if (DRY_RUN) {
-    console.log(`   [DRY RUN] Would create issue (can_assign=${CAN_ASSIGN_AGENTS})`);
+    console.log(`   [DRY RUN] Would create issue`);
     return true;
   }
 
-  // Step 1: Create the issue (works with any token)
   let created;
   try {
     created = await githubAPI(
       `/repos/${OWNER}/${REPO_NAME}/issues`, 'POST',
-      { title: issue.title, body: issue.body, labels: ['agent-task'] }
+      { title: feature.title, body: feature.body, labels: ['agent-task'] }
     );
     console.log(`   Created: ${created.html_url}`);
   } catch (e) {
@@ -277,7 +338,6 @@ async function createAndAssignIssue(issue, customAgent) {
     return false;
   }
 
-  // Step 2: Assign to Copilot agent with custom agent profile (requires user PAT)
   if (!CAN_ASSIGN_AGENTS) {
     console.log('   Skipping agent assignment (no AGENT_PAT configured)');
     return true;
@@ -292,148 +352,73 @@ async function createAndAssignIssue(issue, customAgent) {
         agent_assignment: {
           target_repo: `${OWNER}/${REPO_NAME}`,
           base_branch: 'main',
-          custom_instructions: `Use the ${customAgent} agent profile. Follow its instructions strictly.`,
-          custom_agent: customAgent,
+          custom_instructions: `Use the ${feature.agent} agent profile. Follow its instructions strictly. After completing the work, update docs/project-brief.md to mark the "${feature.id}" roadmap item as done.`,
+          custom_agent: feature.agent,
           model: '',
         },
       },
       AGENT_PAT
     );
-    console.log(`   Assigned to copilot-swe-agent[bot] with agent: ${customAgent}`);
+    console.log(`   Assigned to copilot-swe-agent[bot] with agent: ${feature.agent}`);
   } catch (e) {
     console.log(`   Assignment failed: ${e.message}`);
-    console.log('   Issue created but agent not assigned - assign manually from GitHub UI');
+    console.log('   Issue created but agent not assigned — assign manually');
   }
 
   return true;
-}
-
-// ── Recursive: Create the next orchestrator issue ───────────────────
-
-async function createRecursiveIssue() {
-  const title = 'Orchestrator: discover and assign new work';
-  const body = [
-    '## Scope',
-    'Run the orchestrator to scan the codebase and create new issues.',
-    '',
-    'This is a **recursive issue** -- when completed, a new orchestrator issue is created automatically.',
-    '',
-    '## Deliverable',
-    '1. Scan codebase for TODOs, missing tests, doc gaps, code improvements',
-    '2. Create well-scoped issues for each finding',
-    '3. Assign each issue to the best agent',
-    '4. Create the next orchestrator issue to continue the loop',
-    '',
-    '## Verification',
-    '- New issues created with `agent-task` label',
-    '- Each issue assigned to an appropriate agent',
-    '- Next orchestrator issue exists',
-  ].join('\n');
-
-  console.log('\n  Creating next orchestrator issue...');
-
-  if (DRY_RUN) {
-    console.log('   [DRY RUN] Would create recursive issue');
-    return;
-  }
-
-  try {
-    const created = await githubAPI(
-      `/repos/${OWNER}/${REPO_NAME}/issues`, 'POST',
-      { title, body, labels: ['agent-task'] }
-    );
-    console.log(`   Recursive issue created: ${created.html_url}`);
-
-    // Assign to copilot if we have a user PAT
-    if (CAN_ASSIGN_AGENTS) {
-      try {
-        await githubAPI(
-          `/repos/${OWNER}/${REPO_NAME}/issues/${created.number}/assignees`,
-          'POST',
-          {
-            assignees: ['copilot-swe-agent[bot]'],
-            agent_assignment: {
-              target_repo: `${OWNER}/${REPO_NAME}`,
-              base_branch: 'main',
-              custom_instructions: 'Run the orchestrator workflow to discover and assign new work.',
-              custom_agent: '',
-              model: '',
-            },
-          },
-          AGENT_PAT
-        );
-        console.log('   Assigned to copilot-swe-agent[bot]');
-      } catch (e) {
-        console.log(`   Recursive issue created but assignment failed: ${e.message}`);
-      }
-    }
-  } catch (e) {
-    console.error(`   Failed to create recursive issue: ${e.message}`);
-  }
 }
 
 // ── Main ────────────────────────────────────────────────────────────
 
 async function main() {
   console.log('='.repeat(60));
-  console.log('Agent Orchestrator');
+  console.log('Feature-Driven Agent Orchestrator');
   console.log('='.repeat(60));
   console.log(`Repository: ${OWNER}/${REPO_NAME}`);
   console.log(`Dry run: ${DRY_RUN}`);
-  console.log(`Agent assignment: ${CAN_ASSIGN_AGENTS ? 'enabled (AGENT_PAT)' : 'DISABLED (no AGENT_PAT)'}`);
-  if (!CAN_ASSIGN_AGENTS) {
-    console.log('  -> Issues will be created but agents will NOT be assigned.');
-    console.log('  -> To enable: add a Fine-Grained PAT as AGENT_PAT repo secret.');
-    console.log('  -> PAT needs: metadata(r), actions(rw), contents(rw), issues(rw), pull-requests(rw)');
-  }
+  console.log(`Agent assignment: ${CAN_ASSIGN_AGENTS ? 'enabled' : 'DISABLED'}`);
   console.log('');
 
-  // Get existing issues to avoid duplicates
+  // Check what's already done or in-progress
   const existing = await getExistingIssueTitles();
-  console.log(`${existing.size} open issues found`);
+  console.log(`${existing.size} open issues found\n`);
 
-  // Discover work
-  console.log('\nScanning codebase...');
-  const allIssues = [
-    ...findTodos(),
-    ...findMissingTests(),
-    ...findDocGaps(),
-    ...findCodeImprovements(),
-  ];
+  console.log('Feature status:');
+  const todo = [];
 
-  console.log(`\nFound ${allIssues.length} potential issues`);
+  for (const feature of FEATURES) {
+    const implemented = feature.check();
+    const hasIssue = existing.has(feature.title.toLowerCase());
 
-  // Filter duplicates
-  const newIssues = allIssues.filter(i => !existing.has(i.title.toLowerCase()));
-  console.log(`${newIssues.length} new issues (after dedup)`);
+    const status = implemented ? '✅ done' : hasIssue ? '🔄 open issue' : '⬜ todo';
+    console.log(`  ${status}  ${feature.id} — ${feature.title}`);
 
-  // Cap at 5 issues per run to avoid spam
-  const batch = newIssues.slice(0, 5);
+    if (!implemented && !hasIssue) {
+      todo.push(feature);
+    }
+  }
+
+  console.log(`\n${todo.length} features need work`);
+
+  // Create issues for the next batch (priority order, capped)
+  const batch = todo.slice(0, MAX_ISSUES_PER_RUN);
 
   if (batch.length === 0) {
-    console.log('\nNo new issues to create. Codebase looks good!');
+    console.log('\nAll features implemented or have open issues. Nothing to do!');
   } else {
     console.log(`\nCreating ${batch.length} issues...\n`);
 
     let created = 0;
-    for (const issue of batch) {
-      const agent = pickAgent(issue.title, issue.body, issue.file);
-      const ok = await createAndAssignIssue(issue, agent);
+    for (const feature of batch) {
+      const ok = await createAndAssignIssue(feature);
       if (ok) created++;
-
-      // Small delay between API calls
       await new Promise(r => setTimeout(r, 1000));
     }
 
     console.log(`\nCreated ${created}/${batch.length} issues`);
   }
 
-  // Recursive loop is handled by the cron schedule in orchestrator.yml
-  // No need to create a recursive issue that Copilot can't action
   console.log('\nOrchestrator will re-run on next cron schedule.');
-
-  console.log('\n' + '='.repeat(60));
-  console.log('Orchestrator complete');
   console.log('='.repeat(60));
 }
 

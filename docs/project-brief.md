@@ -57,3 +57,17 @@ You can journal to it anytime (voice or text). It tracks what you're doing, what
 - Journaling feels quick and natural
 - App adapts to your schedule without manual babysitting
 - Autonomous operation after initial setup
+
+## Roadmap
+
+Features are built in priority order. The orchestrator reads this section to decide what to assign next. Agents update the status as they complete work.
+
+| Status | Feature | Agent | Description |
+|--------|---------|-------|-------------|
+| ⬜ todo | `journal-api` | backend-engineer | POST/GET /api/journal endpoints, RuntimeStore storage |
+| ⬜ todo | `journal-ui` | frontend-engineer | JournalView component, localStorage persistence |
+| ⬜ todo | `schedule-api` | backend-engineer | Schedule + deadline CRUD endpoints |
+| ⬜ todo | `schedule-ui` | frontend-engineer | ScheduleView + DeadlineList components |
+| ⬜ todo | `push-notifications` | backend-engineer | VAPID keys, push subscription, service worker |
+| ⬜ todo | `nudge-engine` | backend-engineer | Context-aware notification generation |
+| ⬜ todo | `api-docs` | docs-writer | Document all API endpoints in docs/api.md |

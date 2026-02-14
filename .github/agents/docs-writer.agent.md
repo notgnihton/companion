@@ -29,6 +29,14 @@ You are the **documentation writer** for Companion — a personal AI companion P
 - Structure with clear headings.
 - **Always read `docs/project-brief.md` first** to understand what's in scope.
 
+## Updating the project brief
+
+`docs/project-brief.md` is the source of truth and you are its primary maintainer:
+- After completing a docs task, update the **Roadmap** section status
+- Keep feature descriptions accurate as the codebase evolves
+- Add notes about architectural decisions or gotchas discovered during documentation
+- The orchestrator reads the roadmap to decide what to assign next — accuracy matters
+
 ## What you should NOT do
 
 - Do not modify source code (`.ts`, `.tsx`, `.js` files).
