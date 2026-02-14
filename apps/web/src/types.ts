@@ -54,3 +54,20 @@ export interface JournalEntry {
   text: string;
   timestamp: string;
 }
+
+export interface LectureEvent {
+  id: string;
+  title: string;
+  startTime: string;
+  durationMinutes: number;
+  workload: "low" | "medium" | "high";
+}
+
+export interface Deadline {
+  id: string;
+  course: string;
+  task: string;
+  dueDate: string;
+  priority: Priority;
+  completed: boolean;
+}
