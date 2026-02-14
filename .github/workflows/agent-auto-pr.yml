@@ -189,6 +189,13 @@ jobs:
               body: commentBody
             });
 
+      - name: Checkout PR branch
+        if: steps.check-pr.outputs.exists == 'false'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.extract.outputs.branch }}
+          fetch-depth: 0
+
       - name: Trigger PR automation
         if: steps.check-pr.outputs.exists == 'false'
         run: |
