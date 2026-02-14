@@ -14,8 +14,8 @@ permissions:
 
 jobs:
   approve-agent-work:
-    # Run for PRs created by copilot-swe-agent[bot] — no draft filter here
-    if: github.event.pull_request.user.login == 'copilot-swe-agent[bot]'
+    # Run for PRs created by Copilot bot
+    if: github.event.pull_request.user.login == 'Copilot' || github.event.pull_request.user.login == 'copilot-swe-agent[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Approve pending workflow runs

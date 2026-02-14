@@ -33,7 +33,7 @@ jobs:
             });
 
             const copilotPRs = prs.filter(pr =>
-              pr.user.login === 'copilot-swe-agent[bot]'
+              pr.user.login === 'Copilot' || pr.user.login === 'copilot-swe-agent[bot]'
             );
 
             core.info(`Found ${copilotPRs.length} open Copilot PRs`);
