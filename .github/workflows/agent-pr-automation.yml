@@ -17,9 +17,9 @@ jobs:
       - name: Rebase PR branch onto main
         uses: peter-evans/rebase@v3
         with:
-          head: ${{ github.event.pull_request.head.ref }}
+          head: ${{ github.event.pull_request.head.label }}
           base: ${{ github.event.pull_request.base.ref }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
 
   auto-review:
     if: contains(github.event.pull_request.labels.*.name, 'agent-task') && github.event.pull_request.draft == false
