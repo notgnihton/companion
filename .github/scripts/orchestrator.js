@@ -27,18 +27,10 @@ const DRY_RUN = process.env.DRY_RUN === 'true';
 const API = 'https://api.github.com';
 const CAN_ASSIGN_AGENTS = Boolean(AGENT_PAT);
 
-// ── Agent routing rules ─────────────────────────────────────────────
-// Maps keywords → preferred agent identifier for custom_agent field.
-// All issues are assigned to copilot-swe-agent[bot]; custom_agent routes
-// to a third-party agent when available on the plan.
-const AGENT_RULES = {
-  server: 'codex', backend: 'codex', api: 'codex',
-  runtime: 'codex', orchestrat: 'codex',
-  web: 'claude', frontend: 'claude', ui: 'claude',
-  component: 'claude', css: 'claude', style: 'claude',
-  docs: '', documentation: '', ci: '', workflow: '',
-  config: '', test: '', lint: '', setup: '',
-};
+// ── Custom agent profiles (→ .github/agents/<name>.agent.md) ───────
+// All issues go through copilot-swe-agent[bot]; custom_agent selects the profile.
+// Available agents: backend-engineer, frontend-engineer, docs-writer, test-engineer
+const DEFAULT_AGENT = 'backend-engineer';
 
 // ── GitHub REST API helper ──────────────────────────────────────────
 
@@ -62,12 +54,31 @@ async function githubAPI(endpoint, method = 'GET', body = null, token = GITHUB_T
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function pickAgent(title, body = '') {
-  const text = `${title} ${body}`.toLowerCase();
-  for (const [keyword, agent] of Object.entries(AGENT_RULES)) {
-    if (text.includes(keyword)) return agent; // '' = default copilot
+function pickAgent(title, body = '', file = '') {
+  const t = title.toLowerCase();
+
+  // 1. Title-based intent takes priority (what KIND of task is this?)
+  if (t.startsWith('document') || t.includes('readme') || t.includes('guide')) return 'docs-writer';
+  if (t.includes('test') || t.includes('spec') || t.includes('coverage')) return 'test-engineer';
+  if (t.includes('refactor')) {
+    // Refactoring routes by file location
+    if (file.includes('apps/web/')) return 'frontend-engineer';
+    return 'backend-engineer';
   }
-  return ''; // default copilot (no custom_agent)
+
+  // 2. Route by file path
+  if (file) {
+    if (file.startsWith('docs/') || file.endsWith('.md')) return 'docs-writer';
+    if (file.includes('.test.') || file.includes('.spec.')) return 'test-engineer';
+    if (file.includes('apps/web/')) return 'frontend-engineer';
+    if (file.includes('apps/server/') || file.includes('.github/')) return 'backend-engineer';
+  }
+
+  // 3. Title keyword fallback
+  if (t.includes('component') || t.includes('react') || t.includes('css') || t.includes('ui ')) return 'frontend-engineer';
+  if (t.includes('server') || t.includes('agent') || t.includes('orchestrat')) return 'backend-engineer';
+
+  return DEFAULT_AGENT;
 }
 
 async function getExistingIssueTitles() {
@@ -246,10 +257,8 @@ function findCodeImprovements() {
 //         GitHub docs: "authenticate with a user token" to trigger agent sessions
 
 async function createAndAssignIssue(issue, customAgent) {
-  const agentLabel = customAgent || 'copilot';
-
   console.log(`\n  Creating: "${issue.title}"`);
-  console.log(`   Agent: ${agentLabel}`);
+  console.log(`   Custom agent: ${customAgent}`);
 
   if (DRY_RUN) {
     console.log(`   [DRY RUN] Would create issue (can_assign=${CAN_ASSIGN_AGENTS})`);
@@ -269,7 +278,7 @@ async function createAndAssignIssue(issue, customAgent) {
     return false;
   }
 
-  // Step 2: Assign to Copilot agent (requires user PAT)
+  // Step 2: Assign to Copilot agent with custom agent profile (requires user PAT)
   if (!CAN_ASSIGN_AGENTS) {
     console.log('   Skipping agent assignment (no AGENT_PAT configured)');
     return true;
@@ -284,14 +293,14 @@ async function createAndAssignIssue(issue, customAgent) {
         agent_assignment: {
           target_repo: `${OWNER}/${REPO_NAME}`,
           base_branch: 'main',
-          custom_instructions: '',
-          custom_agent: customAgent || '',
+          custom_instructions: `Use the ${customAgent} agent profile. Follow its instructions strictly.`,
+          custom_agent: customAgent,
           model: '',
         },
       },
-      AGENT_PAT  // Must use user token for agent assignment
+      AGENT_PAT
     );
-    console.log(`   Assigned to ${agentLabel} via copilot-swe-agent[bot]`);
+    console.log(`   Assigned to copilot-swe-agent[bot] with agent: ${customAgent}`);
   } catch (e) {
     console.log(`   Assignment failed: ${e.message}`);
     console.log('   Issue created but agent not assigned - assign manually from GitHub UI');
@@ -409,7 +418,7 @@ async function main() {
 
     let created = 0;
     for (const issue of batch) {
-      const agent = pickAgent(issue.title, issue.body);
+      const agent = pickAgent(issue.title, issue.body, issue.file);
       const ok = await createAndAssignIssue(issue, agent);
       if (ok) created++;
 
