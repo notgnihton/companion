@@ -7,17 +7,18 @@
  *   | ⬜ todo | `feature-id` | agent-name | Description |
  *
  * For each "⬜ todo" row without a matching open issue, creates a GitHub issue
- * and assigns it to an AI coding agent with fallback:
- *   Claude (anthropic-code-agent) → Codex (openai-code-agent) → Copilot (copilot-swe-agent)
+ * and triggers an AI coding agent with fallback:
+ *   Claude → Codex → Copilot (round-robin)
+ *
+ * Each agent has a different trigger mechanism:
+ *   - Copilot: REST API `agent_assignment` payload on POST /assignees
+ *   - Claude:  @claude comment (triggers claude-code-action workflow)
+ *   - Codex:   @codex comment  (triggers chatgpt-codex-connector app)
  *
  * Issues are distributed round-robin across providers to spread load.
  *
  * When there are few todo items remaining, creates an "idea generation" issue
  * asking an agent to propose new roadmap items — so work never runs out.
- *
- * Agents update the roadmap as they complete work:
- *   ⬜ todo → ✅ done
- * And can add new rows for features they identify.
  */
 
 const fs = require('fs');
@@ -36,11 +37,15 @@ const MAX_ISSUES_PER_RUN = 3;
 const LOW_TODO_THRESHOLD = 2; // When <= this many todos remain, generate ideas
 
 // ── AI Agent providers (round-robin order) ──────────────────────────
+// Each provider has a different trigger mechanism:
+//   copilot:  REST API agent_assignment payload
+//   claude:   @claude comment (requires ANTHROPIC_API_KEY secret + claude.yml workflow)
+//   codex:    @codex comment  (chatgpt-codex-connector GitHub App handles it)
 
 const AGENT_PROVIDERS = [
-  { name: 'Claude',  botUser: 'anthropic-code-agent[bot]',  display: 'Claude (Anthropic)' },
-  { name: 'Codex',   botUser: 'openai-code-agent[bot]',     display: 'Codex (OpenAI)' },
-  { name: 'Copilot', botUser: 'copilot-swe-agent[bot]',     display: 'Copilot (GitHub)' },
+  { name: 'Claude',  trigger: 'comment', mention: '@claude',  display: 'Claude (Anthropic)' },
+  { name: 'Codex',   trigger: 'comment', mention: '@codex',   display: 'Codex (OpenAI)' },
+  { name: 'Copilot', trigger: 'assign',  botUser: 'copilot-swe-agent[bot]', display: 'Copilot (GitHub)' },
 ];
 
 // ── GitHub REST API helper ──────────────────────────────────────────
@@ -182,35 +187,65 @@ async function getExistingIssueTitles() {
   }
 }
 
-// ── Agent assignment with fallback ──────────────────────────────────
+// ── Agent triggering ────────────────────────────────────────────────
+// Each provider uses a different mechanism to start working on an issue.
 
-async function tryAssignAgent(issueNumber, provider, agentProfile) {
-  const body = {
-    assignees: [provider.botUser],
-  };
-
-  // Copilot needs agent_assignment payload; Claude & Codex just need the assignee
-  if (provider.name === 'Copilot') {
-    body.agent_assignment = {
-      target_repo: `${OWNER}/${REPO_NAME}`,
-      base_branch: 'main',
-      custom_instructions: `Use the ${agentProfile} agent profile. Follow its instructions strictly. After completing the work, update docs/project-brief.md to reflect your changes.`,
-      custom_agent: agentProfile,
-      model: '',
-    };
-  }
-
+/**
+ * Trigger Copilot via REST API agent_assignment payload.
+ * This is the official API for triggering GitHub's coding agent.
+ */
+async function triggerCopilot(issueNumber, agentProfile) {
   const result = await githubAPI(
     `/repos/${OWNER}/${REPO_NAME}/issues/${issueNumber}/assignees`,
     'POST',
-    body,
+    {
+      assignees: ['copilot-swe-agent[bot]'],
+      agent_assignment: {
+        target_repo: `${OWNER}/${REPO_NAME}`,
+        base_branch: 'main',
+        custom_instructions: `Use the ${agentProfile} agent profile. Read docs/project-brief.md first. After completing, update the roadmap status.`,
+        custom_agent: agentProfile,
+        model: '',
+      },
+    },
     AGENT_PAT
   );
 
   // Check if the bot was actually added to assignees
   const assigneeLogins = (result.assignees || []).map(a => a.login);
-  const expectedLogin = provider.name; // Claude, Codex, or Copilot
-  return assigneeLogins.includes(expectedLogin);
+  return assigneeLogins.some(l => l.toLowerCase().includes('copilot'));
+}
+
+/**
+ * Trigger Claude/Codex via @mention comment.
+ * Claude: Handled by .github/workflows/claude.yml (anthropics/claude-code-action)
+ * Codex:  Handled by chatgpt-codex-connector GitHub App
+ *
+ * Note: Comments must be posted with a PAT (not GITHUB_TOKEN) to trigger
+ * other workflows, per GitHub's security model.
+ */
+async function triggerByComment(issueNumber, mention, agentProfile) {
+  await githubAPI(
+    `/repos/${OWNER}/${REPO_NAME}/issues/${issueNumber}/comments`,
+    'POST',
+    {
+      body: `${mention} Implement this issue.\n\nUse the \`${agentProfile}\` agent profile. Read \`docs/project-brief.md\` first for project context.\n\nAfter completing the work, update \`docs/project-brief.md\` roadmap table to mark the feature as done.`,
+    },
+    AGENT_PAT
+  );
+  return true; // Comment always succeeds if API call works
+}
+
+/**
+ * Try to trigger the given provider on an issue.
+ * Returns true if the trigger was sent successfully.
+ */
+async function tryTriggerAgent(issueNumber, provider, agentProfile) {
+  if (provider.trigger === 'assign') {
+    return triggerCopilot(issueNumber, agentProfile);
+  } else {
+    return triggerByComment(issueNumber, provider.mention, agentProfile);
+  }
 }
 
 // ── Issue creation ──────────────────────────────────────────────────
@@ -250,16 +285,16 @@ async function createAndAssignIssue(title, body, agent) {
 
   for (let i = 0; i < AGENT_PROVIDERS.length; i++) {
     const provider = AGENT_PROVIDERS[(startIdx + i) % AGENT_PROVIDERS.length];
-    console.log(`   Trying ${provider.display}...`);
+    console.log(`   Trying ${provider.display} (${provider.trigger === 'assign' ? 'agent_assignment' : provider.mention + ' comment'})...`);
 
     try {
-      const ok = await tryAssignAgent(created.number, provider, agent);
+      const ok = await tryTriggerAgent(created.number, provider, agent);
       if (ok) {
-        console.log(`   ✅ Assigned to ${provider.display}`);
+        console.log(`   ✅ Triggered ${provider.display}`);
         assigned = true;
         break;
       } else {
-        console.log(`   ⚠  ${provider.name} assignment silently failed — trying next`);
+        console.log(`   ⚠  ${provider.name} trigger failed — trying next`);
       }
     } catch (e) {
       console.log(`   ⚠  ${provider.name} error: ${e.message}`);
@@ -267,7 +302,7 @@ async function createAndAssignIssue(title, body, agent) {
   }
 
   if (!assigned) {
-    console.log('   ❌ All providers failed — issue created but unassigned');
+    console.log('   ❌ All providers failed — issue created but no agent triggered');
   }
 
   return true;

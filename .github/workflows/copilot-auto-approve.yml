@@ -22,7 +22,8 @@ jobs:
       github.event.pull_request.user.login == 'Claude' ||
       github.event.pull_request.user.login == 'anthropic-code-agent[bot]' ||
       github.event.pull_request.user.login == 'Codex' ||
-      github.event.pull_request.user.login == 'openai-code-agent[bot]'
+      github.event.pull_request.user.login == 'openai-code-agent[bot]' ||
+      github.event.pull_request.user.login == 'chatgpt-codex-connector[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Approve pending workflow runs

@@ -28,12 +28,13 @@ jobs:
             const repo = context.repo.repo;
 
             // All known AI coding agent bot logins
-            const AGENT_BOTS = new Set(['Copilot', 'copilot-swe-agent[bot]', 'Claude', 'anthropic-code-agent[bot]', 'Codex', 'openai-code-agent[bot]']);
+            const AGENT_BOTS = new Set(['Copilot', 'copilot-swe-agent[bot]', 'Claude', 'anthropic-code-agent[bot]', 'Codex', 'openai-code-agent[bot]', 'chatgpt-codex-connector[bot]']);
 
             // Map display names to their [bot] usernames for reassignment
             const AGENT_REASSIGN = [
               { botUser: 'anthropic-code-agent[bot]', name: 'Claude' },
               { botUser: 'openai-code-agent[bot]',    name: 'Codex' },
+              { botUser: 'chatgpt-codex-connector[bot]', name: 'Codex-Connector' },
               { botUser: 'copilot-swe-agent[bot]',    name: 'Copilot' },
             ];
 
