@@ -46,18 +46,16 @@ jobs:
               body: '✅ **Automated agent review passed**\n\nThis PR has been automatically rebased onto `main` and is ready to merge.'
             });
 
+      - name: Wait for PR to stabilize
+        run: sleep 10
+
       - name: Enable auto-merge (squash)
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
           script: |
             const pr = context.payload.pull_request;
-            
-            // Log PR details for debugging
             core.info(`PR #${pr.number}: ${pr.title}`);
-            core.info(`PR node_id: ${pr.node_id}`);
-            core.info(`PR state: ${pr.state}`);
-            core.info(`PR mergeable: ${pr.mergeable}`);
             
             const query = `mutation($pullRequestId: ID!) {
               enablePullRequestAutoMerge(input: {pullRequestId: $pullRequestId, mergeMethod: SQUASH}) {
@@ -73,12 +71,22 @@ jobs:
               }
             }`;
 
-            try {
-              const result = await github.graphql(query, { pullRequestId: pr.node_id });
-              core.info(`✅ Auto-merge enabled for PR #${pr.number}`);
-              core.info(`Enabled at: ${result.enablePullRequestAutoMerge.pullRequest.autoMergeRequest.enabledAt}`);
-            } catch (error) {
-              core.error(`❌ Auto-merge failed: ${error.message}`);
-              core.error(`Error details: ${JSON.stringify(error, null, 2)}`);
-              throw error; // Fail the job instead of just warning
+            // Retry up to 3 times with increasing delays
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
+                core.info(`Attempt ${attempt}/3: Enabling auto-merge...`);
+                const result = await github.graphql(query, { pullRequestId: pr.node_id });
+                core.info(`✅ Auto-merge enabled for PR #${pr.number}`);
+                core.info(`Enabled at: ${result.enablePullRequestAutoMerge.pullRequest.autoMergeRequest.enabledAt}`);
+                break; // Success, exit loop
+              } catch (error) {
+                if (error.message.includes('unstable status') && attempt < 3) {
+                  const delay = attempt * 10; // 10s, 20s delays
+                  core.warning(`PR still unstable, waiting ${delay}s before retry ${attempt + 1}...`);
+                  await new Promise(resolve => setTimeout(resolve, delay * 1000));
+                } else {
+                  core.error(`❌ Auto-merge failed after ${attempt} attempts: ${error.message}`);
+                  throw error;
+                }
+              }
             }
