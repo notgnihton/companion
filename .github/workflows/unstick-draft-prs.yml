@@ -37,6 +37,11 @@ jobs:
               { botUser: 'copilot-swe-agent[bot]',    name: 'Copilot' },
             ];
 
+            // Minimum age (minutes) before we consider closing a conflicting PR
+            const MIN_AGE_MINUTES = 30;
+            // Minimum time since last update before closing
+            const MIN_STALE_MINUTES = 15;
+
             // List all open PRs
             const { data: prs } = await github.rest.pulls.list({
               owner, repo,
@@ -51,7 +56,19 @@ jobs:
             for (const pr of agentPRs) {
               core.info(`\n--- PR #${pr.number}: ${pr.title} (by ${pr.user.login}, draft: ${pr.draft}) ---`);
 
-              // Skip PRs where Copilot is still actively working
+              const now = Date.now();
+              const createdAt = new Date(pr.created_at).getTime();
+              const updatedAt = new Date(pr.updated_at).getTime();
+              const ageMinutes = Math.round((now - createdAt) / 60000);
+              const staleMins = Math.round((now - updatedAt) / 60000);
+              core.info(`  Age: ${ageMinutes}m, last updated: ${staleMins}m ago`);
+
+              // Skip PRs that were recently updated (agent likely still working)
+              if (staleMins < MIN_STALE_MINUTES) {
+                core.info(`  Skipping: updated ${staleMins}m ago (< ${MIN_STALE_MINUTES}m) — agent may still be working`);
+                continue;
+              }
+
               // Check if there are actual file changes
               const { data: files } = await github.rest.pulls.listFiles({
                 owner, repo,
@@ -118,14 +135,32 @@ jobs:
                 core.warning(`  Label error: ${err.message}`);
               }
 
-              // Step 4: Check for merge conflicts — close if unmergeable
+              // Step 4: Check for merge conflicts — only close if old + stale
               const { data: prDetail } = await github.rest.pulls.get({
                 owner, repo,
                 pull_number: pr.number,
               });
 
               if (prDetail.mergeable === false) {
-                core.warning(`  PR #${pr.number} has merge conflicts — closing`);
+                // Don't close young PRs — give agents time to finish and update
+                if (ageMinutes < MIN_AGE_MINUTES) {
+                  core.info(`  PR has conflicts but is only ${ageMinutes}m old (< ${MIN_AGE_MINUTES}m) — skipping, will retry later`);
+                  continue;
+                }
+
+                // Try to rebase/update the branch first before giving up
+                try {
+                  await github.rest.pulls.updateBranch({
+                    owner, repo,
+                    pull_number: pr.number,
+                  });
+                  core.info(`  Updated PR branch with latest main — will check mergeability next run`);
+                  continue;
+                } catch (err) {
+                  core.info(`  Could not auto-update branch: ${err.message}`);
+                }
+
+                core.warning(`  PR #${pr.number} has unresolvable merge conflicts (age: ${ageMinutes}m) — closing`);
                 await github.rest.pulls.update({
                   owner, repo,
                   pull_number: pr.number,
@@ -136,7 +171,7 @@ jobs:
                 const bodyMatch = pr.body && pr.body.match(/(?:Fixes|Closes|Resolves)\s+#(\d+)/i);
                 if (bodyMatch) {
                   const issueNumber = parseInt(bodyMatch[1]);
-                  core.info(`  Reassigning linked issue #${issueNumber} to Copilot`);
+                  core.info(`  Reassigning linked issue #${issueNumber}`);
                   try {
                     // Remove existing assignees first
                     const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
@@ -203,6 +238,12 @@ jobs:
                 } else {
                   core.info(`  No linked issue found in PR body`);
                 }
+                continue;
+              }
+
+              // mergeable can be null (not yet computed) — skip and retry next run
+              if (prDetail.mergeable === null) {
+                core.info(`  Mergeability not yet computed — will retry next run`);
                 continue;
               }
 
