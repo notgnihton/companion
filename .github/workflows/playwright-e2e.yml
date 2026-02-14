@@ -1,0 +1,113 @@
+name: Playwright E2E Tests
+
+# This workflow runs Playwright E2E tests for Claude assignment automation
+# It can be triggered manually to test the Claude assignment flow
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_issue_number:
+        description: 'Issue number to test Claude assignment on'
+        required: false
+        default: '1'
+        type: string
+      headed:
+        description: 'Run with visible browser (headed mode)'
+        required: false
+        default: false
+        type: boolean
+
+  # Optionally run on PRs that touch E2E test files
+  pull_request:
+    paths:
+      - 'tests/e2e/**'
+      - 'playwright.config.ts'
+      - '.github/workflows/playwright-e2e.yml'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          TEST_ISSUE_NUMBER: ${{ inputs.test_issue_number || '1' }}
+        run: |
+          if [ "${{ inputs.headed }}" = "true" ]; then
+            npm run test:e2e:headed
+          else
+            npm run test:e2e
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 7
+
+      - name: Comment test results on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const outcome = '${{ job.status }}';
+            const emoji = outcome === 'success' ? '✅' : '❌';
+
+            const comment = `
+            ## ${emoji} Playwright E2E Test Results
+
+            **Status:** ${outcome}
+            **Test Suite:** Claude Assignment Automation
+            **Repository:** \`${process.env.GITHUB_REPOSITORY}\`
+
+            <details>
+            <summary>Test Configuration</summary>
+
+            - Test Issue: #${process.env.TEST_ISSUE_NUMBER || '1'}
+            - Headed Mode: ${process.env.HEADED_MODE || 'false'}
+            - Runner: ubuntu-latest
+
+            </details>
+
+            View detailed test reports in the workflow artifacts.
+            `;
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
