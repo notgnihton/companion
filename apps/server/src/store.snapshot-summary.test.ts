@@ -19,6 +19,7 @@ describe("RuntimeStore - Snapshot Summary", () => {
       id: "evt-1",
       source: "notes",
       eventType: "assignment.deadline",
+      priority: "high",
       timestamp: new Date().toISOString(),
       payload: {},
     };
@@ -27,6 +28,7 @@ describe("RuntimeStore - Snapshot Summary", () => {
       id: "evt-2",
       source: "assignment-tracker",
       eventType: "assignment.deadline",
+      priority: "critical",
       timestamp: new Date().toISOString(),
       payload: {},
     };
@@ -46,6 +48,7 @@ describe("RuntimeStore - Snapshot Summary", () => {
       id: "evt-1",
       source: "food-tracking",
       eventType: "food.nudge",
+      priority: "medium",
       timestamp: new Date().toISOString(),
       payload: {},
     };
@@ -59,6 +62,7 @@ describe("RuntimeStore - Snapshot Summary", () => {
         id: `evt-${i}`,
         source: "food-tracking",
         eventType: "food.nudge",
+        priority: "medium",
         timestamp: new Date().toISOString(),
         payload: {},
       };
@@ -75,6 +79,7 @@ describe("RuntimeStore - Snapshot Summary", () => {
         id: `evt-${i}`,
         source: "food-tracking",
         eventType: "food.nudge",
+        priority: "medium",
         timestamp: new Date().toISOString(),
         payload: {},
       };
@@ -90,6 +95,7 @@ describe("RuntimeStore - Snapshot Summary", () => {
       id: "evt-1",
       source: "video-editor",
       eventType: "video.digest-ready",
+      priority: "low",
       timestamp: new Date().toISOString(),
       payload: {},
     };

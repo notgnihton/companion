@@ -22,6 +22,7 @@ describe("RuntimeStore - Event Recording", () => {
       id: "evt-1",
       source: "notes",
       eventType: "assignment.deadline",
+      priority: "medium",
       timestamp: now.toISOString(),
       payload: { test: "data" },
     };
@@ -43,6 +44,7 @@ describe("RuntimeStore - Event Recording", () => {
       id: "evt-1",
       source: "notes",
       eventType: "assignment.deadline",
+      priority: "high",
       timestamp: now.toISOString(),
       payload: {},
     };
@@ -61,6 +63,7 @@ describe("RuntimeStore - Event Recording", () => {
       id: "evt-1",
       source: "notes",
       eventType: "assignment.deadline",
+      priority: "low",
       timestamp: "2024-01-15T10:00:00Z",
       payload: {},
     };
@@ -69,6 +72,7 @@ describe("RuntimeStore - Event Recording", () => {
       id: "evt-2",
       source: "lecture-plan",
       eventType: "food.nudge",
+      priority: "medium",
       timestamp: "2024-01-15T11:00:00Z",
       payload: {},
     };
@@ -87,6 +91,7 @@ describe("RuntimeStore - Event Recording", () => {
         id: `evt-${i}`,
         source: "notes",
         eventType: "assignment.deadline",
+        priority: "medium",
         timestamp: new Date().toISOString(),
         payload: {},
       };
