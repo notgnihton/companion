@@ -111,12 +111,14 @@ jobs:
           script: |
             const fs = require('fs');
             const body = fs.readFileSync('/tmp/pr-body.md', 'utf8');
-            const commitMsg = `${{ steps.commit.outputs.message }}`;
+            
+            // Get commit message safely
+            const commitMsg = process.env.COMMIT_MESSAGE || '';
             
             // Enhance body with commit message if it contains useful info
             let enhancedBody = body;
             if (commitMsg.includes('Verification:')) {
-              enhancedBody = `${body}\n\n---\n\n## Latest Commit\n${commitMsg}`;
+              enhancedBody = body + '\n\n---\n\n## Latest Commit\n' + commitMsg;
             }
             
             const { data: pr } = await github.rest.pulls.create({
@@ -130,7 +132,7 @@ jobs:
             
             core.setOutput('pr_url', pr.html_url);
             core.setOutput('pr_number', pr.number);
-            core.info(`✅ Pull request created: ${pr.html_url}`);
+            core.info('✅ Pull request created: ' + pr.html_url);
             
             // Add agent-task label
             await github.rest.issues.addLabels({
@@ -152,6 +154,8 @@ jobs:
             }
             
             return pr;
+        env:
+          COMMIT_MESSAGE: ${{ steps.commit.outputs.message }}
 
       - name: Comment on linked issue
         if: steps.check-pr.outputs.exists == 'false' && steps.extract.outputs.issue_number != ''
