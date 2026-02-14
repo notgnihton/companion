@@ -73,6 +73,23 @@ When `agent-auto-pr.yml` creates a PR, it needs to push a trigger commit to acti
 
 **Fallback**: If `AGENT_PAT` is not set, the workflow will use `GITHUB_TOKEN`, but you'll need to manually push a commit to trigger the automation.
 
+## Optional: Disable Branch Protection for Agent Branches
+
+For auto-merge to work without manual approval, you may need to adjust branch protection rules:
+
+1. Go to repository settings → Branches:
+   ```
+   https://github.com/lucyscript/companion/settings/branches
+   ```
+
+2. If you have branch protection rules on `main`:
+   - Either: **Uncheck** "Require approvals" 
+   - Or: Check "Allow specified actors to bypass required pull requests" and add `github-actions[bot]`
+
+3. Alternative: Manually merge agent PRs after automated checks pass
+
+**Note**: The workflow adds a comment instead of formal approval to avoid GitHub's "can't approve your own PR" restriction.
+
 ## Verification
 
 After enabling permissions:
