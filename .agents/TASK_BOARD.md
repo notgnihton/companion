@@ -1,21 +1,30 @@
-# AXIS Task Board
+# Task Board
 
-## In Progress
+Tasks are managed via GitHub Issues. This file is a snapshot.
 
-- [ ] AX-1 Codex: Bootstrap orchestrator runtime and event bus.
-- [ ] AX-2 Claude: Build dashboard UI cards and digest timeline.
-- [ ] AX-3 Copilot: Write setup docs + issue templates.
+## Active Agents
 
-## Ready
+- **@copilot** — Docs, CI, config, tests, orchestration
+- **@codex** — Server, backend, API, runtime
+- **@claude** — Frontend, UI, components, styling
 
-- [ ] AX-4 Integrate real Notes provider.
-- [ ] AX-5 Add Assignment deadline escalation rules.
-- [ ] AX-6 Add iPhone optimized onboarding flow.
+## How Work Flows
 
-## Blocked
+1. Orchestrator scans codebase → creates issues
+2. Issues assigned to best agent
+3. Agent works → creates PR
+4. Auto-merge pipeline handles the rest
+5. Recursive orchestrator issue triggers next scan
 
-- [ ] None
+## View Live Board
 
-## Recently Done
+```bash
+# All open agent tasks
+gh issue list --label agent-task --state open
 
-- [ ] Initial repository scaffold.
+# Recently closed
+gh issue list --label agent-task --state closed --limit 10
+
+# Agent PRs
+gh pr list --label agent-task
+```

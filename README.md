@@ -1,83 +1,81 @@
 # Companion
 
-This repository uses an **autonomous agent loop** for continuous development.
+An autonomous, self-improving project powered by GitHub's native AI agents.
 
-## 🤖 Autonomous Development
+## How It Works
 
-This project features a **self-improving agent loop** that continuously works on issues:
-
-- **🔄 Continuous Loop**: Agents check for work every 15 minutes
-- **🎯 Auto-Pick Issues**: Tasks labeled `agent-task` are automatically selected
-- **🛠️ Autonomous Work**: Agents analyze issues and implement solutions
-- **✅ Auto-Merge**: Changes are automatically merged when checks pass
-- **♾️ Recursive Iteration**: The loop runs indefinitely, constantly improving the project
-
-### How It Works
-
-1. **Orchestrator** ([`.github/workflows/agent-orchestrator.yml`](.github/workflows/agent-orchestrator.yml))
-   - Runs every 15 minutes (or on-demand)
-   - Checks for open issues with `agent-task` label
-   - Picks the oldest ready issue
-   - Triggers agent executor
-
-2. **Agent Executor** ([`.github/workflows/agent-executor.yml`](.github/workflows/agent-executor.yml))
-   - Analyzes issue content and determines task type
-   - Creates a working branch (`agent/<issue-number>-<slug>`)
-   - Executes appropriate handler (docs, features, bugs, etc.)
-   - Commits changes with `[automerge]` tag
-   - Pushes to trigger auto-PR creation
-
-3. **Auto-PR Creation** ([`.github/workflows/agent-auto-pr.yml`](.github/workflows/agent-auto-pr.yml))
-   - Detects new `agent/*` branches
-   - Creates PR with appropriate labels
-   - Adds `agent-automerge` label if `[automerge]` in commit
-
-4. **Auto-Merge** ([`.github/workflows/agent-pr-automation.yml`](.github/workflows/agent-pr-automation.yml))
-   - Rebases PR onto latest main
-   - Merges PR with `agent-automerge` label
-   - Deletes branch after merge
-
-## Working model
-- Use GitHub Issues as the source of truth for tasks
-- Label issues with `agent-task` for autonomous processing
-- Use `.github/ISSUE_TEMPLATE/copilot-agent-task.yml` template
-- Follow `.github/copilot-instructions.md` for agent collaboration protocol
-
-## 🧠 AI-Powered Intelligence
-
-The agent system supports multiple AI backends:
-
-- **OpenAI API (GPT-4)** - Generates actual code, understands complex requirements
-- **Pattern-Based** - Rule-based handlers for simple tasks (free fallback)
-- **Web Agents** - Playwright-driven access to ChatGPT/Claude web interfaces
-
-See [docs/ai-agent-config.md](docs/ai-agent-config.md) for configuration.
-
-## 🔍 Automatic Issue Discovery
-
-Beyond working on existing issues, agents also **discover new work**:
-
-- Daily codebase analysis
-- Detects TODOs/FIXMEs
-- Identifies test coverage gaps
-- Spots documentation needs
-- AI-powered improvement suggestions
-
-The discovery agent runs daily and creates issues automatically.
-
-## Quick start
-
-### For Creating Agent Tasks
-1. Create an issue using the **Copilot Agent Task** template
-2. Add the `agent-task` label
-3. Wait for the next orchestrator cycle (max 15 minutes)
-4. Agent picks up issue, implements changes, and auto-merges
-
-### For Enabling AI (Optional)
-```bash
-gh secret set OPENAI_API_KEY --body "sk-..."
 ```
-See [.github/SETUP.md](.github/SETUP.md) for full setup instructions.
+Orchestrator (daily + on issue close)
+  │
+  ├─ Scans codebase for TODOs, missing tests, doc gaps
+  ├─ Creates well-scoped GitHub issues
+  ├─ Assigns each to the best agent:
+  │     @copilot  → docs, CI, config, tests
+  │     @codex    → server, backend, API
+  │     @claude   → frontend, UI, components
+  │
+  └─ Creates a new orchestrator issue (recursive ♻️)
+       │
+       Agent works on issue → creates PR → auto-merges
+       │
+       Orchestrator issue closes → triggers next scan
+       │
+       ♻️ Loop continues forever
+```
+
+### Agents
+
+| Agent | Strength | Assigned Work |
+|-------|----------|--------------|
+| **@copilot** | Native GitHub integration, GPT-5 / Claude Sonnet 4.5 | Docs, CI, config, tests, meta-tasks |
+| **@codex** | Deep code generation, gpt-5.3-codex | Server, backend, runtime, API |
+| **@claude** | UI/UX, reasoning, Claude Sonnet 4.5 | Frontend, components, styling |
+
+### Workflows
+
+| Workflow | Purpose |
+|----------|---------|
+| `orchestrator.yml` | Discover work → create issues → assign agents |
+| `agent-auto-pr.yml` | Auto-create PRs from `agent/*` branches |
+| `agent-pr-automation.yml` | Auto-rebase and auto-merge agent PRs |
+
+### The Recursive Loop
+
+The orchestrator creates a special issue: *"🔄 Orchestrator: discover and assign new work"*. This issue is assigned to `@copilot`. When Copilot completes it (or it's closed), the workflow fires again — creating the next batch of issues and the next orchestrator issue. The loop runs forever.
+
+## Quick Start
+
+```bash
+# Trigger the orchestrator manually
+gh workflow run orchestrator.yml
+
+# Or create an issue and assign to an agent
+gh issue create --title "Add health check endpoint" \
+  --body "## Scope\nAdd GET /health\n\n## Deliverable\nReturns {status: ok}" \
+  --label "agent-task" \
+  --assignee "copilot"
+```
+
+## Project Structure
+
+```
+apps/
+  server/    → Backend (Codex territory)
+  web/       → Frontend (Claude territory)
+docs/        → Documentation (Copilot territory)
+.agents/     → Agent coordination & contracts
+.github/
+  scripts/   → Orchestrator script
+  workflows/ → Automation workflows
+```
+
+## Working Model
+
+- **Issues are the source of truth** — all work starts as an issue
+- **Agents are assignees** — `@copilot`, `@codex`, `@claude`
+- **Auto-merge pipeline** — agent branches → PR → rebase → merge
+- **No CLI wrappers** — GitHub handles agent execution natively
+- **Recursive discovery** — the system finds its own work
 
 ### For Manual Contributions
 1. Create issues without `agent-task` label

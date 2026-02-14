@@ -1,0 +1,63 @@
+name: Agent Orchestrator
+
+# Triggers:
+# 1. Manual dispatch (for testing)
+# 2. On schedule (daily at 6am UTC)
+# 3. When an orchestrator issue is closed (recursive trigger)
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no issues created)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      recursive:
+        description: 'Create next orchestrator issue'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6am UTC
+
+  issues:
+    types: [closed]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  orchestrate:
+    runs-on: ubuntu-latest
+    # Only run on:
+    # - manual dispatch
+    # - schedule
+    # - when an orchestrator issue is closed
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'issues' && 
+       contains(github.event.issue.title, 'Orchestrator') &&
+       contains(github.event.issue.labels.*.name, 'agent-task'))
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run orchestrator
+        env:
+          GITHUB_TOKEN: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          RECURSIVE: ${{ github.event.inputs.recursive || 'true' }}
+        run: node .github/scripts/orchestrator.js

@@ -1,53 +1,66 @@
-# AXIS Parallel Orchestration Protocol
+# Agent Orchestration Protocol
 
-## Goal
+## Architecture
 
-Enable Codex, Claude, and Copilot to deliver features in parallel with minimal merge conflict risk.
+Issues are the **only interface**. Agents are GitHub-native assignees.
 
-## Branching Convention
+```
+Orchestrator script
+  → scans codebase
+  → creates issues  
+  → assigns @copilot / @codex / @claude
+  → creates recursive orchestrator issue
+  → loop ♻️
+```
 
-- `feat/codex/<ticket-id>-<slug>`
-- `feat/claude/<ticket-id>-<slug>`
-- `feat/copilot/<ticket-id>-<slug>`
+## Agent Assignment Rules
 
-## File Ownership Matrix
+| Domain | Agent | Reason |
+|--------|-------|--------|
+| `apps/server/**` | `@codex` | Best at system-level code, API design |
+| `apps/web/**` | `@claude` | Best at UI/UX, component design |
+| `docs/**`, `.agents/**` | `@copilot` | Native GitHub integration, meta-tasks |
+| CI, workflows, config | `@copilot` | Understands GitHub Actions natively |
+| Tests | `@copilot` | Good coverage analysis |
+| Ambiguous / meta | `@copilot` | Default for orchestration |
 
-- `apps/server/src/**`: default owner `Codex`
-- `apps/web/src/**`: default owner `Claude`
-- `docs/**`, `.agents/**`, CI, lint rules: default owner `Copilot`
+## Issue Format
+
+Every issue must have:
+```markdown
+## Scope
+What to do (and what NOT to do)
+
+## Deliverable
+Concrete output expected
+
+## Verification
+How to confirm it's done
+```
+
+## Recursive Loop
+
+The orchestrator creates a meta-issue assigned to `@copilot`:
+> "🔄 Orchestrator: discover and assign new work"
+
+When closed, the `orchestrator.yml` workflow fires again → next scan → next issues → next meta-issue → ♻️
 
 ## Parallel Phases
 
 ### Phase 1: Foundations
-
-- Codex: server runtime, orchestrator, API contracts.
-- Claude: dashboard shell, card layouts, polling hook.
-- Copilot: docs, setup automation, issue templates.
+- Codex: server runtime, orchestrator, API contracts
+- Claude: dashboard shell, card layouts, polling hook
+- Copilot: docs, setup automation, issue templates
 
 ### Phase 2: Integrations
-
-- Codex: provider adapters and message normalization.
-- Claude: settings pages and onboarding UX.
-- Copilot: e2e scripts and release checklists.
+- Codex: provider adapters and message normalization
+- Claude: settings pages and onboarding UX
+- Copilot: e2e scripts and release checklists
 
 ### Phase 3: Hardening
-
-- Codex: reliability (retry, backoff, durable storage).
-- Claude: accessibility and responsive tuning.
-- Copilot: CI gates and contributor docs.
-
-## Handoff Template
-
-Use this in PR descriptions:
-
-```md
-## Scope
-- Ticket:
-- Owner:
-- Paths:
-
-## Contract Checks
-- [ ] No writes outside owned paths
+- Codex: reliability (retry, backoff, durable storage)
+- Claude: accessibility and responsive tuning
+- Copilot: CI gates and contributor docs
 - [ ] API schema unchanged OR schema changes documented
 - [ ] Tests run
 
