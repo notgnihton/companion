@@ -14,12 +14,20 @@ jobs:
     if: contains(github.event.pull_request.labels.*.name, 'agent-task') && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - name: Rebase PR branch onto main
-        uses: peter-evans/rebase@v3
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
         with:
-          head: ${{ github.event.pull_request.head.ref }}
-          base: ${{ github.event.pull_request.base.ref }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Rebase onto main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git rebase origin/main
+          git push --force-with-lease origin ${{ github.event.pull_request.head.ref }}
 
   auto-review:
     if: contains(github.event.pull_request.labels.*.name, 'agent-task') && github.event.pull_request.draft == false

@@ -35,6 +35,44 @@ The agent workflows need these permissions to automate the entire PR lifecycle:
 
 These permissions only apply to GitHub Actions workflows running in **this repository**. They cannot be used by external actors.
 
+## Required: Personal Access Token for Workflow Triggering
+
+Due to GitHub security restrictions, workflows triggered by `GITHUB_TOKEN` cannot trigger other workflows. To enable the full automation chain (PR creation → auto-rebase → auto-approve → auto-merge), you need to create a Personal Access Token (PAT).
+
+### Steps to Create PAT
+
+1. Go to GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens:
+   ```
+   https://github.com/settings/tokens?type=beta
+   ```
+
+2. Click **"Generate new token"**
+
+3. Configure the token:
+   - **Name**: `companion-agent-automation`
+   - **Repository access**: Select "Only select repositories" → Choose `lucyscript/companion`
+   - **Permissions**:
+     - Repository permissions:
+       - Contents: **Read and write**
+       - Pull requests: **Read and write**
+       - Metadata: **Read-only** (automatically selected)
+
+4. Click **"Generate token"** and **copy the token**
+
+5. Add the token to your repository secrets:
+   ```
+   https://github.com/lucyscript/companion/settings/secrets/actions/new
+   ```
+   - **Name**: `AGENT_PAT`
+   - **Secret**: Paste your token
+   - Click **"Add secret"**
+
+### Why This Is Needed
+
+When `agent-auto-pr.yml` creates a PR, it needs to push a trigger commit to activate the automation workflows. Using `GITHUB_TOKEN` for this push would block the workflow chain, so we use a PAT instead.
+
+**Fallback**: If `AGENT_PAT` is not set, the workflow will use `GITHUB_TOKEN`, but you'll need to manually push a commit to trigger the automation.
+
 ## Verification
 
 After enabling permissions:
