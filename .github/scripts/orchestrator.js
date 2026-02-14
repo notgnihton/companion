@@ -42,13 +42,13 @@ const LOW_TODO_THRESHOLD = 2; // When <= this many todos remain, generate ideas
 // ── AI Agent providers (round-robin order) ──────────────────────────
 // Each provider has a different trigger mechanism:
 //   copilot:  REST API agent_assignment payload
-//   codex:    @codex comment  (chatgpt-codex-connector GitHub App handles it)
-//   claude:   UI-only (no public API trigger exists)
+//   claude:   Playwright-based UI assignment via assign-agent.yml
+//   codex:    Playwright-based UI assignment via assign-agent.yml
 
 const AGENT_PROVIDERS = [
-  { name: 'Claude',  trigger: 'workflow', display: 'Claude (Anthropic)' },
+  { name: 'Claude',  trigger: 'workflow', botId: 'BOT_kgDODnPHJg', display: 'Claude (Anthropic)' },
   { name: 'Copilot', trigger: 'assign',   botUser: 'copilot-swe-agent[bot]', display: 'Copilot (GitHub)' },
-  { name: 'Codex',   trigger: 'comment',  mention: '@codex',   display: 'Codex (OpenAI)' },
+  { name: 'Codex',   trigger: 'workflow', botId: 'BOT_kgDODnSAjQ', display: 'Codex (OpenAI)' },
 ];
 
 // ── GitHub REST API helper ──────────────────────────────────────────
@@ -220,39 +220,21 @@ async function triggerCopilot(issueNumber, agentProfile) {
 }
 
 /**
- * Trigger Claude/Codex via @mention comment.
- * Claude: Handled by .github/workflows/claude.yml (anthropics/claude-code-action)
- * Codex:  Handled by chatgpt-codex-connector GitHub App
- *
- * Note: Comments must be posted with a PAT (not GITHUB_TOKEN) to trigger
- * other workflows, per GitHub's security model.
+ * Trigger an agent (Claude or Codex) via the assign-agent workflow.
+ * Dispatches .github/workflows/assign-agent.yml which uses Playwright to call
+ * GitHub's internal GraphQL and trigger the agent's runtime.
  */
-async function triggerByComment(issueNumber, mention, agentProfile) {
+async function triggerAgentWorkflow(issueNumber, issueNodeId, botId, displayName) {
   await githubAPI(
-    `/repos/${OWNER}/${REPO_NAME}/issues/${issueNumber}/comments`,
-    'POST',
-    {
-      body: `${mention} Implement this issue.\n\nUse the \`${agentProfile}\` agent profile. Read \`docs/project-brief.md\` first for project context.\n\nAfter completing the work, update \`docs/project-brief.md\` roadmap table to mark the feature as done.`,
-    },
-    AGENT_PAT
-  );
-  return true; // Comment always succeeds if API call works
-}
-
-/**
- * Trigger Claude via the assign-claude workflow (Playwright-based).
- * Dispatches .github/workflows/assign-claude.yml which uses a browser session
- * to call GitHub's internal GraphQL and trigger Claude's runtime.
- */
-async function triggerClaude(issueNumber, issueNodeId) {
-  await githubAPI(
-    `/repos/${OWNER}/${REPO_NAME}/actions/workflows/assign-claude.yml/dispatches`,
+    `/repos/${OWNER}/${REPO_NAME}/actions/workflows/assign-agent.yml/dispatches`,
     'POST',
     {
       ref: 'main',
       inputs: {
         issue_number: String(issueNumber),
         issue_node_id: issueNodeId,
+        agent_bot_id: botId,
+        agent_display_name: displayName,
       },
     },
     AGENT_PAT
@@ -266,11 +248,11 @@ async function triggerClaude(issueNumber, issueNodeId) {
  */
 async function tryTriggerAgent(issueNumber, provider, agentProfile, issueNodeId) {
   if (provider.trigger === 'workflow') {
-    return triggerClaude(issueNumber, issueNodeId);
+    return triggerAgentWorkflow(issueNumber, issueNodeId, provider.botId, provider.name);
   } else if (provider.trigger === 'assign') {
     return triggerCopilot(issueNumber, agentProfile);
   } else {
-    return triggerByComment(issueNumber, provider.mention, agentProfile);
+    throw new Error(`Unknown trigger type: ${provider.trigger}`);
   }
 }
 
@@ -311,7 +293,7 @@ async function createAndAssignIssue(title, body, agent) {
 
   for (let i = 0; i < AGENT_PROVIDERS.length; i++) {
     const provider = AGENT_PROVIDERS[(startIdx + i) % AGENT_PROVIDERS.length];
-    console.log(`   Trying ${provider.display} (${provider.trigger === 'assign' ? 'agent_assignment' : provider.mention + ' comment'})...`);
+    console.log(`   Trying ${provider.display} (${provider.trigger === 'assign' ? 'agent_assignment' : 'workflow dispatch'})...`);
 
     try {
       const ok = await tryTriggerAgent(created.number, provider, agent, created.node_id);

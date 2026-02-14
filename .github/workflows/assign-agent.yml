@@ -1,15 +1,24 @@
-name: Assign Claude
+name: Assign Agent
 
 on:
   workflow_dispatch:
     inputs:
       issue_number:
-        description: 'Issue number to assign Claude to'
+        description: 'Issue number to assign the agent to'
         required: true
         type: string
       issue_node_id:
         description: 'GraphQL node ID of the issue'
         required: true
+        type: string
+      agent_bot_id:
+        description: 'GraphQL node ID of the bot (e.g., BOT_kgDODnPHJg for Claude)'
+        required: true
+        type: string
+      agent_display_name:
+        description: 'Human-readable name for logging (e.g., Claude, Codex)'
+        required: false
+        default: 'agent'
         type: string
 
 jobs:
@@ -28,10 +37,12 @@ jobs:
           npm i -D playwright@latest
           npx playwright install chromium --with-deps
 
-      - name: Assign Claude via browser
+      - name: Assign ${{ inputs.agent_display_name }} via browser
         env:
           ISSUE_NUMBER: ${{ inputs.issue_number }}
           ISSUE_NODE_ID: ${{ inputs.issue_node_id }}
+          AGENT_BOT_ID: ${{ inputs.agent_bot_id }}
+          AGENT_DISPLAY_NAME: ${{ inputs.agent_display_name }}
           GH_SESSION_COOKIE: ${{ secrets.GH_SESSION_COOKIE }}
           REPO_NWO: ${{ github.repository }}
-        run: node .github/scripts/assign-claude.mjs
+        run: node .github/scripts/assign-agent.mjs
