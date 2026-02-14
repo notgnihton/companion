@@ -1,0 +1,16 @@
+{
+  "name": "AXIS Companion",
+  "short_name": "AXIS",
+  "description": "Personal AI companion dashboard",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0e1b26",
+  "theme_color": "#14324a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+name: Agent PR Automation
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, labeled]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-rebase:
+    if: contains(github.event.pull_request.labels.*.name, 'agent-task') && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rebase PR branch onto main
+        uses: peter-evans/rebase@v3
+        with:
+          head: ${{ github.event.pull_request.head.ref }}
+          base: ${{ github.event.pull_request.base.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  auto-review:
+    if: contains(github.event.pull_request.labels.*.name, 'agent-task') && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    needs: auto-rebase
+    steps:
+      - name: Auto-approve agent PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100
+            });
+
+            const alreadyApproved = reviews.some(
+              (review) => review.user?.login === 'github-actions[bot]' && review.state === 'APPROVED'
+            );
+
+            if (!alreadyApproved) {
+              await github.rest.pulls.createReview({
+                owner,
+                repo,
+                pull_number: pr.number,
+                event: 'APPROVE',
+                body: 'Automated agent review approval after rebase onto main.'
+              });
+            }
+
+  auto-merge:
+    if: contains(github.event.pull_request.labels.*.name, 'agent-task') && contains(github.event.pull_request.labels.*.name, 'agent-automerge') && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    needs: auto-review
+    steps:
+      - name: Enable auto-merge (squash)
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request;
+            const query = `mutation($pullRequestId: ID!) {
+              enablePullRequestAutoMerge(input: {pullRequestId: $pullRequestId, mergeMethod: SQUASH}) {
+                pullRequest { number }
+              }
+            }`;
+
+            try {
+              await github.graphql(query, { pullRequestId: pr.node_id });
+              core.info(`Auto-merge enabled for PR #${pr.number}`);
+            } catch (error) {
+              core.warning(`Auto-merge could not be enabled yet: ${error.message}`);
+            }

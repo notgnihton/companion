@@ -1,0 +1,19 @@
+{
+  "name": "axis-companion",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web",
+    "apps/server"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c green,blue \"npm run dev --workspace @axis/server\" \"npm run dev --workspace @axis/web\"",
+    "dev:web": "npm run dev --workspace @axis/web",
+    "dev:server": "npm run dev --workspace @axis/server",
+    "build": "npm run build --workspace @axis/server && npm run build --workspace @axis/web",
+    "typecheck": "npm run typecheck --workspace @axis/server && npm run typecheck --workspace @axis/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

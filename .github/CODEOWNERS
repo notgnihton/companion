@@ -1,0 +1,5 @@
+# Update these handles to your real GitHub usernames/org teams
+/apps/server/ @codex-owner
+/apps/web/ @claude-owner
+/docs/ @copilot-owner
+/.agents/ @copilot-owner

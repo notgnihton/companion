@@ -1,0 +1,43 @@
+name: Agent Task
+about: Assign scoped work to Codex, Claude, or Copilot
+labels: ["agent-task"]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One-sentence task description
+    validations:
+      required: true
+
+  - type: dropdown
+    id: owner
+    attributes:
+      label: Owner Agent
+      options:
+        - Codex
+        - Claude
+        - Copilot
+    validations:
+      required: true
+
+  - type: textarea
+    id: allowed_paths
+    attributes:
+      label: Allowed Paths
+      description: One path per line
+      placeholder: |
+        apps/server/src/agents/**
+        docs/contracts.md
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      placeholder: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
