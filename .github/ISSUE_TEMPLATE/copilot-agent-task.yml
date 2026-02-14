@@ -1,0 +1,65 @@
+name: Copilot Agent Task
+about: Assign a scoped task to Copilot/Codex agents.
+title: "[Agent Task] <short task title>"
+labels: ["agent-task"]
+body:
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Assigned agent
+      options:
+        - github-copilot
+        - codex
+        - pair (copilot + codex)
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What needs to be improved/fixed?
+      placeholder: Describe the problem and context.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in scope vs out of scope?
+      placeholder: |
+        In scope:
+        -
+        Out of scope:
+        -
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checklist for completion.
+      placeholder: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification commands
+      description: Commands the agent must run before opening PR.
+      placeholder: |
+        npm test
+        npm run lint
+    validations:
+      required: true
+
+  - type: textarea
+    id: handoff
+    attributes:
+      label: Handoff notes (optional)
+      description: Include branch/file context for cross-agent coordination.
