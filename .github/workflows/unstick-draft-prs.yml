@@ -342,7 +342,9 @@ jobs:
                 const toAdd = [];
                 if (!labels.includes('agent-task')) toAdd.push('agent-task');
                 if (!labels.includes('agent-automerge')) toAdd.push('agent-automerge');
-                if (runtime.done && !labels.includes('agent-work-done')) toAdd.push('agent-work-done');
+                if ((runtime.done || runtimeStalled) && !labels.includes('agent-work-done')) {
+                  toAdd.push('agent-work-done');
+                }
                 if (runtimeStalled && !labels.includes('agent-runtime-timeout')) toAdd.push('agent-runtime-timeout');
                 if (toAdd.length > 0) {
                   await github.rest.issues.addLabels({
