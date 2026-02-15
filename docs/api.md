@@ -83,6 +83,58 @@ Request:
 }
 ```
 
+## Calendar Import
+
+### `POST /api/calendar/import`
+
+Imports events from an ICS payload or remote ICS URL, then normalizes them into
+schedule lectures and deadlines.
+
+Request (inline ICS):
+
+```json
+{
+  "ics": "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Algorithms Lecture\nDTSTART:20260301T100000Z\nDTEND:20260301T113000Z\nEND:VEVENT\nEND:VCALENDAR"
+}
+```
+
+Request (remote ICS URL):
+
+```json
+{
+  "url": "https://example.edu/calendar.ics"
+}
+```
+
+Response `201`:
+
+```json
+{
+  "importedEvents": 2,
+  "lecturesCreated": 1,
+  "deadlinesCreated": 1,
+  "lectures": [
+    {
+      "id": "lecture-1739570000000-4",
+      "title": "Algorithms Lecture",
+      "startTime": "2026-03-01T10:00:00.000Z",
+      "durationMinutes": 90,
+      "workload": "medium"
+    }
+  ],
+  "deadlines": [
+    {
+      "id": "deadline-1739570000000-5",
+      "course": "Systems",
+      "task": "Systems Assignment Due",
+      "dueDate": "2026-03-02T23:59:00.000Z",
+      "priority": "critical",
+      "completed": false
+    }
+  ]
+}
+```
+
 Response `200`:
 
 ```json
