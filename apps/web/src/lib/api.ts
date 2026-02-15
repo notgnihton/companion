@@ -1,4 +1,7 @@
 import {
+  CalendarImportPayload,
+  CalendarImportPreview,
+  CalendarImportResult,
   DashboardSnapshot,
   JournalEntry,
   JournalSyncPayload,
@@ -156,4 +159,18 @@ export async function updateNotificationPreferences(
     saveNotificationPreferences(merged);
     return merged;
   }
+}
+
+export async function previewCalendarImport(payload: CalendarImportPayload): Promise<CalendarImportPreview> {
+  return await jsonOrThrow<CalendarImportPreview>("/api/calendar/import/preview", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function applyCalendarImport(payload: CalendarImportPayload): Promise<CalendarImportResult> {
+  return await jsonOrThrow<CalendarImportResult>("/api/calendar/import", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }

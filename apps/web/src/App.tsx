@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AgentStatusList } from "./components/AgentStatusList";
+import { CalendarImportView } from "./components/CalendarImportView";
 import { ContextControls } from "./components/ContextControls";
 import { DeadlineList } from "./components/DeadlineList";
 import { JournalView } from "./components/JournalView";
@@ -20,6 +21,7 @@ export default function App(): JSX.Element {
   const [pushState, setPushState] = useState<PushState>("checking");
   const [pushMessage, setPushMessage] = useState("");
   const [profile, setProfile] = useState<OnboardingProfile | null>(loadOnboardingProfile());
+  const [scheduleRevision, setScheduleRevision] = useState(0);
 
   useEffect(() => {
     let disposed = false;
@@ -113,9 +115,10 @@ export default function App(): JSX.Element {
             journalStreak={data.summary.journalStreak}
           />
           <JournalView />
+          <CalendarImportView onImported={() => setScheduleRevision((revision) => revision + 1)} />
           <div className="grid-two">
-            <ScheduleView />
-            <DeadlineList />
+            <ScheduleView key={`schedule-${scheduleRevision}`} />
+            <DeadlineList key={`deadline-${scheduleRevision}`} />
           </div>
           <div className="grid-two">
             <AgentStatusList states={data.agentStates} />

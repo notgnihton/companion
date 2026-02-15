@@ -84,6 +84,27 @@ export interface Deadline {
   completed: boolean;
 }
 
+export interface CalendarImportPayload {
+  ics?: string;
+  url?: string;
+}
+
+export interface CalendarImportPreview {
+  importedEvents: number;
+  lecturesPlanned: number;
+  deadlinesPlanned: number;
+  lectures: Array<Omit<LectureEvent, "id">>;
+  deadlines: Array<Omit<Deadline, "id">>;
+}
+
+export interface CalendarImportResult {
+  importedEvents: number;
+  lecturesCreated: number;
+  deadlinesCreated: number;
+  lectures: LectureEvent[];
+  deadlines: Deadline[];
+}
+
 export interface OnboardingProfile {
   name: string;
   timezone: string;
