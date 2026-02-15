@@ -55,7 +55,7 @@ jobs:
             // Minimum time since last update before we assume agent is stale
             const MIN_STALE_MINUTES = 15;
             // After this many stale minutes with no active runtime, force-progress draft PRs
-            const MIN_RUNTIME_STALL_MINUTES = 45;
+            const MIN_RUNTIME_STALL_MINUTES = 15;
 
             // Map PR author to their expected runtime workflow name
             const RUNTIME_WORKFLOWS = {
