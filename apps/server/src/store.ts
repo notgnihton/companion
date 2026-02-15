@@ -34,7 +34,9 @@ import {
   Goal,
   GoalCheckIn,
   GoalWithStatus,
-  Tag
+  Tag,
+  Location,
+  LocationHistory
 } from "./types.js";
 import { makeId, nowIso } from "./utils.js";
 
@@ -57,6 +59,8 @@ export class RuntimeStore {
   private readonly maxCheckInsPerItem = 400;
   private readonly maxPushSubscriptions = 50;
   private readonly maxPushFailures = 100;
+  private readonly maxLocations = 1000;
+  private readonly maxLocationHistory = 5000;
   private notificationListeners: Array<(notification: Notification) => void> = [];
   private db: Database.Database;
 
@@ -279,12 +283,38 @@ export class RuntimeStore {
         insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
       );
 
-      CREATE INDEX IF NOT EXISTS idx_notification_interactions_timestamp 
+      CREATE INDEX IF NOT EXISTS idx_notification_interactions_timestamp
         ON notification_interactions(timestamp);
-      CREATE INDEX IF NOT EXISTS idx_notification_interactions_type 
+      CREATE INDEX IF NOT EXISTS idx_notification_interactions_type
         ON notification_interactions(interactionType);
-      CREATE INDEX IF NOT EXISTS idx_notification_interactions_source 
+      CREATE INDEX IF NOT EXISTS idx_notification_interactions_source
         ON notification_interactions(notificationSource);
+
+      CREATE TABLE IF NOT EXISTS locations (
+        id TEXT PRIMARY KEY,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        accuracy REAL,
+        timestamp TEXT NOT NULL,
+        label TEXT,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
+      );
+
+      CREATE TABLE IF NOT EXISTS location_history (
+        id TEXT PRIMARY KEY,
+        locationId TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        stressLevel TEXT,
+        energyLevel TEXT,
+        context TEXT,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000),
+        FOREIGN KEY (locationId) REFERENCES locations(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_locations_timestamp ON locations(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_locations_label ON locations(label);
+      CREATE INDEX IF NOT EXISTS idx_location_history_timestamp ON location_history(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_location_history_locationId ON location_history(locationId);
     `);
 
     const journalColumns = this.db.prepare("PRAGMA table_info(journal_entries)").all() as Array<{ name: string }>;
@@ -2753,6 +2783,218 @@ export class RuntimeStore {
       interactionsBySource,
       recentInteractions: interactions.slice(0, 20)
     };
+  }
+
+  recordLocation(latitude: number, longitude: number, accuracy?: number, label?: string): Location {
+    const location: Location = {
+      id: makeId("location"),
+      latitude,
+      longitude,
+      accuracy,
+      timestamp: nowIso(),
+      label
+    };
+
+    this.db
+      .prepare(
+        "INSERT INTO locations (id, latitude, longitude, accuracy, timestamp, label) VALUES (?, ?, ?, ?, ?, ?)"
+      )
+      .run(location.id, latitude, longitude, accuracy ?? null, location.timestamp, label ?? null);
+
+    this.trimLocationsIfNeeded();
+    return location;
+  }
+
+  getLocations(limit?: number): Location[] {
+    const query = this.db.prepare(
+      `SELECT id, latitude, longitude, accuracy, timestamp, label
+       FROM locations
+       ORDER BY insertOrder DESC
+       LIMIT ?`
+    );
+
+    return (query.all(limit ?? this.maxLocations) as Array<{
+      id: string;
+      latitude: number;
+      longitude: number;
+      accuracy: number | null;
+      timestamp: string;
+      label: string | null;
+    }>).map((row) => ({
+      id: row.id,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      accuracy: row.accuracy ?? undefined,
+      timestamp: row.timestamp,
+      label: row.label ?? undefined
+    }));
+  }
+
+  getLocationById(id: string): Location | null {
+    const row = this.db
+      .prepare("SELECT id, latitude, longitude, accuracy, timestamp, label FROM locations WHERE id = ?")
+      .get(id) as { id: string; latitude: number; longitude: number; accuracy: number | null; timestamp: string; label: string | null } | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      accuracy: row.accuracy ?? undefined,
+      timestamp: row.timestamp,
+      label: row.label ?? undefined
+    };
+  }
+
+  updateLocation(id: string, data: Partial<Omit<Location, "id" | "timestamp">>): Location | null {
+    const existing = this.getLocationById(id);
+    if (!existing) {
+      return null;
+    }
+
+    const updates: string[] = [];
+    const values: Array<string | number | null> = [];
+
+    if (data.latitude !== undefined) {
+      updates.push("latitude = ?");
+      values.push(data.latitude);
+    }
+    if (data.longitude !== undefined) {
+      updates.push("longitude = ?");
+      values.push(data.longitude);
+    }
+    if (data.accuracy !== undefined) {
+      updates.push("accuracy = ?");
+      values.push(data.accuracy ?? null);
+    }
+    if (data.label !== undefined) {
+      updates.push("label = ?");
+      values.push(data.label ?? null);
+    }
+
+    if (updates.length > 0) {
+      values.push(id);
+      this.db.prepare(`UPDATE locations SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+    }
+
+    return this.getLocationById(id);
+  }
+
+  deleteLocation(id: string): boolean {
+    const result = this.db.prepare("DELETE FROM locations WHERE id = ?").run(id);
+    return result.changes > 0;
+  }
+
+  recordLocationHistory(
+    locationId: string,
+    stressLevel?: "low" | "medium" | "high",
+    energyLevel?: "low" | "medium" | "high",
+    context?: string
+  ): LocationHistory | null {
+    const location = this.getLocationById(locationId);
+    if (!location) {
+      return null;
+    }
+
+    const history: LocationHistory = {
+      id: makeId("location-history"),
+      locationId,
+      timestamp: nowIso(),
+      stressLevel,
+      energyLevel,
+      context
+    };
+
+    this.db
+      .prepare(
+        "INSERT INTO location_history (id, locationId, timestamp, stressLevel, energyLevel, context) VALUES (?, ?, ?, ?, ?, ?)"
+      )
+      .run(
+        history.id,
+        locationId,
+        history.timestamp,
+        stressLevel ?? null,
+        energyLevel ?? null,
+        context ?? null
+      );
+
+    this.trimLocationHistoryIfNeeded();
+    return history;
+  }
+
+  getLocationHistory(locationId?: string, limit?: number): LocationHistory[] {
+    let query: Database.Statement;
+    let params: Array<string | number>;
+
+    if (locationId) {
+      query = this.db.prepare(
+        `SELECT id, locationId, timestamp, stressLevel, energyLevel, context
+         FROM location_history
+         WHERE locationId = ?
+         ORDER BY insertOrder DESC
+         LIMIT ?`
+      );
+      params = [locationId, limit ?? this.maxLocationHistory];
+    } else {
+      query = this.db.prepare(
+        `SELECT id, locationId, timestamp, stressLevel, energyLevel, context
+         FROM location_history
+         ORDER BY insertOrder DESC
+         LIMIT ?`
+      );
+      params = [limit ?? this.maxLocationHistory];
+    }
+
+    return (query.all(...params) as Array<{
+      id: string;
+      locationId: string;
+      timestamp: string;
+      stressLevel: string | null;
+      energyLevel: string | null;
+      context: string | null;
+    }>).map((row) => ({
+      id: row.id,
+      locationId: row.locationId,
+      timestamp: row.timestamp,
+      stressLevel: (row.stressLevel as "low" | "medium" | "high") ?? undefined,
+      energyLevel: (row.energyLevel as "low" | "medium" | "high") ?? undefined,
+      context: row.context ?? undefined
+    }));
+  }
+
+  getCurrentLocation(): Location | null {
+    const locations = this.getLocations(1);
+    return locations.length > 0 ? locations[0] : null;
+  }
+
+  private trimLocationsIfNeeded(): void {
+    const count = (this.db.prepare("SELECT COUNT(*) as count FROM locations").get() as { count: number }).count;
+    if (count > this.maxLocations) {
+      this.db
+        .prepare(
+          `DELETE FROM locations WHERE id IN (
+            SELECT id FROM locations ORDER BY insertOrder ASC LIMIT ?
+          )`
+        )
+        .run(count - this.maxLocations);
+    }
+  }
+
+  private trimLocationHistoryIfNeeded(): void {
+    const count = (this.db.prepare("SELECT COUNT(*) as count FROM location_history").get() as { count: number })
+      .count;
+    if (count > this.maxLocationHistory) {
+      this.db
+        .prepare(
+          `DELETE FROM location_history WHERE id IN (
+            SELECT id FROM location_history ORDER BY insertOrder ASC LIMIT ?
+          )`
+        )
+        .run(count - this.maxLocationHistory);
+    }
   }
 }
 

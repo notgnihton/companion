@@ -25,6 +25,20 @@ export function buildContextAwareNudge(event: AgentEvent, context: UserContext):
         message: noteMessage(event, context),
         priority: notePriority(context)
       };
+    case "location.arrival":
+      return {
+        source: "orchestrator",
+        title: "Location update",
+        message: locationArrivalMessage(event, context),
+        priority: locationPriority(event.priority, context)
+      };
+    case "location.context":
+      return {
+        source: "orchestrator",
+        title: "Context reminder",
+        message: locationContextMessage(event, context),
+        priority: locationPriority(event.priority, context)
+      };
     default:
       return null;
   }
@@ -114,6 +128,56 @@ function notePriority(context: UserContext): Priority {
   }
 
   return "low";
+}
+
+function locationArrivalMessage(event: AgentEvent, context: UserContext): string {
+  const label = asText(event.payload, "label");
+  const base = `You've arrived at ${label}.`;
+
+  if (context.mode === "focus") {
+    return `${base} Stay on task.`;
+  }
+
+  if (context.stressLevel === "high") {
+    return `${base} Take a moment to settle in.`;
+  }
+
+  if (context.energyLevel === "low") {
+    return `${base} Find a comfortable spot.`;
+  }
+
+  return base;
+}
+
+function locationContextMessage(event: AgentEvent, context: UserContext): string {
+  const label = asText(event.payload, "label");
+  const contextMsg = asText(event.payload, "context");
+
+  if (context.mode === "focus" && contextMsg) {
+    return `At ${label}: ${contextMsg}`;
+  }
+
+  if (context.stressLevel === "high") {
+    return `${contextMsg} — Remember to breathe.`;
+  }
+
+  return contextMsg || `Context update at ${label}`;
+}
+
+function locationPriority(base: Priority, context: UserContext): Priority {
+  if (base === "critical") {
+    return "critical";
+  }
+
+  if (context.stressLevel === "high" && base === "high") {
+    return "medium";
+  }
+
+  if (context.mode === "recovery") {
+    return "low";
+  }
+
+  return base;
 }
 
 function asText(value: unknown, key: string): string {

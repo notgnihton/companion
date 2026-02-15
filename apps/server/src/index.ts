@@ -295,6 +295,24 @@ const notificationPreferencesSchema = z.object({
     .optional()
 });
 
+const locationCreateSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  accuracy: z.number().positive().optional(),
+  label: z.string().trim().min(1).max(100).optional()
+});
+
+const locationUpdateSchema = locationCreateSchema.partial().refine(
+  (value) => Object.keys(value).length > 0,
+  "At least one field is required"
+);
+
+const locationHistorySchema = z.object({
+  stressLevel: z.enum(["low", "medium", "high"]).optional(),
+  energyLevel: z.enum(["low", "medium", "high"]).optional(),
+  context: z.string().trim().max(500).optional()
+});
+
 store.onNotification((notification) => {
   void broadcastNotification(notification);
 });
@@ -335,6 +353,108 @@ app.post("/api/context", (req, res) => {
 
   const updated = store.setUserContext(parsed.data);
   return res.json({ context: updated });
+});
+
+app.post("/api/locations", (req, res) => {
+  const parsed = locationCreateSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid location payload", issues: parsed.error.issues });
+  }
+
+  const location = store.recordLocation(
+    parsed.data.latitude,
+    parsed.data.longitude,
+    parsed.data.accuracy,
+    parsed.data.label
+  );
+
+  return res.status(201).json({ location });
+});
+
+app.get("/api/locations", (req, res) => {
+  const limit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
+  const locations = store.getLocations(limit);
+  return res.json({ locations });
+});
+
+app.get("/api/locations/current", (_req, res) => {
+  const location = store.getCurrentLocation();
+
+  if (!location) {
+    return res.status(404).json({ error: "No location recorded" });
+  }
+
+  return res.json({ location });
+});
+
+app.get("/api/locations/:id", (req, res) => {
+  const location = store.getLocationById(req.params.id);
+
+  if (!location) {
+    return res.status(404).json({ error: "Location not found" });
+  }
+
+  return res.json({ location });
+});
+
+app.patch("/api/locations/:id", (req, res) => {
+  const parsed = locationUpdateSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid location payload", issues: parsed.error.issues });
+  }
+
+  const location = store.updateLocation(req.params.id, parsed.data);
+
+  if (!location) {
+    return res.status(404).json({ error: "Location not found" });
+  }
+
+  return res.json({ location });
+});
+
+app.delete("/api/locations/:id", (req, res) => {
+  const deleted = store.deleteLocation(req.params.id);
+
+  if (!deleted) {
+    return res.status(404).json({ error: "Location not found" });
+  }
+
+  return res.status(204).send();
+});
+
+app.post("/api/locations/:id/history", (req, res) => {
+  const parsed = locationHistorySchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid location history payload", issues: parsed.error.issues });
+  }
+
+  const history = store.recordLocationHistory(
+    req.params.id,
+    parsed.data.stressLevel,
+    parsed.data.energyLevel,
+    parsed.data.context
+  );
+
+  if (!history) {
+    return res.status(404).json({ error: "Location not found" });
+  }
+
+  return res.status(201).json({ history });
+});
+
+app.get("/api/locations/:id/history", (req, res) => {
+  const limit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
+  const history = store.getLocationHistory(req.params.id, limit);
+  return res.json({ history });
+});
+
+app.get("/api/location-history", (req, res) => {
+  const limit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
+  const history = store.getLocationHistory(undefined, limit);
+  return res.json({ history });
 });
 
 app.get("/api/tags", (_req, res) => {

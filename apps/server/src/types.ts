@@ -353,3 +353,21 @@ export interface NotificationInteractionMetrics {
   interactionsBySource: Record<AgentName, number>;
   recentInteractions: NotificationInteraction[];
 }
+
+export interface Location {
+  id: string;
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  timestamp: string;
+  label?: string;
+}
+
+export interface LocationHistory {
+  id: string;
+  locationId: string;
+  timestamp: string;
+  stressLevel?: "low" | "medium" | "high";
+  energyLevel?: "low" | "medium" | "high";
+  context?: string;
+}
