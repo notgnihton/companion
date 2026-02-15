@@ -5,6 +5,7 @@ import {
   LectureEvent,
   NotificationPreferences,
   OnboardingProfile,
+  ThemePreference,
   UserContext
 } from "../types";
 
@@ -17,6 +18,7 @@ const STORAGE_KEYS = {
   deadlines: "companion:deadlines",
   onboarding: "companion:onboarding",
   notificationPreferences: "companion:notification-preferences",
+  theme: "companion:theme"
 } as const;
 
 export interface JournalQueueItem {
@@ -62,6 +64,22 @@ export function loadNotificationPreferences(): NotificationPreferences {
 
 export function saveNotificationPreferences(preferences: NotificationPreferences): void {
   localStorage.setItem(STORAGE_KEYS.notificationPreferences, JSON.stringify(preferences));
+}
+
+export function loadThemePreference(): ThemePreference {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.theme);
+    if (raw === "light" || raw === "dark" || raw === "system") {
+      return raw;
+    }
+  } catch {
+    // corrupted
+  }
+  return "system";
+}
+
+export function saveThemePreference(preference: ThemePreference): void {
+  localStorage.setItem(STORAGE_KEYS.theme, preference);
 }
 
 function defaultDashboard(): DashboardSnapshot {

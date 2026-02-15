@@ -10,10 +10,12 @@ import { NotificationSettings } from "./components/NotificationSettings";
 import { ScheduleView } from "./components/ScheduleView";
 import { SummaryTiles } from "./components/SummaryTiles";
 import { WeeklyReviewView } from "./components/WeeklyReviewView";
+import { AppearanceSettings } from "./components/AppearanceSettings";
 import { useDashboard } from "./hooks/useDashboard";
 import { enablePushNotifications, isPushEnabled, supportsPushNotifications } from "./lib/push";
-import { loadOnboardingProfile, saveOnboardingProfile } from "./lib/storage";
-import { OnboardingProfile } from "./types";
+import { applyTheme } from "./lib/theme";
+import { loadOnboardingProfile, loadThemePreference, saveOnboardingProfile, saveThemePreference } from "./lib/storage";
+import { OnboardingProfile, ThemePreference } from "./types";
 
 type PushState = "checking" | "ready" | "enabled" | "unsupported" | "denied" | "error";
 
@@ -23,6 +25,23 @@ export default function App(): JSX.Element {
   const [pushMessage, setPushMessage] = useState("");
   const [profile, setProfile] = useState<OnboardingProfile | null>(loadOnboardingProfile());
   const [scheduleRevision, setScheduleRevision] = useState(0);
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() => loadThemePreference());
+
+  useEffect(() => {
+    saveThemePreference(themePreference);
+    applyTheme(themePreference);
+
+    if (themePreference !== "system") {
+      return;
+    }
+
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (): void => {
+      applyTheme("system");
+    };
+    media.addEventListener("change", handler);
+    return () => media.removeEventListener("change", handler);
+  }, [themePreference]);
 
   useEffect(() => {
     let disposed = false;
@@ -66,6 +85,10 @@ export default function App(): JSX.Element {
   const handleOnboardingComplete = (nextProfile: OnboardingProfile): void => {
     saveOnboardingProfile(nextProfile);
     setProfile(nextProfile);
+  };
+
+  const handleThemeChange = (next: ThemePreference): void => {
+    setThemePreference(next);
   };
 
   const pushButtonLabel =
@@ -128,6 +151,7 @@ export default function App(): JSX.Element {
           </div>
           <ContextControls onUpdated={refresh} />
           <NotificationSettings />
+          <AppearanceSettings preference={themePreference} onChange={handleThemeChange} />
         </>
       )}
     </main>

@@ -1,14 +1,67 @@
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   --bg: radial-gradient(circle at top right, #1f5a76 0%, #0f1f2f 35%, #091019 100%);
   --card: rgba(255, 255, 255, 0.08);
   --card-border: rgba(255, 255, 255, 0.2);
+  --surface: rgba(7, 14, 20, 0.3);
+  --surface-strong: rgba(3, 7, 11, 0.45);
+  --surface-soft: rgba(7, 14, 20, 0.2);
+  --border-soft: rgba(255, 255, 255, 0.16);
+  --border-strong: rgba(255, 255, 255, 0.2);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --input-bg: rgba(3, 7, 11, 0.45);
   --text: #f7f5ef;
   --muted: #d2dbde;
   --accent: #f6c37f;
   --ok: #7dd3a8;
   --warn: #f5c86b;
   --danger: #ff8a80;
+  --accent-border-strong: rgba(246, 195, 127, 0.8);
+  --accent-border: rgba(246, 195, 127, 0.6);
+  --accent-surface: rgba(246, 195, 127, 0.08);
+  --ok-border: rgba(125, 211, 168, 0.4);
+  --warn-border-strong: rgba(245, 200, 107, 0.7);
+  --warn-border: rgba(245, 200, 107, 0.4);
+  --warn-surface: rgba(245, 200, 107, 0.06);
+  --danger-border-strong: rgba(255, 138, 128, 0.7);
+  --danger-border-stronger: rgba(255, 138, 128, 0.9);
+  --danger-border: rgba(255, 138, 128, 0.4);
+  --danger-surface: rgba(255, 138, 128, 0.08);
+  --danger-surface-strong: rgba(255, 138, 128, 0.12);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: radial-gradient(circle at top right, #e2ecff 0%, #f7f9fd 45%, #ffffff 100%);
+  --card: rgba(255, 255, 255, 0.9);
+  --card-border: rgba(15, 23, 42, 0.12);
+  --surface: rgba(255, 255, 255, 0.95);
+  --surface-strong: rgba(255, 255, 255, 0.98);
+  --surface-soft: rgba(255, 255, 255, 0.88);
+  --border-soft: rgba(15, 23, 42, 0.12);
+  --border-strong: rgba(15, 23, 42, 0.18);
+  --border-subtle: rgba(15, 23, 42, 0.08);
+  --input-bg: rgba(255, 255, 255, 0.98);
+  --text: #0f172a;
+  --muted: #475569;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --bg: radial-gradient(circle at top right, #e2ecff 0%, #f7f9fd 45%, #ffffff 100%);
+    --card: rgba(255, 255, 255, 0.9);
+    --card-border: rgba(15, 23, 42, 0.12);
+    --surface: rgba(255, 255, 255, 0.95);
+    --surface-strong: rgba(255, 255, 255, 0.98);
+    --surface-soft: rgba(255, 255, 255, 0.88);
+    --border-soft: rgba(15, 23, 42, 0.12);
+    --border-strong: rgba(15, 23, 42, 0.18);
+    --border-subtle: rgba(15, 23, 42, 0.08);
+    --input-bg: rgba(255, 255, 255, 0.98);
+    --text: #0f172a;
+    --muted: #475569;
+  }
 }
 
 * {
@@ -119,10 +172,10 @@ body {
 .feed-item {
   display: grid;
   gap: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--border-soft);
   border-radius: 10px;
   padding: 10px;
-  background: rgba(7, 14, 20, 0.3);
+  background: var(--surface);
 }
 
 .list-item {
@@ -136,7 +189,7 @@ body {
   letter-spacing: 0.06em;
   padding: 4px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--border-soft);
 }
 
 .status-idle {
@@ -165,11 +218,11 @@ body {
 }
 
 .priority-critical {
-  border-color: rgba(255, 138, 128, 0.7);
+  border-color: var(--danger-border-strong);
 }
 
 .priority-high {
-  border-color: rgba(245, 200, 107, 0.7);
+  border-color: var(--warn-border-strong);
 }
 
 .control-grid {
@@ -190,9 +243,9 @@ input,
 button {
   font: inherit;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--border-strong);
   padding: 10px;
-  background: rgba(3, 7, 11, 0.45);
+  background: var(--input-bg);
   color: var(--text);
 }
 
@@ -201,7 +254,7 @@ button {
 }
 
 button:hover {
-  border-color: rgba(246, 195, 127, 0.8);
+  border-color: var(--accent-border-strong);
 }
 
 button:disabled {
@@ -235,9 +288,9 @@ button:disabled {
 .journal-textarea {
   font: inherit;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--border-strong);
   padding: 12px;
-  background: rgba(3, 7, 11, 0.45);
+  background: var(--input-bg);
   color: var(--text);
   resize: vertical;
   min-height: 80px;
@@ -246,7 +299,7 @@ button:disabled {
 
 .journal-textarea:focus {
   outline: none;
-  border-color: rgba(246, 195, 127, 0.6);
+  border-color: var(--accent-border);
 }
 
 .journal-textarea::placeholder {
@@ -267,10 +320,10 @@ button:disabled {
 .journal-entry {
   display: grid;
   gap: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--border-soft);
   border-radius: 10px;
   padding: 12px;
-  background: rgba(7, 14, 20, 0.3);
+  background: var(--surface);
 }
 
 .journal-entry-text {
@@ -320,15 +373,15 @@ button:disabled {
 .schedule-item {
   display: grid;
   gap: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--border-soft);
   border-radius: 10px;
   padding: 12px;
-  background: rgba(7, 14, 20, 0.3);
+  background: var(--surface);
 }
 
 .schedule-item-upcoming {
-  border-color: rgba(246, 195, 127, 0.5);
-  background: rgba(246, 195, 127, 0.08);
+  border-color: var(--accent-border);
+  background: var(--accent-surface);
 }
 
 .schedule-item-header {
@@ -351,22 +404,22 @@ button:disabled {
   letter-spacing: 0.06em;
   padding: 3px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--border-soft);
 }
 
 .workload-low {
   color: var(--ok);
-  border-color: rgba(125, 211, 168, 0.4);
+  border-color: var(--ok-border);
 }
 
 .workload-medium {
   color: var(--warn);
-  border-color: rgba(245, 200, 107, 0.4);
+  border-color: var(--warn-border);
 }
 
 .workload-high {
   color: var(--danger);
-  border-color: rgba(255, 138, 128, 0.4);
+  border-color: var(--danger-border);
 }
 
 .schedule-item-details {
@@ -424,31 +477,31 @@ button:disabled {
 }
 
 .deadline-item {
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--border-soft);
   border-radius: 10px;
   padding: 12px;
-  background: rgba(7, 14, 20, 0.3);
+  background: var(--surface);
 }
 
 .deadline-critical {
-  border-color: rgba(255, 138, 128, 0.7);
-  background: rgba(255, 138, 128, 0.08);
+  border-color: var(--danger-border-strong);
+  background: var(--danger-surface);
 }
 
 .deadline-urgent {
-  border-color: rgba(245, 200, 107, 0.6);
-  background: rgba(245, 200, 107, 0.06);
+  border-color: var(--warn-border-strong);
+  background: var(--warn-surface);
 }
 
 .deadline-overdue {
-  border-color: rgba(255, 138, 128, 0.9);
-  background: rgba(255, 138, 128, 0.12);
+  border-color: var(--danger-border-stronger);
+  background: var(--danger-surface-strong);
 }
 
 .deadline-completed {
   opacity: 0.5;
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(7, 14, 20, 0.2);
+  border-color: var(--border-subtle);
+  background: var(--surface-soft);
 }
 
 .deadline-checkbox-wrapper {
@@ -548,9 +601,9 @@ button:disabled {
 
 .calendar-import-fields textarea {
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--border-strong);
   padding: 10px;
-  background: rgba(3, 7, 11, 0.45);
+  background: var(--input-bg);
   color: var(--text);
   resize: vertical;
 }

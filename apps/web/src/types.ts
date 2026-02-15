@@ -145,3 +145,5 @@ export interface NotificationPreferences {
   allowCriticalInQuietHours: boolean;
   categoryToggles: Record<AgentName, boolean>;
 }
+
+export type ThemePreference = "light" | "dark" | "system";
