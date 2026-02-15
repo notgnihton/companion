@@ -129,8 +129,12 @@ const contextSchema = z.object({
   mode: z.enum(["focus", "balanced", "recovery"]).optional()
 });
 
+const tagIdSchema = z.string().trim().min(1);
+const tagIdsSchema = z.array(tagIdSchema).max(20);
+
 const journalEntrySchema = z.object({
-  content: z.string().min(1).max(10000)
+  content: z.string().min(1).max(10000),
+  tags: tagIdsSchema.optional()
 });
 
 const journalSyncSchema = z.object({
@@ -140,9 +144,18 @@ const journalSyncSchema = z.object({
       clientEntryId: z.string().min(1),
       content: z.string().min(1).max(10000),
       timestamp: z.string().datetime(),
-      baseVersion: z.number().int().positive().optional()
+      baseVersion: z.number().int().positive().optional(),
+      tags: tagIdsSchema.optional()
     })
   )
+});
+
+const tagCreateSchema = z.object({
+  name: z.string().trim().min(1).max(60)
+});
+
+const tagUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(60)
 });
 
 const calendarImportSchema = z
@@ -288,6 +301,64 @@ app.post("/api/context", (req, res) => {
   return res.json({ context: updated });
 });
 
+app.get("/api/tags", (_req, res) => {
+  const tags = store.getTags();
+  return res.json({ tags });
+});
+
+app.post("/api/tags", (req, res) => {
+  const parsed = tagCreateSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid tag payload", issues: parsed.error.issues });
+  }
+
+  try {
+    const tag = store.createTag(parsed.data.name);
+    return res.status(201).json({ tag });
+  } catch (error) {
+    if (error instanceof Error && /UNIQUE/i.test(error.message)) {
+      return res.status(409).json({ error: "Tag name already exists" });
+    }
+
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Unable to create tag" });
+  }
+});
+
+app.patch("/api/tags/:id", (req, res) => {
+  const parsed = tagUpdateSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid tag payload", issues: parsed.error.issues });
+  }
+
+  try {
+    const tag = store.updateTag(req.params.id, parsed.data.name);
+
+    if (!tag) {
+      return res.status(404).json({ error: "Tag not found" });
+    }
+
+    return res.json({ tag });
+  } catch (error) {
+    if (error instanceof Error && /UNIQUE/i.test(error.message)) {
+      return res.status(409).json({ error: "Tag name already exists" });
+    }
+
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Unable to update tag" });
+  }
+});
+
+app.delete("/api/tags/:id", (req, res) => {
+  const deleted = store.deleteTag(req.params.id);
+
+  if (!deleted) {
+    return res.status(404).json({ error: "Tag not found" });
+  }
+
+  return res.status(204).send();
+});
+
 app.post("/api/journal", (req, res) => {
   const parsed = journalEntrySchema.safeParse(req.body ?? {});
 
@@ -295,8 +366,16 @@ app.post("/api/journal", (req, res) => {
     return res.status(400).json({ error: "Invalid journal entry", issues: parsed.error.issues });
   }
 
-  const entry = store.recordJournalEntry(parsed.data.content);
-  return res.json({ entry });
+  if (!store.areValidTagIds(parsed.data.tags ?? [])) {
+    return res.status(400).json({ error: "Invalid tag ids" });
+  }
+
+  try {
+    const entry = store.recordJournalEntry(parsed.data.content, parsed.data.tags ?? []);
+    return res.json({ entry });
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Unable to record journal entry" });
+  }
 });
 
 app.post("/api/journal/sync", (req, res) => {
@@ -306,8 +385,17 @@ app.post("/api/journal/sync", (req, res) => {
     return res.status(400).json({ error: "Invalid journal sync payload", issues: parsed.error.issues });
   }
 
-  const result = store.syncJournalEntries(parsed.data.entries);
-  return res.status(200).json(result);
+  const allTagIds = parsed.data.entries.flatMap((entry) => entry.tags ?? []);
+  if (!store.areValidTagIds(allTagIds)) {
+    return res.status(400).json({ error: "Invalid tag ids" });
+  }
+
+  try {
+    const result = store.syncJournalEntries(parsed.data.entries);
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Unable to sync journal entries" });
+  }
 });
 
 app.get("/api/journal", (req, res) => {
@@ -324,6 +412,7 @@ app.get("/api/journal", (req, res) => {
 
 app.get("/api/journal/search", (req, res) => {
   const { q, startDate, endDate, limit } = req.query;
+  const tagsParam = req.query.tags;
 
   const limitValue = limit ? parseInt(limit as string, 10) : undefined;
 
@@ -339,10 +428,23 @@ app.get("/api/journal/search", (req, res) => {
     return res.status(400).json({ error: "Invalid endDate parameter" });
   }
 
+  const parsedTags =
+    typeof tagsParam === "string"
+      ? tagsParam.split(",")
+      : Array.isArray(tagsParam)
+        ? tagsParam
+        : [];
+  const tagIds = parsedTags.map((tag) => tag.trim()).filter(Boolean);
+
+  if (tagIds.length > 0 && !store.areValidTagIds(tagIds)) {
+    return res.status(400).json({ error: "Invalid tag ids" });
+  }
+
   const entries = store.searchJournalEntries({
     query: q as string | undefined,
     startDate: startDate as string | undefined,
     endDate: endDate as string | undefined,
+    tagIds: tagIds.length > 0 ? tagIds : undefined,
     limit: limitValue
   });
 

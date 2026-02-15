@@ -14,9 +14,12 @@ describe("RuntimeStore - export data", () => {
   it("exports all user data including journals, schedule, deadlines, context, and preferences", () => {
     const store = new RuntimeStore(":memory:");
 
+    const focusTag = store.createTag("focus");
+    const lectureTag = store.createTag("lecture");
+
     // Create test data
-    store.recordJournalEntry("Finished algorithms homework");
-    store.recordJournalEntry("Had a productive study session");
+    store.recordJournalEntry("Finished algorithms homework", [lectureTag.id]);
+    store.recordJournalEntry("Had a productive study session", [focusTag.id]);
 
     store.createLectureEvent({
       title: "Algorithms Lecture",
@@ -68,6 +71,7 @@ describe("RuntimeStore - export data", () => {
     expect(exportData).toHaveProperty("exportedAt");
     expect(exportData).toHaveProperty("version");
     expect(exportData).toHaveProperty("journals");
+    expect(exportData).toHaveProperty("tags");
     expect(exportData).toHaveProperty("schedule");
     expect(exportData).toHaveProperty("deadlines");
     expect(exportData).toHaveProperty("habits");
@@ -85,6 +89,8 @@ describe("RuntimeStore - export data", () => {
     expect(exportData.journals).toHaveLength(2);
     expect(exportData.journals[0].content).toBe("Finished algorithms homework");
     expect(exportData.journals[1].content).toBe("Had a productive study session");
+    expect(exportData.journals[0].tags.map((tag) => tag.id)).toContain(lectureTag.id);
+    expect(exportData.tags.map((tag) => tag.name)).toEqual(expect.arrayContaining(["focus", "lecture"]));
 
     // Verify schedule
     expect(exportData.schedule).toHaveLength(1);
@@ -116,6 +122,7 @@ describe("RuntimeStore - export data", () => {
     const exportData = store.getExportData();
 
     expect(exportData.journals).toEqual([]);
+    expect(exportData.tags).toEqual([]);
     expect(exportData.schedule).toEqual([]);
     expect(exportData.deadlines).toEqual([]);
     expect(exportData.habits.length).toBeGreaterThan(0);

@@ -28,7 +28,8 @@ import {
   HabitWithStatus,
   Goal,
   GoalCheckIn,
-  GoalWithStatus
+  GoalWithStatus,
+  Tag
 } from "./types.js";
 import { makeId, nowIso } from "./utils.js";
 
@@ -55,6 +56,7 @@ export class RuntimeStore {
 
   constructor(dbPath: string = "companion.db") {
     this.db = new Database(dbPath);
+    this.db.pragma("foreign_keys = ON");
     this.initializeSchema();
     this.loadOrInitializeDefaults();
   }
@@ -89,6 +91,20 @@ export class RuntimeStore {
         updatedAt TEXT NOT NULL,
         version INTEGER NOT NULL,
         insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
+      );
+
+      CREATE TABLE IF NOT EXISTS tags (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
+      );
+
+      CREATE TABLE IF NOT EXISTS journal_entry_tags (
+        entryId TEXT NOT NULL,
+        tagId TEXT NOT NULL,
+        PRIMARY KEY (entryId, tagId),
+        FOREIGN KEY (entryId) REFERENCES journal_entries(id) ON DELETE CASCADE,
+        FOREIGN KEY (tagId) REFERENCES tags(id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS schedule_events (
@@ -561,9 +577,143 @@ export class RuntimeStore {
     return true;
   }
 
-  recordJournalEntry(content: string): JournalEntry {
+  getTags(): Tag[] {
+    const rows = this.db.prepare("SELECT id, name FROM tags ORDER BY insertOrder DESC").all() as Array<{ id: string; name: string }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name
+    }));
+  }
+
+  createTag(name: string): Tag {
+    const trimmed = name.trim();
+
+    if (!trimmed) {
+      throw new Error("Tag name is required");
+    }
+
+    const tag: Tag = {
+      id: makeId("tag"),
+      name: trimmed
+    };
+
+    this.db.prepare("INSERT INTO tags (id, name) VALUES (?, ?)").run(tag.id, tag.name);
+
+    return tag;
+  }
+
+  updateTag(id: string, name: string): Tag | null {
+    const trimmed = name.trim();
+
+    if (!trimmed) {
+      throw new Error("Tag name is required");
+    }
+
+    const exists = this.db.prepare("SELECT id FROM tags WHERE id = ?").get(id) as { id: string } | undefined;
+    if (!exists) {
+      return null;
+    }
+
+    this.db.prepare("UPDATE tags SET name = ? WHERE id = ?").run(trimmed, id);
+    return { id, name: trimmed };
+  }
+
+  deleteTag(id: string): boolean {
+    const result = this.db.prepare("DELETE FROM tags WHERE id = ?").run(id);
+    return result.changes > 0;
+  }
+
+  areValidTagIds(tagIds: string[]): boolean {
+    if (tagIds.length === 0) {
+      return true;
+    }
+
+    const uniqueIds = Array.from(new Set(tagIds));
+    const placeholders = uniqueIds.map(() => "?").join(", ");
+    const rows = this.db.prepare(`SELECT id FROM tags WHERE id IN (${placeholders})`).all(...uniqueIds) as Array<{ id: string }>;
+
+    return rows.length === uniqueIds.length;
+  }
+
+  private resolveTags(tagIds: string[]): Tag[] {
+    if (tagIds.length === 0) {
+      return [];
+    }
+
+    const uniqueIds = Array.from(new Set(tagIds));
+    const placeholders = uniqueIds.map(() => "?").join(", ");
+    const rows = this.db
+      .prepare(`SELECT id, name FROM tags WHERE id IN (${placeholders})`)
+      .all(...uniqueIds) as Array<{ id: string; name: string }>;
+
+    if (rows.length !== uniqueIds.length) {
+      throw new Error("Invalid tag ids");
+    }
+
+    return uniqueIds.map((id) => {
+      const tag = rows.find((row) => row.id === id)!;
+      return { id: tag.id, name: tag.name };
+    });
+  }
+
+  private getTagsForEntry(entryId: string): Tag[] {
+    const rows = this.db
+      .prepare(
+        `SELECT tags.id as id, tags.name as name
+         FROM journal_entry_tags jet
+         JOIN tags ON tags.id = jet.tagId
+         WHERE jet.entryId = ?
+         ORDER BY tags.insertOrder DESC`
+      )
+      .all(entryId) as Array<{ id: string; name: string }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name
+    }));
+  }
+
+  private setEntryTags(entryId: string, tagIds: string[]): Tag[] {
+    const tags = this.resolveTags(tagIds);
+
+    this.db.prepare("DELETE FROM journal_entry_tags WHERE entryId = ?").run(entryId);
+
+    if (tags.length > 0) {
+      const insert = this.db.prepare("INSERT INTO journal_entry_tags (entryId, tagId) VALUES (?, ?)");
+      const insertMany = this.db.transaction((ids: string[]) => {
+        ids.forEach((id) => insert.run(entryId, id));
+      });
+
+      insertMany(Array.from(new Set(tagIds)));
+    }
+
+    return tags;
+  }
+
+  private trimJournalEntriesIfNeeded(): void {
+    const count = (this.db.prepare("SELECT COUNT(*) as count FROM journal_entries").get() as { count: number }).count;
+    if (count > this.maxJournalEntries) {
+      const removeIds = this.db
+        .prepare("SELECT id FROM journal_entries ORDER BY insertOrder ASC LIMIT ?")
+        .all(count - this.maxJournalEntries) as Array<{ id: string }>;
+
+      const deleteTagsStmt = this.db.prepare("DELETE FROM journal_entry_tags WHERE entryId = ?");
+      const deleteEntryStmt = this.db.prepare("DELETE FROM journal_entries WHERE id = ?");
+      const transaction = this.db.transaction((ids: string[]) => {
+        ids.forEach((id) => {
+          deleteTagsStmt.run(id);
+          deleteEntryStmt.run(id);
+        });
+      });
+
+      transaction(removeIds.map((row) => row.id));
+    }
+  }
+
+  recordJournalEntry(content: string, tagIds: string[] = []): JournalEntry {
     const timestamp = nowIso();
-    const entry: JournalEntry = {
+    const entry: Omit<JournalEntry, "tags"> = {
       id: makeId("journal"),
       content,
       timestamp,
@@ -571,25 +721,22 @@ export class RuntimeStore {
       version: 1
     };
 
+    this.resolveTags(tagIds);
+
     this.db
       .prepare(
         "INSERT INTO journal_entries (id, clientEntryId, content, timestamp, updatedAt, version) VALUES (?, ?, ?, ?, ?, ?)"
       )
       .run(entry.id, null, entry.content, entry.timestamp, entry.updatedAt, entry.version);
 
-    // Trim to maxJournalEntries
-    const count = (this.db.prepare("SELECT COUNT(*) as count FROM journal_entries").get() as { count: number }).count;
-    if (count > this.maxJournalEntries) {
-      this.db
-        .prepare(
-          `DELETE FROM journal_entries WHERE id IN (
-            SELECT id FROM journal_entries ORDER BY insertOrder ASC LIMIT ?
-          )`
-        )
-        .run(count - this.maxJournalEntries);
-    }
+    const tags = this.setEntryTags(entry.id, tagIds);
 
-    return entry;
+    this.trimJournalEntriesIfNeeded();
+
+    return {
+      ...entry,
+      tags
+    };
   }
 
   getWeeklySummary(referenceDate: string = nowIso()): WeeklySummary {
@@ -628,7 +775,8 @@ export class RuntimeStore {
       content: row.content,
       timestamp: row.timestamp,
       updatedAt: row.updatedAt,
-      version: row.version
+      version: row.version,
+      tags: this.getTagsForEntry(row.id)
     }));
 
     return {
@@ -659,12 +807,15 @@ export class RuntimeStore {
             content: (existingRow as { content: string }).content,
             timestamp: (existingRow as { timestamp: string }).timestamp,
             updatedAt: (existingRow as { updatedAt: string }).updatedAt,
-            version: (existingRow as { version: number }).version
+            version: (existingRow as { version: number }).version,
+            tags: this.getTagsForEntry((existingRow as { id: string }).id)
           } as JournalEntry)
         : null;
 
       if (!existing) {
-        const created: JournalEntry = {
+        const newTags = payload.tags ? this.resolveTags(payload.tags) : [];
+
+        const createdBase: Omit<JournalEntry, "tags"> = {
           id: payload.id ?? makeId("journal"),
           clientEntryId: payload.clientEntryId,
           content: payload.content,
@@ -677,21 +828,24 @@ export class RuntimeStore {
           .prepare(
             "INSERT INTO journal_entries (id, clientEntryId, content, timestamp, updatedAt, version) VALUES (?, ?, ?, ?, ?, ?)"
           )
-          .run(created.id, created.clientEntryId ?? null, created.content, created.timestamp, created.updatedAt, created.version);
+          .run(
+            createdBase.id,
+            createdBase.clientEntryId ?? null,
+            createdBase.content,
+            createdBase.timestamp,
+            createdBase.updatedAt,
+            createdBase.version
+          );
+
+        this.setEntryTags(createdBase.id, payload.tags ?? []);
 
         // Trim to maxJournalEntries
-        const count = (this.db.prepare("SELECT COUNT(*) as count FROM journal_entries").get() as { count: number }).count;
-        if (count > this.maxJournalEntries) {
-          this.db
-            .prepare(
-              `DELETE FROM journal_entries WHERE id IN (
-                SELECT id FROM journal_entries ORDER BY insertOrder ASC LIMIT ?
-              )`
-            )
-            .run(count - this.maxJournalEntries);
-        }
+        this.trimJournalEntriesIfNeeded();
 
-        applied.push(created);
+        applied.push({
+          ...createdBase,
+          tags: newTags
+        });
         continue;
       }
 
@@ -700,7 +854,7 @@ export class RuntimeStore {
         continue;
       }
 
-      const merged: JournalEntry = {
+      const mergedBase: Omit<JournalEntry, "tags"> = {
         ...existing,
         content: payload.content,
         timestamp: payload.timestamp,
@@ -709,11 +863,27 @@ export class RuntimeStore {
         clientEntryId: payload.clientEntryId
       };
 
+      const nextTags = payload.tags !== undefined ? this.resolveTags(payload.tags) : existing.tags;
+
       this.db
         .prepare("UPDATE journal_entries SET content = ?, timestamp = ?, updatedAt = ?, version = ?, clientEntryId = ? WHERE id = ?")
-        .run(merged.content, merged.timestamp, merged.updatedAt, merged.version, merged.clientEntryId ?? null, merged.id);
+        .run(
+          mergedBase.content,
+          mergedBase.timestamp,
+          mergedBase.updatedAt,
+          mergedBase.version,
+          mergedBase.clientEntryId ?? null,
+          mergedBase.id
+        );
 
-      applied.push(merged);
+      if (payload.tags !== undefined) {
+        this.setEntryTags(mergedBase.id, payload.tags);
+      }
+
+      applied.push({
+        ...mergedBase,
+        tags: nextTags
+      });
     }
 
     return { applied, conflicts };
@@ -741,7 +911,8 @@ export class RuntimeStore {
       content: row.content,
       timestamp: row.timestamp,
       updatedAt: row.updatedAt,
-      version: row.version
+      version: row.version,
+      tags: this.getTagsForEntry(row.id)
     }));
   }
 
@@ -749,6 +920,7 @@ export class RuntimeStore {
     query?: string;
     startDate?: string;
     endDate?: string;
+    tagIds?: string[];
     limit?: number;
   }): JournalEntry[] {
     const conditions: string[] = [];
@@ -767,6 +939,20 @@ export class RuntimeStore {
     if (options.endDate) {
       conditions.push("timestamp <= ?");
       params.push(options.endDate);
+    }
+
+    if (options.tagIds && options.tagIds.length > 0) {
+      const uniqueTagIds = Array.from(new Set(options.tagIds));
+      const placeholders = uniqueTagIds.map(() => "?").join(", ");
+      conditions.push(
+        `id IN (
+          SELECT entryId FROM journal_entry_tags
+          WHERE tagId IN (${placeholders})
+          GROUP BY entryId
+          HAVING COUNT(DISTINCT tagId) = ?
+        )`
+      );
+      params.push(...uniqueTagIds, uniqueTagIds.length);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -793,7 +979,8 @@ export class RuntimeStore {
       content: row.content,
       timestamp: row.timestamp,
       updatedAt: row.updatedAt,
-      version: row.version
+      version: row.version,
+      tags: this.getTagsForEntry(row.id)
     }));
   }
 
@@ -1648,6 +1835,7 @@ export class RuntimeStore {
       exportedAt: nowIso(),
       version: "1.0",
       journals: this.getJournalEntries(),
+      tags: this.getTags(),
       schedule: this.getScheduleEvents(),
       deadlines: this.getDeadlines(),
       habits: this.getHabitsWithStatus(),

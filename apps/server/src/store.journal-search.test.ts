@@ -88,6 +88,26 @@ describe("RuntimeStore - journal search", () => {
     expect(results).toHaveLength(2);
   });
 
+  it("filters journal entries by tags", () => {
+    const store = new RuntimeStore(":memory:");
+
+    const schoolTag = store.createTag("school");
+    const focusTag = store.createTag("focus");
+
+    store.recordJournalEntry("Algorithms lecture notes", [schoolTag.id, focusTag.id]);
+    store.recordJournalEntry("Grocery list");
+    store.recordJournalEntry("Systems reading plan", [schoolTag.id]);
+
+    const taggedResults = store.searchJournalEntries({ tagIds: [schoolTag.id] });
+
+    expect(taggedResults).toHaveLength(2);
+    expect(taggedResults.every((entry) => entry.tags.some((tag) => tag.id === schoolTag.id))).toBe(true);
+
+    const intersected = store.searchJournalEntries({ tagIds: [schoolTag.id, focusTag.id] });
+    expect(intersected).toHaveLength(1);
+    expect(intersected[0].content).toContain("Algorithms");
+  });
+
   it("returns all entries when no filters provided", () => {
     const store = new RuntimeStore(":memory:");
 

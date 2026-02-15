@@ -79,9 +79,63 @@ Request:
 
 ```json
 {
-  "content": "Finished chapter 4 and outlined notes."
+  "content": "Finished chapter 4 and outlined notes.",
+  "tags": ["tag-1739570000000-1"]
 }
 ```
+
+Response `200`:
+
+```json
+{
+  "entry": {
+    "id": "journal-1739570000000-1",
+    "content": "Finished chapter 4 and outlined notes.",
+    "timestamp": "2026-02-15T01:00:00.000Z",
+    "updatedAt": "2026-02-15T01:00:00.000Z",
+    "version": 1,
+    "tags": [
+      { "id": "tag-1739570000000-1", "name": "study" }
+    ]
+  }
+}
+```
+
+### `GET /api/tags`
+
+Response `200`:
+
+```json
+{
+  "tags": [
+    { "id": "tag-1739570000000-1", "name": "study" }
+  ]
+}
+```
+
+### `POST /api/tags`
+
+Request:
+
+```json
+{ "name": "study" }
+```
+
+Response `201` with created tag.
+
+### `PATCH /api/tags/:id`
+
+Request:
+
+```json
+{ "name": "research" }
+```
+
+Response `200` with updated tag or `404` if not found.
+
+### `DELETE /api/tags/:id`
+
+Removes a tag and its journal associations. Response `204` or `404` if not found.
 
 ## Calendar Import
 
@@ -193,7 +247,12 @@ Response `200`:
     {
       "id": "journal-1739570000000-1",
       "content": "Finished chapter 4 and outlined notes.",
-      "timestamp": "2026-02-15T01:00:00.000Z"
+      "timestamp": "2026-02-15T01:00:00.000Z",
+      "updatedAt": "2026-02-15T01:00:00.000Z",
+      "version": 1,
+      "tags": [
+        { "id": "tag-1739570000000-1", "name": "study" }
+      ]
     }
   ]
 }
@@ -207,6 +266,7 @@ Query params:
 - `q` (optional, string) - Text search query (case-insensitive, partial match)
 - `startDate` (optional, ISO datetime string) - Filter entries on or after this date
 - `endDate` (optional, ISO datetime string) - Filter entries on or before this date
+- `tags` (optional, comma-separated tag ids) - Filter entries that include all listed tags
 - `limit` (optional, positive integer) - Maximum number of results to return
 
 Response `200`:
@@ -219,7 +279,10 @@ Response `200`:
       "content": "Finished algorithms chapter 4 and outlined notes.",
       "timestamp": "2026-02-15T01:00:00.000Z",
       "updatedAt": "2026-02-15T01:00:00.000Z",
-      "version": 1
+      "version": 1,
+      "tags": [
+        { "id": "tag-1739570000000-1", "name": "study" }
+      ]
     }
   ]
 }
@@ -229,6 +292,7 @@ Examples:
 - `/api/journal/search?q=algorithms` - Find all entries containing "algorithms"
 - `/api/journal/search?startDate=2026-02-01T00:00:00.000Z&endDate=2026-02-28T23:59:59.999Z` - Find entries in February 2026
 - `/api/journal/search?q=algorithms&startDate=2026-02-01T00:00:00.000Z&limit=5` - Find up to 5 entries containing "algorithms" from February 2026 onwards
+- `/api/journal/search?tags=tag-1739570000000-1,tag-1739570000000-2` - Entries that include both tags
 
 ## Schedule
 

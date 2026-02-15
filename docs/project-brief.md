@@ -95,5 +95,5 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `habit-goal-tracking-ui` | frontend-engineer | Build Habits and Goals views with daily check-in cards, streak visualizations, and quick completion toggles backed by habit/goal APIs. |
 | ✅ done | `data-import-api` | backend-engineer | Add POST /api/import endpoint that validates and restores user data from JSON export format with conflict resolution for existing records. |
 | ⬜ todo | `focus-session-timer` | frontend-engineer | Add a Pomodoro-style focus timer component with configurable duration, break intervals, and integration with context tracking for flow state sessions. |
-| ⬜ todo | `journal-tags-api` | backend-engineer | Extend journal entries with tags array field, add tag CRUD endpoints, and update search endpoint to filter by tags for better organization. |
+| ✅ done | `journal-tags-api` | backend-engineer | Extend journal entries with tags array field, add tag CRUD endpoints, and update search endpoint to filter by tags for better organization. |
 | ⬜ todo | `journal-tags-ui` | frontend-engineer | Add tag input with autocomplete to journal form, tag pills on entries, and tag filtering to search UI backed by journal tags API. |
