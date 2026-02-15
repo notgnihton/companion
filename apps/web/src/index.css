@@ -307,6 +307,62 @@ button:disabled {
   opacity: 0.6;
 }
 
+.journal-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.journal-input-wrapper .journal-textarea {
+  flex: 1;
+}
+
+.journal-voice-btn {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.journal-voice-btn:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  background: var(--accent-surface);
+}
+
+.journal-voice-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.journal-voice-btn.listening {
+  border-color: var(--ok-border);
+  background: rgba(125, 211, 168, 0.15);
+  color: var(--ok);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+
 .journal-list {
   list-style: none;
   margin: 0;

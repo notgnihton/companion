@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { submitJournalEntry, syncQueuedJournalEntries, searchJournalEntries } from "../lib/api";
 import {
   addJournalEntry,
@@ -18,6 +18,8 @@ export function JournalView(): JSX.Element {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   useEffect(() => {
     const sync = async (): Promise<void> => {
@@ -134,6 +136,78 @@ export function JournalView(): JSX.Element {
     }
   };
 
+  const startListening = (): void => {
+    if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+      setSyncMessage("Voice input is not supported in this browser.");
+      return;
+    }
+
+    const SpeechRecognitionAPI = (window.SpeechRecognition || window.webkitSpeechRecognition) as typeof SpeechRecognition;
+    const recognition = new SpeechRecognitionAPI();
+
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setSyncMessage("");
+    };
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interimTranscript = "";
+      let finalTranscript = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + " ";
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+
+      if (finalTranscript) {
+        setText((prev) => (prev + " " + finalTranscript).trim());
+      }
+    };
+
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      console.error("Speech recognition error:", event.error);
+      setIsListening(false);
+      if (event.error === "no-speech") {
+        setSyncMessage("No speech detected. Try again.");
+      } else if (event.error === "not-allowed") {
+        setSyncMessage("Microphone access denied. Please allow microphone permissions.");
+      } else {
+        setSyncMessage("Voice input error. Please try again.");
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
+
+  const stopListening = (): void => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+      setIsListening(false);
+    }
+  };
+
+  const toggleVoiceInput = (): void => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
   const formatDate = (isoString: string): string => {
     const date = new Date(isoString);
     const now = new Date();
@@ -163,14 +237,26 @@ export function JournalView(): JSX.Element {
       {syncMessage && <p className="journal-sync-status">{syncMessage}</p>}
 
       <form className="journal-input-form" onSubmit={(event) => void handleSubmit(event)}>
-        <textarea
-          className="journal-textarea"
-          placeholder="What's on your mind? Quick thoughts, reflections, or to-dos..."
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={3}
-          disabled={busy}
-        />
+        <div className="journal-input-wrapper">
+          <textarea
+            className="journal-textarea"
+            placeholder="What's on your mind? Quick thoughts, reflections, or to-dos..."
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={3}
+            disabled={busy}
+          />
+          <button
+            type="button"
+            className={`journal-voice-btn ${isListening ? "listening" : ""}`}
+            onClick={toggleVoiceInput}
+            disabled={busy}
+            aria-label={isListening ? "Stop voice input" : "Start voice input"}
+            title={isListening ? "Stop voice input" : "Start voice input"}
+          >
+            {isListening ? "⏹" : "🎤"}
+          </button>
+        </div>
         <button type="submit" disabled={busy || !text.trim()}>
           {busy ? "Saving..." : "Add Entry"}
         </button>
