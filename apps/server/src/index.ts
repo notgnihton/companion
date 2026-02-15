@@ -1,7 +1,7 @@
 import cors from "cors";
 import express from "express";
 import { z } from "zod";
-import { classifyEventType, inferPriority, inferWorkload, parseICS, toDurationMinutes } from "./calendar-import.js";
+import { buildCalendarImportPreview, parseICS } from "./calendar-import.js";
 import { config } from "./config.js";
 import { OrchestratorRuntime } from "./orchestrator.js";
 import { getVapidPublicKey, hasStaticVapidKeys, sendPushNotification } from "./push.js";
@@ -213,41 +213,35 @@ app.post("/api/calendar/import", async (req, res) => {
     return res.status(400).json({ error: "Unable to load ICS content" });
   }
 
-  const importedEvents = parseICS(icsContent);
-  const lectures = [];
-  const deadlines = [];
-
-  for (const event of importedEvents) {
-    if (classifyEventType(event) === "deadline") {
-      deadlines.push(
-        store.createDeadline({
-          course: inferCourseName(event.summary),
-          task: event.summary,
-          dueDate: event.startTime,
-          priority: inferPriority(event),
-          completed: false
-        })
-      );
-      continue;
-    }
-
-    lectures.push(
-      store.createLectureEvent({
-        title: event.summary,
-        startTime: event.startTime,
-        durationMinutes: toDurationMinutes(event.startTime, event.endTime),
-        workload: inferWorkload(event)
-      })
-    );
-  }
+  const preview = buildCalendarImportPreview(parseICS(icsContent));
+  const lectures = preview.lectures.map((lecture) => store.createLectureEvent(lecture));
+  const deadlines = preview.deadlines.map((deadline) => store.createDeadline(deadline));
 
   return res.status(201).json({
-    importedEvents: importedEvents.length,
-    lecturesCreated: lectures.length,
-    deadlinesCreated: deadlines.length,
+    importedEvents: preview.importedEvents,
+    lecturesCreated: preview.lecturesPlanned,
+    deadlinesCreated: preview.deadlinesPlanned,
     lectures,
     deadlines
   });
+});
+
+app.post("/api/calendar/import/preview", async (req, res) => {
+  const parsed = calendarImportSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid calendar import payload", issues: parsed.error.issues });
+  }
+
+  const icsContent = parsed.data.ics ?? (await fetchCalendarIcs(parsed.data.url!));
+
+  if (!icsContent) {
+    return res.status(400).json({ error: "Unable to load ICS content" });
+  }
+
+  const preview = buildCalendarImportPreview(parseICS(icsContent));
+
+  return res.status(200).json(preview);
 });
 
 app.post("/api/schedule", (req, res) => {
@@ -436,16 +430,6 @@ async function fetchCalendarIcs(url: string): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-function inferCourseName(summary: string): string {
-  const maybeCourse = summary.split(":")[0]?.trim();
-
-  if (!maybeCourse || maybeCourse.length < 2) {
-    return "General";
-  }
-
-  return maybeCourse;
 }
 
 const server = app.listen(config.PORT, () => {
