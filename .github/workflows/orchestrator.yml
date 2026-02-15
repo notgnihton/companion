@@ -3,7 +3,7 @@ name: Agent Orchestrator
 # Triggers:
 # 1. Manual dispatch (for testing)
 # 2. On schedule (daily at 6am UTC)
-# 3. When an orchestrator issue is closed (recursive trigger)
+# 3. When any agent-task issue is closed (keeps work flowing after merges)
 on:
   workflow_dispatch:
     inputs:
@@ -36,12 +36,11 @@ jobs:
     # Only run on:
     # - manual dispatch
     # - schedule
-    # - when an orchestrator issue is closed
+    # - when an agent-task issue is closed
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
       (github.event_name == 'issues' && 
-       contains(github.event.issue.title, 'Orchestrator') &&
        contains(github.event.issue.labels.*.name, 'agent-task'))
 
     steps:

@@ -52,7 +52,15 @@ jobs:
           git push --force-with-lease origin ${{ github.event.pull_request.head.ref }}
 
   auto-merge:
-    if: contains(github.event.pull_request.labels.*.name, 'agent-task') && contains(github.event.pull_request.labels.*.name, 'agent-automerge')
+    if: |
+      github.event.pull_request.draft == false &&
+      contains(github.event.pull_request.labels.*.name, 'agent-task') &&
+      contains(github.event.pull_request.labels.*.name, 'agent-work-done') &&
+      contains(github.event.pull_request.labels.*.name, 'agent-automerge') &&
+      (
+        github.event.action == 'ready_for_review' ||
+        (github.event.action == 'labeled' && github.event.label.name == 'agent-work-done')
+      )
     runs-on: ubuntu-latest
     needs: auto-rebase
     steps:
@@ -62,16 +70,42 @@ jobs:
           github-token: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
           script: |
             const pr = context.payload.pull_request;
-            core.info(`Merging PR #${pr.number} (${pr.title})...`);
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            core.info(`Evaluating PR #${pr.number} (${pr.title}) for auto-merge...`);
+
+            const { data: latest } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: pr.number,
+            });
+
+            const labelNames = latest.labels.map(l => l.name);
+            if (latest.draft) {
+              core.info(`PR #${pr.number} is still draft; skipping merge.`);
+              return;
+            }
+            if (!labelNames.includes('agent-work-done')) {
+              core.info(`PR #${pr.number} missing agent-work-done label; skipping merge.`);
+              return;
+            }
+            if (latest.mergeable === false) {
+              core.info(`PR #${pr.number} has merge conflicts; skipping merge.`);
+              return;
+            }
+            if (latest.mergeable === null) {
+              core.info(`PR #${pr.number} mergeability is still pending; skipping for now.`);
+              return;
+            }
             
             try {
               const result = await github.rest.pulls.merge({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
+                owner,
+                repo,
                 pull_number: pr.number,
                 merge_method: 'squash',
                 commit_title: pr.title,
-                commit_message: `${pr.body}\n\nAuto-merged by agent automation workflow.`
+                commit_message: `${latest.body || ''}\n\nAuto-merged by agent automation workflow.`
               });
               
               core.info(`✅ PR #${pr.number} merged successfully`);
@@ -82,8 +116,8 @@ jobs:
               
               // Add comment explaining the failure
               await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
+                owner,
+                repo,
                 issue_number: pr.number,
                 body: `⚠️ **Automatic merge failed**: ${error.message}\n\nPlease merge manually.`
               });

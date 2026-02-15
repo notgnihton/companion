@@ -68,39 +68,6 @@ jobs:
               core.warning(`Failed to list workflow runs: ${err.message}`);
             }
 
-      - name: Mark draft as ready for review
-        if: github.event.pull_request.draft == true
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
-          script: |
-            const pr = context.payload.pull_request;
-
-            // Don't mark draft ready immediately on 'opened' — the agent is still working.
-            // Only convert drafts on 'synchronize' (new push) if the PR has file changes,
-            // which indicates the agent has finished its work.
-            const eventAction = context.payload.action;
-            if (eventAction === 'opened') {
-              core.info(`PR #${pr.number} is a new draft — skipping ready conversion (agent still working)`);
-              return;
-            }
-
-            core.info(`PR #${pr.number} is a draft (event: ${eventAction}). Converting to ready for review...`);
-
-            // GraphQL is required — REST API cannot mark PRs ready for review
-            const mutation = `mutation($id: ID!) {
-              markPullRequestReadyForReview(input: { pullRequestId: $id }) {
-                pullRequest { id number isDraft }
-              }
-            }`;
-
-            try {
-              const result = await github.graphql(mutation, { id: pr.node_id });
-              core.info(`Marked PR #${pr.number} as ready for review`);
-            } catch (err) {
-              core.warning(`Could not mark ready: ${err.message}`);
-            }
-
       - name: Add labels
         uses: actions/github-script@v7
         with:
@@ -141,28 +108,4 @@ jobs:
               core.info(`Approved PR #${pr.number}`);
             } catch (err) {
               core.warning(`Could not approve PR: ${err.message}`);
-            }
-
-      - name: Merge PR
-        if: github.event.pull_request.draft == false
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
-          script: |
-            const pr = context.payload.pull_request;
-
-            // Wait a moment for the ready_for_review status to propagate
-            await new Promise(r => setTimeout(r, 5000));
-
-            try {
-              await github.rest.pulls.merge({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: pr.number,
-                merge_method: 'squash',
-              });
-              core.info(`Merged PR #${pr.number}`);
-            } catch (err) {
-              core.info(`Merge not ready yet: ${err.message}`);
-              core.info('Will be handled by agent-pr-automation when ready.');
             }
