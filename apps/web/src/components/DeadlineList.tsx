@@ -1,9 +1,29 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { confirmDeadlineStatus, getDeadlines } from "../lib/api";
 import { Deadline } from "../types";
 import { loadDeadlines, saveDeadlines } from "../lib/storage";
 
 export function DeadlineList(): JSX.Element {
   const [deadlines, setDeadlines] = useState<Deadline[]>(() => loadDeadlines());
+  const [syncMessage, setSyncMessage] = useState("");
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+
+    const load = async (): Promise<void> => {
+      const next = await getDeadlines();
+      if (!disposed) {
+        setDeadlines(next);
+      }
+    };
+
+    void load();
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   const formatTimeRemaining = (dueDate: string): string => {
     const due = new Date(dueDate).getTime();
@@ -43,12 +63,32 @@ export function DeadlineList(): JSX.Element {
     return "";
   };
 
-  const toggleComplete = (id: string): void => {
-    const updated = deadlines.map(d => 
-      d.id === id ? { ...d, completed: !d.completed } : d
+  const setCompletion = async (id: string, completed: boolean): Promise<void> => {
+    setUpdatingId(id);
+    setSyncMessage("");
+
+    const before = deadlines;
+    const optimistic = deadlines.map((deadline) => (deadline.id === id ? { ...deadline, completed } : deadline));
+    setDeadlines(optimistic);
+    saveDeadlines(optimistic);
+
+    const confirmation = await confirmDeadlineStatus(id, completed);
+
+    if (!confirmation) {
+      setDeadlines(before);
+      saveDeadlines(before);
+      setSyncMessage("Could not sync deadline status right now.");
+      setUpdatingId(null);
+      return;
+    }
+
+    const synced = optimistic.map((deadline) =>
+      deadline.id === confirmation.deadline.id ? confirmation.deadline : deadline
     );
-    setDeadlines(updated);
-    saveDeadlines(updated);
+    setDeadlines(synced);
+    saveDeadlines(synced);
+    setSyncMessage(completed ? "Marked complete." : "Saved as still working.");
+    setUpdatingId(null);
   };
 
   const sortedDeadlines = [...deadlines].sort((a, b) => {
@@ -56,7 +96,7 @@ export function DeadlineList(): JSX.Element {
     return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
   });
 
-  const activeCount = deadlines.filter(d => !d.completed).length;
+  const activeCount = deadlines.filter((deadline) => !deadline.completed).length;
 
   return (
     <section className="panel deadline-panel">
@@ -64,20 +104,22 @@ export function DeadlineList(): JSX.Element {
         <h2>Deadlines</h2>
         <span className="deadline-count">{activeCount} pending</span>
       </header>
+      {syncMessage && <p className="deadline-sync-status">{syncMessage}</p>}
 
       {sortedDeadlines.length > 0 ? (
         <ul className="deadline-list">
           {sortedDeadlines.map((deadline) => (
-            <li 
-              key={deadline.id} 
+            <li
+              key={deadline.id}
               className={`deadline-item ${getUrgencyClass(deadline.dueDate)} ${deadline.completed ? "deadline-completed" : ""}`}
             >
-              <label className="deadline-checkbox-wrapper">
+              <div className="deadline-checkbox-wrapper">
                 <input
                   type="checkbox"
                   checked={deadline.completed}
-                  onChange={() => toggleComplete(deadline.id)}
+                  onChange={() => void setCompletion(deadline.id, !deadline.completed)}
                   className="deadline-checkbox"
+                  disabled={updatingId === deadline.id}
                 />
                 <div className="deadline-content">
                   <div className="deadline-header">
@@ -92,7 +134,25 @@ export function DeadlineList(): JSX.Element {
                     <span className="deadline-due">{formatDueDate(deadline.dueDate)}</span>
                   </div>
                 </div>
-              </label>
+              </div>
+              {!deadline.completed && getUrgencyClass(deadline.dueDate) === "deadline-overdue" && (
+                <div className="deadline-actions">
+                  <button
+                    type="button"
+                    onClick={() => void setCompletion(deadline.id, true)}
+                    disabled={updatingId === deadline.id}
+                  >
+                    Mark complete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void setCompletion(deadline.id, false)}
+                    disabled={updatingId === deadline.id}
+                  >
+                    Still working
+                  </button>
+                </div>
+              )}
             </li>
           ))}
         </ul>
