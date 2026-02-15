@@ -23,9 +23,15 @@ import { execSync } from 'child_process';
 import { existsSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
-const STATE_FILE = resolve('.github/.playwright-state.json');
+const COLLAB = process.argv.includes('--collab');
+const SECRET_NAME = COLLAB ? 'GH_SESSION_COOKIE_COLLAB' : 'GH_SESSION_COOKIE';
+const STATE_FILE = resolve(COLLAB ? '.github/.playwright-state-collab.json' : '.github/.playwright-state.json');
 const REPO = process.env.GITHUB_REPOSITORY || 'svewat/companion';
 const TOKEN = process.env.TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
+
+if (COLLAB) {
+  console.log(`🔄 Collab mode — will save to ${SECRET_NAME} (separate browser state)`);
+}
 
 if (!TOKEN) {
   console.error('Set TOKEN, GH_TOKEN, or GITHUB_TOKEN env var with repo scope.');
@@ -121,14 +127,14 @@ async function tryExtractCookie(headless, waitForLogin = false) {
 
 async function updateSecret(cookieValue) {
   try {
-    execSync(`echo "${cookieValue}" | GH_TOKEN=${TOKEN} gh secret set GH_SESSION_COOKIE -R ${REPO}`, {
+    execSync(`echo "${cookieValue}" | GH_TOKEN=${TOKEN} gh secret set ${SECRET_NAME} -R ${REPO}`, {
       stdio: 'pipe',
     });
-    console.log('\n✓ GH_SESSION_COOKIE secret updated successfully.');
+    console.log(`\n✓ ${SECRET_NAME} secret updated successfully.`);
   } catch (e) {
     console.error('Failed to update secret via gh CLI:', e.message);
     console.log('\nManual fallback — run this:');
-    console.log(`  echo "${cookieValue}" | GH_TOKEN=$TOKEN gh secret set GH_SESSION_COOKIE`);
+    console.log(`  echo "${cookieValue}" | GH_TOKEN=$TOKEN gh secret set ${SECRET_NAME}`);
   }
 }
 

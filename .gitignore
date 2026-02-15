@@ -11,6 +11,7 @@ apps/server/data/
 
 # Playwright saved browser state (contains session cookies)
 .github/.playwright-state.json
+.github/.playwright-state-collab.json
 
 # tsc emit artifacts (Vite handles compilation)
 apps/web/src/**/*.js

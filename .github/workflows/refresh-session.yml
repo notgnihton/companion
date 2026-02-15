@@ -36,6 +36,27 @@ jobs:
           echo "${{ steps.session.outputs.cookie_value }}" | gh secret set GH_SESSION_COOKIE
           echo "✓ Secret updated with refreshed cookie"
 
+      - name: Check and refresh collab session
+        id: session_collab
+        if: always()
+        env:
+          GH_SESSION_COOKIE: ${{ secrets.GH_SESSION_COOKIE_COLLAB }}
+          SECRET_NAME: GH_SESSION_COOKIE_COLLAB
+        run: |
+          if [ -z "$GH_SESSION_COOKIE" ]; then
+            echo "GH_SESSION_COOKIE_COLLAB not set — skipping"
+            exit 0
+          fi
+          node .github/scripts/refresh-session-ci.mjs
+
+      - name: Update collab secret if cookie changed
+        if: always() && steps.session_collab.outputs.cookie_changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PAT_COLLAB || secrets.AGENT_PAT }}
+        run: |
+          echo "${{ steps.session_collab.outputs.cookie_value }}" | gh secret set GH_SESSION_COOKIE_COLLAB
+          echo "✓ Collab secret updated with refreshed cookie"
+
       - name: Report status
         if: always()
         run: |
@@ -45,6 +66,12 @@ jobs:
           else
             echo "✗ Session expired or invalid!"
             echo "  Run locally: node .github/scripts/refresh-session.mjs"
+          fi
+          if [ "${{ steps.session_collab.outcome }}" = "success" ]; then
+            echo "✓ Collab session valid — ${{ steps.session_collab.outputs.days_left }} days remaining"
+          elif [ "${{ steps.session_collab.outcome }}" = "failure" ]; then
+            echo "✗ Collab session expired or invalid!"
+            echo "  Run locally: node .github/scripts/refresh-session.mjs --collab"
           fi
 
       - name: Create issue on session expiry
