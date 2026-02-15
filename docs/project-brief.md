@@ -89,4 +89,4 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ⬜ todo | `journal-search-ui` | frontend-engineer | Add search bar and date filters to JournalView component backed by /api/journal/search endpoint. |
 | ✅ done | `dark-mode` | frontend-engineer | Add dark mode toggle in settings with CSS variables for all components and persist preference in localStorage for iPhone nighttime use. |
 | ⬜ todo | `data-export-api` | backend-engineer | Add GET /api/export endpoint that returns all user data (journals, schedule, deadlines, preferences) as downloadable JSON for backup and portability. |
-| ⬜ todo | `smart-notification-timing` | backend-engineer | Enhance nudge engine to schedule reminders at optimal times based on user's schedule gaps, energy levels, and historical completion patterns. |
+| ✅ done | `smart-notification-timing` | backend-engineer | Enhance nudge engine to schedule reminders at optimal times based on user's schedule gaps, energy levels, and historical completion patterns. |

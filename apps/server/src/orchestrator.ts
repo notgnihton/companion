@@ -4,12 +4,14 @@ import { LecturePlanAgent } from "./agents/lecture-plan-agent.js";
 import { buildContextAwareNudge } from "./nudge-engine.js";
 import { NotesAgent } from "./agents/notes-agent.js";
 import { RuntimeStore } from "./store.js";
+import { calculateOptimalNotificationTime } from "./smart-timing.js";
 import { AgentEvent } from "./types.js";
 
 export class OrchestratorRuntime {
   private timers: NodeJS.Timeout[] = [];
   private readonly deadlineReminderIntervalMs = 60_000;
   private readonly deadlineReminderCooldownMinutes = 180;
+  private readonly scheduledNotificationCheckIntervalMs = 30_000;
   private readonly agents: BaseAgent[] = [
     new NotesAgent(),
     new LecturePlanAgent(),
@@ -53,6 +55,13 @@ export class OrchestratorRuntime {
       this.emitOverdueDeadlineReminders();
     }, this.deadlineReminderIntervalMs);
     this.timers.push(deadlineReminderTimer);
+
+    // Process scheduled notifications
+    this.processScheduledNotifications();
+    const scheduledNotifTimer = setInterval(() => {
+      this.processScheduledNotifications();
+    }, this.scheduledNotificationCheckIntervalMs);
+    this.timers.push(scheduledNotifTimer);
   }
 
   stop(): void {
@@ -69,7 +78,27 @@ export class OrchestratorRuntime {
     const nudge = buildContextAwareNudge(event, context);
 
     if (nudge) {
-      this.store.pushNotification(nudge);
+      // Use smart timing to schedule notification
+      const isUrgent = nudge.priority === "critical" || nudge.priority === "high";
+      
+      if (isUrgent) {
+        // Urgent notifications go out immediately
+        this.store.pushNotification(nudge);
+      } else {
+        // Non-urgent notifications are scheduled for optimal time
+        const optimalTime = calculateOptimalNotificationTime(
+          {
+            scheduleEvents: this.store.getScheduleEvents(),
+            deadlines: this.store.getDeadlines(),
+            userContext: context,
+            deadlineHistory: this.store.getAllDeadlineReminderStates(),
+            currentTime: new Date()
+          },
+          false
+        );
+
+        this.store.scheduleNotification(nudge, optimalTime, event.id);
+      }
       return;
     }
 
@@ -106,12 +135,28 @@ export class OrchestratorRuntime {
       const overdueMs = Date.now() - new Date(deadline.dueDate).getTime();
       const overdueHours = Math.max(1, Math.floor(overdueMs / (60 * 60 * 1000)));
 
+      // Overdue reminders are always urgent
       this.store.pushNotification({
         source: "assignment-tracker",
         title: "Deadline status check",
         message: `${deadline.task} for ${deadline.course} is overdue by ${overdueHours}h. Confirm status via POST /api/deadlines/${deadline.id}/confirm-status.`,
         priority: deadline.priority === "critical" || overdueHours >= 24 ? "critical" : "high"
       });
+    }
+  }
+
+  /**
+   * Process scheduled notifications that are now due
+   */
+  private processScheduledNotifications(): void {
+    const dueNotifications = this.store.getDueScheduledNotifications();
+
+    for (const scheduled of dueNotifications) {
+      // Push the notification immediately
+      this.store.pushNotification(scheduled.notification);
+      
+      // Remove from scheduled queue
+      this.store.removeScheduledNotification(scheduled.id);
     }
   }
 }

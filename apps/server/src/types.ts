@@ -24,6 +24,14 @@ export interface Notification {
   timestamp: string;
 }
 
+export interface ScheduledNotification {
+  id: string;
+  notification: Omit<Notification, "id" | "timestamp">;
+  scheduledFor: string;
+  createdAt: string;
+  eventId?: string;
+}
+
 export interface AgentState {
   name: AgentName;
   status: "idle" | "running" | "error";

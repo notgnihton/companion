@@ -16,6 +16,7 @@ import {
   PushDeliveryFailureRecord,
   PushDeliveryMetrics,
   PushSubscriptionRecord,
+  ScheduledNotification,
   UserContext,
   WeeklySummary
 } from "./types.js";
@@ -164,6 +165,18 @@ export class RuntimeStore {
         categoryLecturePlanEnabled INTEGER NOT NULL,
         categoryAssignmentTrackerEnabled INTEGER NOT NULL,
         categoryOrchestratorEnabled INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS scheduled_notifications (
+        id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        priority TEXT NOT NULL,
+        scheduledFor TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        eventId TEXT,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
       );
     `);
   }
@@ -1230,6 +1243,101 @@ export class RuntimeStore {
     }
 
     return hour >= startHour || hour < endHour;
+  }
+
+  /**
+   * Schedule a notification for future delivery at optimal time
+   */
+  scheduleNotification(
+    notification: Omit<Notification, "id" | "timestamp">,
+    scheduledFor: Date,
+    eventId?: string
+  ): ScheduledNotification {
+    const scheduled: ScheduledNotification = {
+      id: makeId("sched-notif"),
+      notification,
+      scheduledFor: scheduledFor.toISOString(),
+      createdAt: nowIso(),
+      eventId
+    };
+
+    this.db
+      .prepare(
+        `INSERT INTO scheduled_notifications (id, source, title, message, priority, scheduledFor, createdAt, eventId)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        scheduled.id,
+        notification.source,
+        notification.title,
+        notification.message,
+        notification.priority,
+        scheduled.scheduledFor,
+        scheduled.createdAt,
+        eventId ?? null
+      );
+
+    return scheduled;
+  }
+
+  /**
+   * Get all scheduled notifications that are due for delivery
+   */
+  getDueScheduledNotifications(currentTime: Date = new Date()): ScheduledNotification[] {
+    const rows = this.db
+      .prepare("SELECT * FROM scheduled_notifications WHERE scheduledFor <= ? ORDER BY scheduledFor ASC")
+      .all(currentTime.toISOString()) as Array<{
+      id: string;
+      source: string;
+      title: string;
+      message: string;
+      priority: string;
+      scheduledFor: string;
+      createdAt: string;
+      eventId: string | null;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      notification: {
+        source: row.source as Notification["source"],
+        title: row.title,
+        message: row.message,
+        priority: row.priority as Notification["priority"]
+      },
+      scheduledFor: row.scheduledFor,
+      createdAt: row.createdAt,
+      eventId: row.eventId ?? undefined
+    }));
+  }
+
+  /**
+   * Remove a scheduled notification (e.g., after delivery)
+   */
+  removeScheduledNotification(id: string): boolean {
+    const result = this.db.prepare("DELETE FROM scheduled_notifications WHERE id = ?").run(id);
+    return result.changes > 0;
+  }
+
+  /**
+   * Get all deadline reminder states (for historical pattern analysis)
+   */
+  getAllDeadlineReminderStates(): DeadlineReminderState[] {
+    const rows = this.db.prepare("SELECT * FROM deadline_reminder_state").all() as Array<{
+      deadlineId: string;
+      reminderCount: number;
+      lastReminderAt: string | null;
+      lastConfirmationAt: string | null;
+      lastConfirmedCompleted: number | null;
+    }>;
+
+    return rows.map((row) => ({
+      deadlineId: row.deadlineId,
+      reminderCount: row.reminderCount,
+      lastReminderAt: row.lastReminderAt ?? "",
+      lastConfirmationAt: row.lastConfirmationAt ?? null,
+      lastConfirmedCompleted: row.lastConfirmedCompleted === null ? null : Boolean(row.lastConfirmedCompleted)
+    }));
   }
 }
 
