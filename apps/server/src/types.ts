@@ -59,6 +59,17 @@ export interface JournalEntry {
   id: string;
   content: string;
   timestamp: string;
+  updatedAt: string;
+  version: number;
+  clientEntryId?: string;
+}
+
+export interface JournalSyncPayload {
+  id?: string;
+  clientEntryId: string;
+  content: string;
+  timestamp: string;
+  baseVersion?: number;
 }
 
 export interface LectureEvent {

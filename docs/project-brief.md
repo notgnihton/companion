@@ -73,7 +73,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `api-docs` | docs-writer | Document all API endpoints in docs/api.md |
 | ✅ done | `test-coverage` | test-engineer | Add tests for store, orchestrator, and agent modules |
 | ✅ done | `notification-preferences-api` | backend-engineer | Persist notification settings (quiet hours, urgency rules, category toggles) and apply them in dispatch logic. |
-| ⬜ todo | `journal-sync-conflict-resolution` | backend-engineer | Add journal sync/versioning support so offline writes can be merged safely without data loss. |
+| ✅ done | `journal-sync-conflict-resolution` | backend-engineer | Add journal sync/versioning support so offline writes can be merged safely without data loss. |
 | ✅ done | `weekly-review-digest` | backend-engineer | Generate a weekly summary API from deadlines, completed tasks, and journal highlights for Sunday evening reflection. |
 | ⬜ todo | `calendar-import-api` | backend-engineer | Add calendar import endpoints (ICS/URL) that normalize events into lecture/deadline records. |
 | ⬜ todo | `notification-delivery-retries` | backend-engineer | Add retry/backoff + failure tracking for web-push deliveries to improve iPhone notification reliability. |

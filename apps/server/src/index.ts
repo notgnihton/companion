@@ -40,6 +40,18 @@ const journalEntrySchema = z.object({
   content: z.string().min(1).max(10000)
 });
 
+const journalSyncSchema = z.object({
+  entries: z.array(
+    z.object({
+      id: z.string().min(1).optional(),
+      clientEntryId: z.string().min(1),
+      content: z.string().min(1).max(10000),
+      timestamp: z.string().datetime(),
+      baseVersion: z.number().int().positive().optional()
+    })
+  )
+});
+
 const scheduleCreateSchema = z.object({
   title: z.string().trim().min(1).max(200),
   startTime: z.string().datetime(),
@@ -150,6 +162,17 @@ app.post("/api/journal", (req, res) => {
 
   const entry = store.recordJournalEntry(parsed.data.content);
   return res.json({ entry });
+});
+
+app.post("/api/journal/sync", (req, res) => {
+  const parsed = journalSyncSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid journal sync payload", issues: parsed.error.issues });
+  }
+
+  const result = store.syncJournalEntries(parsed.data.entries);
+  return res.status(200).json(result);
 });
 
 app.get("/api/journal", (req, res) => {

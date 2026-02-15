@@ -5,6 +5,7 @@ import {
   DashboardSnapshot,
   Deadline,
   JournalEntry,
+  JournalSyncPayload,
   LectureEvent,
   Notification,
   NotificationPreferences,
@@ -149,10 +150,13 @@ export class RuntimeStore {
   }
 
   recordJournalEntry(content: string): JournalEntry {
+    const timestamp = nowIso();
     const entry: JournalEntry = {
       id: makeId("journal"),
       content,
-      timestamp: nowIso()
+      timestamp,
+      updatedAt: timestamp,
+      version: 1
     };
     this.journalEntries = [entry, ...this.journalEntries].slice(0, this.maxJournalEntries);
     return entry;
@@ -186,6 +190,50 @@ export class RuntimeStore {
       completionRate,
       journalHighlights
     };
+  }
+
+  syncJournalEntries(payloads: JournalSyncPayload[]): { applied: JournalEntry[]; conflicts: JournalEntry[] } {
+    const applied: JournalEntry[] = [];
+    const conflicts: JournalEntry[] = [];
+
+    for (const payload of payloads) {
+      const existing = this.journalEntries.find(
+        (entry) => (payload.id && entry.id === payload.id) || entry.clientEntryId === payload.clientEntryId
+      );
+
+      if (!existing) {
+        const created: JournalEntry = {
+          id: payload.id ?? makeId("journal"),
+          clientEntryId: payload.clientEntryId,
+          content: payload.content,
+          timestamp: payload.timestamp,
+          updatedAt: nowIso(),
+          version: 1
+        };
+        this.journalEntries = [created, ...this.journalEntries].slice(0, this.maxJournalEntries);
+        applied.push(created);
+        continue;
+      }
+
+      if (payload.baseVersion !== undefined && payload.baseVersion !== existing.version) {
+        conflicts.push(existing);
+        continue;
+      }
+
+      const merged: JournalEntry = {
+        ...existing,
+        content: payload.content,
+        timestamp: payload.timestamp,
+        updatedAt: nowIso(),
+        version: existing.version + 1,
+        clientEntryId: payload.clientEntryId
+      };
+
+      this.journalEntries = this.journalEntries.map((entry) => (entry.id === existing.id ? merged : entry));
+      applied.push(merged);
+    }
+
+    return { applied, conflicts };
   }
 
   getJournalEntries(limit?: number): JournalEntry[] {
