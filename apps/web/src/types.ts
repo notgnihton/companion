@@ -91,3 +91,14 @@ export interface OnboardingProfile {
   nudgeTone: "gentle" | "balanced" | "direct";
   completedAt: string;
 }
+
+export interface NotificationPreferences {
+  quietHours: {
+    enabled: boolean;
+    startHour: number;
+    endHour: number;
+  };
+  minimumPriority: Priority;
+  allowCriticalInQuietHours: boolean;
+  categoryToggles: Record<AgentName, boolean>;
+}

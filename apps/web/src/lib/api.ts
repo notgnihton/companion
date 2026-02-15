@@ -1,13 +1,21 @@
-import { DashboardSnapshot, JournalEntry, JournalSyncPayload, UserContext } from "../types";
+import {
+  DashboardSnapshot,
+  JournalEntry,
+  JournalSyncPayload,
+  NotificationPreferences,
+  UserContext
+} from "../types";
 import {
   JournalQueueItem,
   loadContext,
   loadDashboard,
   loadJournalEntries,
+  loadNotificationPreferences,
   removeJournalQueueItem,
   saveContext,
   saveDashboard,
-  saveJournalEntries
+  saveJournalEntries,
+  saveNotificationPreferences
 } from "./storage";
 
 async function jsonOrThrow<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
@@ -54,7 +62,7 @@ export async function submitJournalEntry(content: string, clientEntryId: string)
   try {
     const response = await jsonOrThrow<{ entry: JournalEntry }>("/api/journal", {
       method: "POST",
-      body: JSON.stringify({ content })
+      body: JSON.stringify({ content, clientEntryId })
     });
     return response.entry;
   } catch {
@@ -108,5 +116,44 @@ export async function syncQueuedJournalEntries(queue: JournalQueueItem[]): Promi
     return response.applied.length;
   } catch {
     return 0;
+  }
+}
+
+export async function getNotificationPreferences(): Promise<NotificationPreferences> {
+  try {
+    const response = await jsonOrThrow<{ preferences: NotificationPreferences }>("/api/notification-preferences");
+    saveNotificationPreferences(response.preferences);
+    return response.preferences;
+  } catch {
+    return loadNotificationPreferences();
+  }
+}
+
+export async function updateNotificationPreferences(
+  payload: Partial<NotificationPreferences>
+): Promise<NotificationPreferences> {
+  try {
+    const response = await jsonOrThrow<{ preferences: NotificationPreferences }>("/api/notification-preferences", {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    });
+    saveNotificationPreferences(response.preferences);
+    return response.preferences;
+  } catch {
+    const current = loadNotificationPreferences();
+    const merged: NotificationPreferences = {
+      ...current,
+      ...payload,
+      quietHours: {
+        ...current.quietHours,
+        ...(payload.quietHours ?? {})
+      },
+      categoryToggles: {
+        ...current.categoryToggles,
+        ...(payload.categoryToggles ?? {})
+      }
+    };
+    saveNotificationPreferences(merged);
+    return merged;
   }
 }
