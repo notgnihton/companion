@@ -4,6 +4,7 @@ import { CalendarImportView } from "./components/CalendarImportView";
 import { ContextControls } from "./components/ContextControls";
 import { DeadlineList } from "./components/DeadlineList";
 import { FocusTimer } from "./components/FocusTimer";
+import { InstallPrompt } from "./components/InstallPrompt";
 import { JournalView } from "./components/JournalView";
 import { NotificationFeed } from "./components/NotificationFeed";
 import { OnboardingFlow } from "./components/OnboardingFlow";
@@ -113,6 +114,7 @@ export default function App(): JSX.Element {
 
   return (
     <main className="app-shell">
+      <InstallPrompt />
       <header className="hero">
         <div>
           <p className="eyebrow">Companion</p>
