@@ -5,7 +5,7 @@ describe("RuntimeStore - Schedule and Deadlines", () => {
   let store: RuntimeStore;
 
   beforeEach(() => {
-    store = new RuntimeStore();
+    store = new RuntimeStore(":memory:");
   });
 
   describe("schedule CRUD", () => {

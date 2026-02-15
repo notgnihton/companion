@@ -3,7 +3,7 @@ import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - push delivery tracking", () => {
   it("tracks delivery counters and recent failures", () => {
-    const store = new RuntimeStore();
+    const store = new RuntimeStore(":memory:");
 
     const notification = {
       id: "notif-1",

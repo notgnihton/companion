@@ -3,7 +3,7 @@ import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - journal sync", () => {
   it("creates new entries with version metadata", () => {
-    const store = new RuntimeStore();
+    const store = new RuntimeStore(":memory:");
 
     const result = store.syncJournalEntries([
       {
@@ -20,7 +20,7 @@ describe("RuntimeStore - journal sync", () => {
   });
 
   it("returns conflicts when base version is stale", () => {
-    const store = new RuntimeStore();
+    const store = new RuntimeStore(":memory:");
 
     const first = store.syncJournalEntries([
       {

@@ -12,7 +12,7 @@ describe("RuntimeStore - weekly summary", () => {
   });
 
   it("builds summary from recent deadlines and journals", () => {
-    const store = new RuntimeStore();
+    const store = new RuntimeStore(":memory:");
 
     store.createDeadline({
       course: "Algorithms",

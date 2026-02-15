@@ -5,7 +5,7 @@ describe("RuntimeStore - deadline completion reminders", () => {
   let store: RuntimeStore;
 
   beforeEach(() => {
-    store = new RuntimeStore();
+    store = new RuntimeStore(":memory:");
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-10T12:00:00.000Z"));
   });

@@ -8,7 +8,7 @@ describe("OrchestratorRuntime - Event Handling", () => {
   let orchestrator: OrchestratorRuntime;
 
   beforeEach(() => {
-    store = new RuntimeStore();
+    store = new RuntimeStore(":memory:");
     orchestrator = new OrchestratorRuntime(store);
     vi.useFakeTimers();
   });

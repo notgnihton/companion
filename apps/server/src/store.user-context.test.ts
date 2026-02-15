@@ -5,7 +5,7 @@ describe("RuntimeStore - User Context", () => {
   let store: RuntimeStore;
 
   beforeEach(() => {
-    store = new RuntimeStore();
+    store = new RuntimeStore(":memory:");
     vi.useFakeTimers();
   });
 

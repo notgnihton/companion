@@ -7,7 +7,7 @@ describe("OrchestratorRuntime - Agent Coordination & Notifications", () => {
   let orchestrator: OrchestratorRuntime;
 
   beforeEach(() => {
-    store = new RuntimeStore();
+    store = new RuntimeStore(":memory:");
     orchestrator = new OrchestratorRuntime(store);
     vi.useFakeTimers();
   });

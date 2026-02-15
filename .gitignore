@@ -6,6 +6,8 @@ dist/
 .DS_Store
 .vscode/*.log
 apps/server/data/
+*.db
+*.db-*
 
 # Playwright saved browser state (contains session cookies)
 .github/.playwright-state.json

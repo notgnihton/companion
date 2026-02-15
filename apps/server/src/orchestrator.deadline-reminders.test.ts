@@ -7,7 +7,7 @@ describe("OrchestratorRuntime - deadline reminder checks", () => {
   let orchestrator: OrchestratorRuntime;
 
   beforeEach(() => {
-    store = new RuntimeStore();
+    store = new RuntimeStore(":memory:");
     orchestrator = new OrchestratorRuntime(store);
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-10T12:00:00.000Z"));
