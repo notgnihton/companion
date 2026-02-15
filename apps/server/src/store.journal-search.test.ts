@@ -101,7 +101,7 @@ describe("RuntimeStore - journal search", () => {
     const taggedResults = store.searchJournalEntries({ tagIds: [schoolTag.id] });
 
     expect(taggedResults).toHaveLength(2);
-    expect(taggedResults.every((entry) => entry.tags.some((tag) => tag.id === schoolTag.id))).toBe(true);
+    expect(taggedResults.every((entry) => entry.tags?.includes(schoolTag.name))).toBe(true);
 
     const intersected = store.searchJournalEntries({ tagIds: [schoolTag.id, focusTag.id] });
     expect(intersected).toHaveLength(1);

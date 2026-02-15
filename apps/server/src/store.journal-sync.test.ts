@@ -72,7 +72,7 @@ describe("RuntimeStore - journal sync", () => {
       }
     ]);
 
-    expect(initial.applied[0].tags.map((tag) => tag.id)).toEqual([schoolTag.id]);
+    expect(initial.applied[0].tags).toEqual([schoolTag.name]);
 
     const withoutTags = store.syncJournalEntries([
       {
@@ -84,7 +84,7 @@ describe("RuntimeStore - journal sync", () => {
       }
     ]);
 
-    expect(withoutTags.applied[0].tags.map((tag) => tag.id)).toEqual([schoolTag.id]);
+    expect(withoutTags.applied[0].tags).toEqual([schoolTag.name]);
 
     const retagged = store.syncJournalEntries([
       {
@@ -97,6 +97,6 @@ describe("RuntimeStore - journal sync", () => {
       }
     ]);
 
-    expect(retagged.applied[0].tags.map((tag) => tag.id)).toEqual([schoolTag.id, focusTag.id]);
+    expect(retagged.applied[0].tags).toEqual([schoolTag.name, focusTag.name]);
   });
 });

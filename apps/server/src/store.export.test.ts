@@ -89,8 +89,7 @@ describe("RuntimeStore - export data", () => {
     expect(exportData.journals).toHaveLength(2);
     expect(exportData.journals[0].content).toBe("Finished algorithms homework");
     expect(exportData.journals[1].content).toBe("Had a productive study session");
-    expect(exportData.journals[0].tags.map((tag) => tag.id)).toContain(lectureTag.id);
-    expect(exportData.tags.map((tag) => tag.name)).toEqual(expect.arrayContaining(["focus", "lecture"]));
+    expect(exportData.journals[0].tags).toContain("lecture");
 
     // Verify schedule
     expect(exportData.schedule).toHaveLength(1);
@@ -122,7 +121,6 @@ describe("RuntimeStore - export data", () => {
     const exportData = store.getExportData();
 
     expect(exportData.journals).toEqual([]);
-    expect(exportData.tags).toEqual([]);
     expect(exportData.schedule).toEqual([]);
     expect(exportData.deadlines).toEqual([]);
     expect(exportData.habits.length).toBeGreaterThan(0);

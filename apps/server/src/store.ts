@@ -657,7 +657,7 @@ export class RuntimeStore {
     });
   }
 
-  private getTagsForEntry(entryId: string): Tag[] {
+  private getTagsForEntry(entryId: string): string[] {
     const rows = this.db
       .prepare(
         `SELECT tags.id as id, tags.name as name
@@ -668,13 +668,10 @@ export class RuntimeStore {
       )
       .all(entryId) as Array<{ id: string; name: string }>;
 
-    return rows.map((row) => ({
-      id: row.id,
-      name: row.name
-    }));
+    return rows.map((row) => row.name);
   }
 
-  private setEntryTags(entryId: string, tagIds: string[]): Tag[] {
+  private setEntryTags(entryId: string, tagIds: string[]): string[] {
     const tags = this.resolveTags(tagIds);
 
     this.db.prepare("DELETE FROM journal_entry_tags WHERE entryId = ?").run(entryId);
@@ -688,7 +685,7 @@ export class RuntimeStore {
       insertMany(Array.from(new Set(tagIds)));
     }
 
-    return tags;
+    return tags.map(tag => tag.name);
   }
 
   private trimJournalEntriesIfNeeded(): void {
@@ -813,7 +810,7 @@ export class RuntimeStore {
         : null;
 
       if (!existing) {
-        const newTags = payload.tags ? this.resolveTags(payload.tags) : [];
+        const newTags = payload.tags ? this.resolveTags(payload.tags).map(tag => tag.name) : [];
 
         const createdBase: Omit<JournalEntry, "tags"> = {
           id: payload.id ?? makeId("journal"),
@@ -863,7 +860,7 @@ export class RuntimeStore {
         clientEntryId: payload.clientEntryId
       };
 
-      const nextTags = payload.tags !== undefined ? this.resolveTags(payload.tags) : existing.tags;
+      const nextTags = payload.tags !== undefined ? this.resolveTags(payload.tags).map(tag => tag.name) : existing.tags;
 
       this.db
         .prepare("UPDATE journal_entries SET content = ?, timestamp = ?, updatedAt = ?, version = ?, clientEntryId = ? WHERE id = ?")
@@ -1835,7 +1832,6 @@ export class RuntimeStore {
       exportedAt: nowIso(),
       version: "1.0",
       journals: this.getJournalEntries(),
-      tags: this.getTags(),
       schedule: this.getScheduleEvents(),
       deadlines: this.getDeadlines(),
       habits: this.getHabitsWithStatus(),
