@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { classifyEventType, inferPriority, parseICS, toDurationMinutes } from "./calendar-import.js";
+import {
+  buildCalendarImportPreview,
+  classifyEventType,
+  inferCourseName,
+  inferPriority,
+  parseICS,
+  toDurationMinutes
+} from "./calendar-import.js";
 
 describe("calendar import helpers", () => {
   it("parses ICS events and normalizes timestamps", () => {
@@ -38,5 +45,37 @@ describe("calendar import helpers", () => {
     expect(inferPriority(event)).toBe("critical");
     expect(toDurationMinutes(event.startTime, event.endTime)).toBe(120);
     expect(toDurationMinutes(event.startTime)).toBe(60);
+  });
+
+  it("builds a preview payload for lectures and deadlines", () => {
+    const events = parseICS(
+      [
+        "BEGIN:VCALENDAR",
+        "BEGIN:VEVENT",
+        "SUMMARY:CS101: Lecture 1",
+        "DTSTART:20260303T090000Z",
+        "DTEND:20260303T103000Z",
+        "END:VEVENT",
+        "BEGIN:VEVENT",
+        "SUMMARY:Databases Assignment Due",
+        "DESCRIPTION:Submit before midnight",
+        "DTSTART:20260304T235900Z",
+        "END:VEVENT",
+        "END:VCALENDAR"
+      ].join("\n")
+    );
+    const preview = buildCalendarImportPreview(events);
+
+    expect(preview.importedEvents).toBe(2);
+    expect(preview.lecturesPlanned).toBe(1);
+    expect(preview.deadlinesPlanned).toBe(1);
+    expect(preview.lectures[0].title).toBe("CS101: Lecture 1");
+    expect(preview.deadlines[0].course).toBe("General");
+    expect(preview.deadlines[0].priority).toBe("high");
+  });
+
+  it("infers course names from summary prefixes", () => {
+    expect(inferCourseName("MATH200: Midterm Review")).toBe("MATH200");
+    expect(inferCourseName("Due tomorrow")).toBe("General");
   });
 });

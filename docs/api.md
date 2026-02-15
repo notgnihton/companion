@@ -85,6 +85,39 @@ Request:
 
 ## Calendar Import
 
+### `POST /api/calendar/import/preview`
+
+Parses ICS content and returns what would be imported without writing schedule/deadline records.
+
+Request body is the same as `/api/calendar/import` (`ics` or `url`).
+
+Response `200`:
+
+```json
+{
+  "importedEvents": 2,
+  "lecturesPlanned": 1,
+  "deadlinesPlanned": 1,
+  "lectures": [
+    {
+      "title": "Algorithms Lecture",
+      "startTime": "2026-03-01T10:00:00.000Z",
+      "durationMinutes": 90,
+      "workload": "medium"
+    }
+  ],
+  "deadlines": [
+    {
+      "course": "General",
+      "task": "Systems Assignment Due",
+      "dueDate": "2026-03-02T23:59:00.000Z",
+      "priority": "high",
+      "completed": false
+    }
+  ]
+}
+```
+
 ### `POST /api/calendar/import`
 
 Imports events from an ICS payload or remote ICS URL, then normalizes them into
