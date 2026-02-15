@@ -8,7 +8,8 @@ import {
   JournalEntry,
   JournalSyncPayload,
   NotificationPreferences,
-  UserContext
+  UserContext,
+  WeeklySummary
 } from "../types";
 import {
   JournalQueueItem,
@@ -205,6 +206,23 @@ export async function confirmDeadlineStatus(
     saveDeadlines(next);
 
     return response;
+  } catch {
+    return null;
+  }
+}
+
+export async function getWeeklySummary(referenceDate?: string): Promise<WeeklySummary | null> {
+  const params = new URLSearchParams();
+  if (referenceDate) {
+    params.set("referenceDate", referenceDate);
+  }
+
+  const query = params.toString();
+  const endpoint = query ? `/api/weekly-review?${query}` : "/api/weekly-review";
+
+  try {
+    const response = await jsonOrThrow<{ summary: WeeklySummary }>(endpoint);
+    return response.summary;
   } catch {
     return null;
   }

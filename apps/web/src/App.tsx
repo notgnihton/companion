@@ -9,6 +9,7 @@ import { OnboardingFlow } from "./components/OnboardingFlow";
 import { NotificationSettings } from "./components/NotificationSettings";
 import { ScheduleView } from "./components/ScheduleView";
 import { SummaryTiles } from "./components/SummaryTiles";
+import { WeeklyReviewView } from "./components/WeeklyReviewView";
 import { useDashboard } from "./hooks/useDashboard";
 import { enablePushNotifications, isPushEnabled, supportsPushNotifications } from "./lib/push";
 import { loadOnboardingProfile, saveOnboardingProfile } from "./lib/storage";
@@ -115,6 +116,7 @@ export default function App(): JSX.Element {
             journalStreak={data.summary.journalStreak}
           />
           <JournalView />
+          <WeeklyReviewView />
           <CalendarImportView onImported={() => setScheduleRevision((revision) => revision + 1)} />
           <div className="grid-two">
             <ScheduleView key={`schedule-${scheduleRevision}`} />

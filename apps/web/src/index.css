@@ -573,3 +573,45 @@ button:disabled {
   display: grid;
   gap: 4px;
 }
+
+.weekly-review-panel {
+  margin-bottom: 12px;
+}
+
+.weekly-review-window {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.weekly-review-metrics {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.weekly-review-metrics p {
+  margin: 0;
+}
+
+.weekly-review-section {
+  margin-top: 10px;
+}
+
+.weekly-review-section h3 {
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+}
+
+.weekly-review-section ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.weekly-review-empty {
+  margin: 0;
+  color: var(--muted);
+}

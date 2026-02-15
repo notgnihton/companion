@@ -60,6 +60,15 @@ export interface JournalEntry {
   syncStatus?: "queued" | "synced";
 }
 
+export interface WeeklySummary {
+  windowStart: string;
+  windowEnd: string;
+  deadlinesDue: number;
+  deadlinesCompleted: number;
+  completionRate: number;
+  journalHighlights: JournalEntry[];
+}
+
 export interface JournalSyncPayload {
   clientEntryId: string;
   content: string;
