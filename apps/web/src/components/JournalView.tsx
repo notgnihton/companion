@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { submitJournalEntry, syncQueuedJournalEntries } from "../lib/api";
+import { submitJournalEntry, syncQueuedJournalEntries, searchJournalEntries } from "../lib/api";
 import {
   addJournalEntry,
   enqueueJournalEntry,
@@ -10,15 +10,22 @@ import { JournalEntry } from "../types";
 
 export function JournalView(): JSX.Element {
   const [entries, setEntries] = useState<JournalEntry[]>(loadJournalEntries());
+  const [displayedEntries, setDisplayedEntries] = useState<JournalEntry[]>(loadJournalEntries());
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     const sync = async (): Promise<void> => {
       const synced = await syncQueuedJournalEntries(loadJournalQueue());
       if (synced > 0) {
-        setEntries(loadJournalEntries());
+        const updated = loadJournalEntries();
+        setEntries(updated);
+        applyFilters(updated);
         setSyncMessage(`Synced ${synced} queued journal entr${synced === 1 ? "y" : "ies"}.`);
       }
     };
@@ -35,6 +42,73 @@ export function JournalView(): JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    applyFilters(entries);
+  }, [searchQuery, startDate, endDate, entries]);
+
+  const applyFilters = (entriesList: JournalEntry[]): void => {
+    let filtered = [...entriesList];
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (entry) =>
+          entry.text.toLowerCase().includes(query) ||
+          entry.content.toLowerCase().includes(query)
+      );
+    }
+
+    if (startDate) {
+      const start = new Date(startDate);
+      filtered = filtered.filter((entry) => new Date(entry.timestamp) >= start);
+    }
+
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      filtered = filtered.filter((entry) => new Date(entry.timestamp) <= end);
+    }
+
+    setDisplayedEntries(filtered);
+  };
+
+  const handleSearch = async (): Promise<void> => {
+    if (!searchQuery.trim() && !startDate && !endDate) {
+      setDisplayedEntries(entries);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const results = await searchJournalEntries(
+        searchQuery.trim() || undefined,
+        startDate || undefined,
+        endDate || undefined
+      );
+
+      if (results) {
+        const withTextFields = results.map((entry) => ({
+          ...entry,
+          text: entry.content || entry.text
+        }));
+        setDisplayedEntries(withTextFields);
+      } else {
+        applyFilters(entries);
+      }
+    } catch {
+      applyFilters(entries);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleClearFilters = (): void => {
+    setSearchQuery("");
+    setStartDate("");
+    setEndDate("");
+    setDisplayedEntries(entries);
+  };
+
   const handleSubmit = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault();
     if (!text.trim()) return;
@@ -42,7 +116,9 @@ export function JournalView(): JSX.Element {
     setBusy(true);
     try {
       const entry = addJournalEntry(text.trim());
-      setEntries((prev) => [entry, ...prev]);
+      const updated = [entry, ...entries];
+      setEntries(updated);
+      applyFilters(updated);
       setText("");
 
       const submitted = await submitJournalEntry(entry.text, entry.clientEntryId ?? entry.id);
@@ -100,9 +176,56 @@ export function JournalView(): JSX.Element {
         </button>
       </form>
 
-      {entries.length > 0 ? (
+      <div className="journal-filters">
+        <input
+          type="text"
+          className="journal-search-input"
+          placeholder="Search entries..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        <div className="journal-date-filters">
+          <input
+            type="date"
+            className="journal-date-input"
+            placeholder="Start date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            aria-label="Start date"
+          />
+          <input
+            type="date"
+            className="journal-date-input"
+            placeholder="End date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            aria-label="End date"
+          />
+        </div>
+        <div className="journal-filter-actions">
+          <button
+            type="button"
+            onClick={() => void handleSearch()}
+            disabled={isSearching}
+            className="journal-search-btn"
+          >
+            {isSearching ? "Searching..." : "Search"}
+          </button>
+          {(searchQuery || startDate || endDate) && (
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              className="journal-clear-btn"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {displayedEntries.length > 0 ? (
         <ul className="journal-list">
-          {entries.map((entry) => (
+          {displayedEntries.map((entry) => (
             <li key={entry.id} className="journal-entry">
               <p className="journal-entry-text">{entry.text}</p>
               <time className="journal-entry-time">{formatDate(entry.timestamp)}</time>
@@ -110,7 +233,11 @@ export function JournalView(): JSX.Element {
           ))}
         </ul>
       ) : (
-        <p className="journal-empty">No entries yet. Start journaling to track your thoughts.</p>
+        <p className="journal-empty">
+          {searchQuery || startDate || endDate
+            ? "No entries found matching your filters."
+            : "No entries yet. Start journaling to track your thoughts."}
+        </p>
       )}
     </section>
   );

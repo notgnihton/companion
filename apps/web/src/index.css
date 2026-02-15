@@ -296,6 +296,86 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.journal-filters {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 14px;
+  background: rgba(7, 14, 20, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+}
+
+.journal-search-input {
+  width: 100%;
+  font: inherit;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 10px;
+  background: rgba(3, 7, 11, 0.45);
+  color: var(--text);
+}
+
+.journal-search-input:focus {
+  outline: none;
+  border-color: rgba(246, 195, 127, 0.6);
+}
+
+.journal-search-input::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.journal-date-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.journal-date-input {
+  font: inherit;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 10px;
+  background: rgba(3, 7, 11, 0.45);
+  color: var(--text);
+  color-scheme: dark;
+}
+
+.journal-date-input:focus {
+  outline: none;
+  border-color: rgba(246, 195, 127, 0.6);
+}
+
+.journal-filter-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.journal-search-btn,
+.journal-clear-btn {
+  flex: 1;
+}
+
+.journal-clear-btn {
+  background: rgba(255, 138, 128, 0.15);
+  border-color: rgba(255, 138, 128, 0.3);
+}
+
+.journal-clear-btn:hover {
+  border-color: var(--danger);
+}
+
+.journal-sync-status {
+  margin: 0 0 12px;
+  padding: 10px;
+  background: rgba(125, 211, 168, 0.15);
+  border: 1px solid rgba(125, 211, 168, 0.3);
+  border-radius: 8px;
+  color: var(--ok);
+  font-size: 0.85rem;
+}
+
 /* Schedule Styles */
 .schedule-panel {
   margin-bottom: 12px;

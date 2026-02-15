@@ -227,3 +227,30 @@ export async function getWeeklySummary(referenceDate?: string): Promise<WeeklySu
     return null;
   }
 }
+
+export async function searchJournalEntries(
+  query?: string,
+  startDate?: string,
+  endDate?: string
+): Promise<JournalEntry[] | null> {
+  const params = new URLSearchParams();
+  if (query) {
+    params.set("q", query);
+  }
+  if (startDate) {
+    params.set("startDate", startDate);
+  }
+  if (endDate) {
+    params.set("endDate", endDate);
+  }
+
+  const queryString = params.toString();
+  const endpoint = queryString ? `/api/journal/search?${queryString}` : "/api/journal/search";
+
+  try {
+    const response = await jsonOrThrow<{ entries: JournalEntry[] }>(endpoint);
+    return response.entries;
+  } catch {
+    return null;
+  }
+}
