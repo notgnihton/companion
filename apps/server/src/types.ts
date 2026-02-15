@@ -89,6 +89,19 @@ export interface Deadline {
   completed: boolean;
 }
 
+export interface DeadlineReminderState {
+  deadlineId: string;
+  reminderCount: number;
+  lastReminderAt: string;
+  lastConfirmationAt: string | null;
+  lastConfirmedCompleted: boolean | null;
+}
+
+export interface DeadlineStatusConfirmation {
+  deadline: Deadline;
+  reminder: DeadlineReminderState;
+}
+
 export interface PushSubscriptionRecord {
   endpoint: string;
   expirationTime: number | null;

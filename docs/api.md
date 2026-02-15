@@ -372,3 +372,37 @@ Response `200`: same shape as `GET /api/deadlines/:id`.
 ### `DELETE /api/deadlines/:id`
 
 Response `204` with empty body.
+
+### `POST /api/deadlines/:id/confirm-status`
+
+Quick status confirmation for an overdue deadline reminder.
+
+Request:
+
+```json
+{
+  "completed": true
+}
+```
+
+Response `200`:
+
+```json
+{
+  "deadline": {
+    "id": "deadline-1739570000000-3",
+    "course": "Algorithms",
+    "task": "Problem Set 4",
+    "dueDate": "2026-02-17T23:59:00.000Z",
+    "priority": "high",
+    "completed": true
+  },
+  "reminder": {
+    "deadlineId": "deadline-1739570000000-3",
+    "reminderCount": 1,
+    "lastReminderAt": "2026-02-18T01:00:00.000Z",
+    "lastConfirmationAt": "2026-02-18T01:05:00.000Z",
+    "lastConfirmedCompleted": true
+  }
+}
+```

@@ -57,8 +57,10 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'agent-task') &&
       contains(github.event.pull_request.labels.*.name, 'agent-work-done') &&
       contains(github.event.pull_request.labels.*.name, 'agent-automerge') &&
-      github.event.action == 'labeled' &&
-      github.event.label.name == 'agent-work-done'
+      (
+        (github.event.action == 'labeled' && github.event.label.name == 'agent-work-done') ||
+        github.event.action == 'synchronize'
+      )
     runs-on: ubuntu-latest
     needs: auto-rebase
     steps:

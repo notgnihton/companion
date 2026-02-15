@@ -8,6 +8,8 @@ import { AgentEvent } from "./types.js";
 
 export class OrchestratorRuntime {
   private timers: NodeJS.Timeout[] = [];
+  private readonly deadlineReminderIntervalMs = 60_000;
+  private readonly deadlineReminderCooldownMinutes = 180;
   private readonly agents: BaseAgent[] = [
     new NotesAgent(),
     new LecturePlanAgent(),
@@ -45,6 +47,12 @@ export class OrchestratorRuntime {
 
       this.timers.push(timer);
     }
+
+    this.emitOverdueDeadlineReminders();
+    const deadlineReminderTimer = setInterval(() => {
+      this.emitOverdueDeadlineReminders();
+    }, this.deadlineReminderIntervalMs);
+    this.timers.push(deadlineReminderTimer);
   }
 
   stop(): void {
@@ -80,5 +88,30 @@ export class OrchestratorRuntime {
       message: "All agents scheduled and running.",
       priority: "medium"
     });
+  }
+
+  private emitOverdueDeadlineReminders(): void {
+    const overdueDeadlines = this.store.getOverdueDeadlinesRequiringReminder(
+      new Date().toISOString(),
+      this.deadlineReminderCooldownMinutes
+    );
+
+    for (const deadline of overdueDeadlines) {
+      const reminder = this.store.recordDeadlineReminder(deadline.id);
+
+      if (!reminder) {
+        continue;
+      }
+
+      const overdueMs = Date.now() - new Date(deadline.dueDate).getTime();
+      const overdueHours = Math.max(1, Math.floor(overdueMs / (60 * 60 * 1000)));
+
+      this.store.pushNotification({
+        source: "assignment-tracker",
+        title: "Deadline status check",
+        message: `${deadline.task} for ${deadline.course} is overdue by ${overdueHours}h. Confirm status via POST /api/deadlines/${deadline.id}/confirm-status.`,
+        priority: deadline.priority === "critical" || overdueHours >= 24 ? "critical" : "high"
+      });
+    }
   }
 }

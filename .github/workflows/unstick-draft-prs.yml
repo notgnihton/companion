@@ -158,11 +158,11 @@ jobs:
 
               core.info(`  ${files.length} file(s) changed — processing`);
 
-              const labels = pr.labels.map(l => l.name);
+              let labels = pr.labels.map(l => l.name);
 
               // If the agent pushed a new head, clear stale completion marker.
               // This prevents auto-merge of work that is no longer current.
-              if (!runtime.done && labels.includes('agent-work-done')) {
+              if (pr.draft && !runtime.done && labels.includes('agent-work-done')) {
                 try {
                   await github.rest.issues.removeLabel({
                     owner,
@@ -170,6 +170,7 @@ jobs:
                     issue_number: pr.number,
                     name: 'agent-work-done',
                   });
+                  labels = labels.filter((name) => name !== 'agent-work-done');
                   core.info(`  Removed stale label: agent-work-done`);
                 } catch (err) {
                   core.warning(`  Could not remove stale agent-work-done label: ${err.message}`);
