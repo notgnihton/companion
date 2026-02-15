@@ -4,6 +4,8 @@ import {
   AgentState,
   DashboardSnapshot,
   Deadline,
+  DeadlineReminderState,
+  DeadlineStatusConfirmation,
   JournalEntry,
   JournalSyncPayload,
   LectureEvent,
@@ -37,6 +39,7 @@ export class RuntimeStore {
   private journalEntries: JournalEntry[] = [];
   private scheduleEvents: LectureEvent[] = [];
   private deadlines: Deadline[] = [];
+  private deadlineReminderState: Record<string, DeadlineReminderState> = {};
   private pushSubscriptions: PushSubscriptionRecord[] = [];
   private readonly maxPushFailures = 100;
   private pushDeliveryMetricsBase = {
@@ -329,7 +332,88 @@ export class RuntimeStore {
   deleteDeadline(id: string): boolean {
     const before = this.deadlines.length;
     this.deadlines = this.deadlines.filter((deadline) => deadline.id !== id);
+    delete this.deadlineReminderState[id];
     return this.deadlines.length < before;
+  }
+
+  getOverdueDeadlinesRequiringReminder(referenceDate: string = nowIso(), cooldownMinutes = 180): Deadline[] {
+    const nowMs = new Date(referenceDate).getTime();
+
+    if (Number.isNaN(nowMs)) {
+      return [];
+    }
+
+    const cooldownMs = Math.max(0, cooldownMinutes) * 60_000;
+
+    return this.deadlines.filter((deadline) => {
+      if (deadline.completed) {
+        return false;
+      }
+
+      const dueMs = new Date(deadline.dueDate).getTime();
+      if (Number.isNaN(dueMs) || dueMs > nowMs) {
+        return false;
+      }
+
+      const reminder = this.deadlineReminderState[deadline.id];
+      if (!reminder?.lastReminderAt) {
+        return true;
+      }
+
+      const lastReminderMs = new Date(reminder.lastReminderAt).getTime();
+      if (Number.isNaN(lastReminderMs)) {
+        return true;
+      }
+
+      return nowMs - lastReminderMs >= cooldownMs;
+    });
+  }
+
+  recordDeadlineReminder(deadlineId: string, reminderAt: string = nowIso()): DeadlineReminderState | null {
+    if (!this.getDeadlineById(deadlineId)) {
+      return null;
+    }
+
+    const existing = this.deadlineReminderState[deadlineId];
+    const next: DeadlineReminderState = {
+      deadlineId,
+      reminderCount: (existing?.reminderCount ?? 0) + 1,
+      lastReminderAt: reminderAt,
+      lastConfirmationAt: existing?.lastConfirmationAt ?? null,
+      lastConfirmedCompleted: existing?.lastConfirmedCompleted ?? null
+    };
+
+    this.deadlineReminderState[deadlineId] = next;
+    return next;
+  }
+
+  confirmDeadlineStatus(deadlineId: string, completed: boolean): DeadlineStatusConfirmation | null {
+    const deadline = this.updateDeadline(deadlineId, { completed });
+
+    if (!deadline) {
+      return null;
+    }
+
+    const confirmationAt = nowIso();
+    const existing = this.deadlineReminderState[deadlineId];
+    const reminder: DeadlineReminderState = {
+      deadlineId,
+      reminderCount: existing?.reminderCount ?? 0,
+      lastReminderAt: existing?.lastReminderAt ?? confirmationAt,
+      lastConfirmationAt: confirmationAt,
+      lastConfirmedCompleted: completed
+    };
+
+    this.deadlineReminderState[deadlineId] = reminder;
+
+    return {
+      deadline,
+      reminder
+    };
+  }
+
+  getDeadlineReminderState(deadlineId: string): DeadlineReminderState | null {
+    return this.deadlineReminderState[deadlineId] ?? null;
   }
 
   addPushSubscription(subscription: PushSubscriptionRecord): PushSubscriptionRecord {

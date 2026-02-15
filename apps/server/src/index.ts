@@ -85,6 +85,10 @@ const deadlineUpdateSchema = deadlineCreateSchema.partial().refine(
   "At least one field is required"
 );
 
+const deadlineStatusConfirmSchema = z.object({
+  completed: z.boolean()
+});
+
 const pushSubscriptionSchema = z.object({
   endpoint: z.string().url(),
   expirationTime: z.number().nullable(),
@@ -340,6 +344,22 @@ app.patch("/api/deadlines/:id", (req, res) => {
   }
 
   return res.json({ deadline });
+});
+
+app.post("/api/deadlines/:id/confirm-status", (req, res) => {
+  const parsed = deadlineStatusConfirmSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid deadline status payload", issues: parsed.error.issues });
+  }
+
+  const confirmation = store.confirmDeadlineStatus(req.params.id, parsed.data.completed);
+
+  if (!confirmation) {
+    return res.status(404).json({ error: "Deadline not found" });
+  }
+
+  return res.json(confirmation);
 });
 
 app.delete("/api/deadlines/:id", (req, res) => {
