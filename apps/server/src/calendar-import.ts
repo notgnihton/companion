@@ -15,6 +15,14 @@ export interface CalendarImportResult {
   deadlines: Deadline[];
 }
 
+export interface CalendarImportPreview {
+  importedEvents: number;
+  lecturesPlanned: number;
+  deadlinesPlanned: number;
+  lectures: Array<Omit<LectureEvent, "id">>;
+  deadlines: Array<Omit<Deadline, "id">>;
+}
+
 export function parseICS(icsContent: string): ImportedCalendarEvent[] {
   const events: ImportedCalendarEvent[] = [];
   const lines = unfoldICSLines(icsContent);
@@ -121,6 +129,55 @@ export function toDurationMinutes(startTime: string, endTime?: string): number {
   }
 
   return Math.max(15, Math.round(deltaMs / 60000));
+}
+
+export function inferCourseName(summary: string): string {
+  const parts = summary.split(":");
+
+  if (parts.length < 2) {
+    return "General";
+  }
+
+  const maybeCourse = parts[0]?.trim();
+
+  if (!maybeCourse || maybeCourse.length < 2) {
+    return "General";
+  }
+
+  return maybeCourse;
+}
+
+export function buildCalendarImportPreview(importedEvents: ImportedCalendarEvent[]): CalendarImportPreview {
+  const lectures: Array<Omit<LectureEvent, "id">> = [];
+  const deadlines: Array<Omit<Deadline, "id">> = [];
+
+  for (const event of importedEvents) {
+    if (classifyEventType(event) === "deadline") {
+      deadlines.push({
+        course: inferCourseName(event.summary),
+        task: event.summary,
+        dueDate: event.startTime,
+        priority: inferPriority(event),
+        completed: false
+      });
+      continue;
+    }
+
+    lectures.push({
+      title: event.summary,
+      startTime: event.startTime,
+      durationMinutes: toDurationMinutes(event.startTime, event.endTime),
+      workload: inferWorkload(event)
+    });
+  }
+
+  return {
+    importedEvents: importedEvents.length,
+    lecturesPlanned: lectures.length,
+    deadlinesPlanned: deadlines.length,
+    lectures,
+    deadlines
+  };
 }
 
 function unfoldICSLines(content: string): string[] {
