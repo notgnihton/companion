@@ -4,7 +4,9 @@ self.addEventListener("push", (event) => {
     message: "You have a new update.",
     url: "/companion/",
     deadlineId: null,
-    source: null
+    source: null,
+    priority: "medium",
+    notificationId: null
   };
 
   if (event.data) {
@@ -15,7 +17,9 @@ self.addEventListener("push", (event) => {
         message: typeof parsed.message === "string" ? parsed.message : payload.message,
         url: typeof parsed.url === "string" ? parsed.url : payload.url,
         deadlineId: typeof parsed.deadlineId === "string" ? parsed.deadlineId : payload.deadlineId,
-        source: typeof parsed.source === "string" ? parsed.source : payload.source
+        source: typeof parsed.source === "string" ? parsed.source : payload.source,
+        priority: typeof parsed.priority === "string" ? parsed.priority : payload.priority,
+        notificationId: typeof parsed.notificationId === "string" ? parsed.notificationId : payload.notificationId
       };
     } catch {
       const text = event.data.text();
@@ -30,7 +34,11 @@ self.addEventListener("push", (event) => {
     data: {
       url: payload.url,
       deadlineId: payload.deadlineId,
-      source: payload.source
+      source: payload.source,
+      priority: payload.priority,
+      notificationId: payload.notificationId,
+      notificationTitle: payload.title,
+      timestamp: Date.now()
     }
   };
 
@@ -49,6 +57,32 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  
+  // Track tap interaction
+  const data = event.notification.data || {};
+  if (data.notificationId && data.source && data.priority && data.notificationTitle) {
+    const timeToInteractionMs = data.timestamp ? Date.now() - data.timestamp : undefined;
+    
+    event.waitUntil(
+      fetch("/companion/api/notification-interactions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          notificationId: data.notificationId,
+          notificationTitle: data.notificationTitle,
+          notificationSource: data.source,
+          notificationPriority: data.priority,
+          interactionType: "tap",
+          timeToInteractionMs
+        })
+      }).catch(() => {
+        // Silently fail if tracking fails
+      })
+    );
+  }
+
   const targetUrl =
     event.notification.data && typeof event.notification.data.url === "string"
       ? event.notification.data.url

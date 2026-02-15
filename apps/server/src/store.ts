@@ -17,6 +17,9 @@ import {
   Notification,
   NotificationPreferences,
   NotificationPreferencesPatch,
+  NotificationInteraction,
+  NotificationInteractionMetrics,
+  NotificationInteractionType,
   PushDeliveryFailureRecord,
   PushDeliveryMetrics,
   PushSubscriptionRecord,
@@ -258,6 +261,26 @@ export class RuntimeStore {
         eventId TEXT,
         insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
       );
+
+      CREATE TABLE IF NOT EXISTS notification_interactions (
+        id TEXT PRIMARY KEY,
+        notificationId TEXT NOT NULL,
+        notificationTitle TEXT NOT NULL,
+        notificationSource TEXT NOT NULL,
+        notificationPriority TEXT NOT NULL,
+        interactionType TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        actionType TEXT,
+        timeToInteractionMs INTEGER,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_notification_interactions_timestamp 
+        ON notification_interactions(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_notification_interactions_type 
+        ON notification_interactions(interactionType);
+      CREATE INDEX IF NOT EXISTS idx_notification_interactions_source 
+        ON notification_interactions(notificationSource);
     `);
   }
 
@@ -2475,6 +2498,181 @@ export class RuntimeStore {
         )`
       )
       .run(id, count - this.maxCheckInsPerItem);
+  }
+
+  /**
+   * Record a notification interaction (tap, dismiss, or action)
+   */
+  recordNotificationInteraction(
+    notificationId: string,
+    notificationTitle: string,
+    notificationSource: AgentName,
+    notificationPriority: Notification["priority"],
+    interactionType: NotificationInteractionType,
+    actionType?: string,
+    timeToInteractionMs?: number
+  ): NotificationInteraction {
+    const interaction: NotificationInteraction = {
+      id: makeId(),
+      notificationId,
+      notificationTitle,
+      notificationSource,
+      notificationPriority,
+      interactionType,
+      timestamp: nowIso(),
+      actionType,
+      timeToInteractionMs
+    };
+
+    this.db
+      .prepare(
+        `INSERT INTO notification_interactions 
+         (id, notificationId, notificationTitle, notificationSource, notificationPriority, 
+          interactionType, timestamp, actionType, timeToInteractionMs)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        interaction.id,
+        interaction.notificationId,
+        interaction.notificationTitle,
+        interaction.notificationSource,
+        interaction.notificationPriority,
+        interaction.interactionType,
+        interaction.timestamp,
+        interaction.actionType ?? null,
+        interaction.timeToInteractionMs ?? null
+      );
+
+    // Trim old interactions
+    const maxInteractions = 1000;
+    const count = (this.db.prepare("SELECT COUNT(*) as count FROM notification_interactions").get() as {
+      count: number;
+    }).count;
+
+    if (count > maxInteractions) {
+      this.db
+        .prepare(
+          `DELETE FROM notification_interactions WHERE id IN (
+            SELECT id FROM notification_interactions ORDER BY insertOrder ASC LIMIT ?
+          )`
+        )
+        .run(count - maxInteractions);
+    }
+
+    return interaction;
+  }
+
+  /**
+   * Get notification interactions, optionally filtered by time range
+   */
+  getNotificationInteractions(options?: {
+    since?: string;
+    until?: string;
+    interactionType?: NotificationInteractionType;
+    source?: AgentName;
+    limit?: number;
+  }): NotificationInteraction[] {
+    let query = "SELECT * FROM notification_interactions WHERE 1=1";
+    const params: unknown[] = [];
+
+    if (options?.since) {
+      query += " AND timestamp >= ?";
+      params.push(options.since);
+    }
+
+    if (options?.until) {
+      query += " AND timestamp <= ?";
+      params.push(options.until);
+    }
+
+    if (options?.interactionType) {
+      query += " AND interactionType = ?";
+      params.push(options.interactionType);
+    }
+
+    if (options?.source) {
+      query += " AND notificationSource = ?";
+      params.push(options.source);
+    }
+
+    query += " ORDER BY timestamp DESC";
+
+    if (options?.limit) {
+      query += " LIMIT ?";
+      params.push(options.limit);
+    }
+
+    const rows = this.db.prepare(query).all(...params) as Array<{
+      id: string;
+      notificationId: string;
+      notificationTitle: string;
+      notificationSource: AgentName;
+      notificationPriority: string;
+      interactionType: NotificationInteractionType;
+      timestamp: string;
+      actionType: string | null;
+      timeToInteractionMs: number | null;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      notificationId: row.notificationId,
+      notificationTitle: row.notificationTitle,
+      notificationSource: row.notificationSource,
+      notificationPriority: row.notificationPriority as Notification["priority"],
+      interactionType: row.interactionType,
+      timestamp: row.timestamp,
+      actionType: row.actionType ?? undefined,
+      timeToInteractionMs: row.timeToInteractionMs ?? undefined
+    }));
+  }
+
+  /**
+   * Get aggregated metrics about notification interactions
+   */
+  getNotificationInteractionMetrics(options?: { since?: string; until?: string }): NotificationInteractionMetrics {
+    const interactions = this.getNotificationInteractions({
+      since: options?.since,
+      until: options?.until
+    });
+
+    const tapCount = interactions.filter((i) => i.interactionType === "tap").length;
+    const dismissCount = interactions.filter((i) => i.interactionType === "dismiss").length;
+    const actionCount = interactions.filter((i) => i.interactionType === "action").length;
+
+    const interactionsWithTime = interactions.filter((i) => i.timeToInteractionMs !== undefined);
+    const averageTimeToInteractionMs =
+      interactionsWithTime.length > 0
+        ? interactionsWithTime.reduce((sum, i) => sum + (i.timeToInteractionMs ?? 0), 0) / interactionsWithTime.length
+        : 0;
+
+    const interactionsByHour: Record<number, number> = {};
+    for (const interaction of interactions) {
+      const hour = new Date(interaction.timestamp).getHours();
+      interactionsByHour[hour] = (interactionsByHour[hour] || 0) + 1;
+    }
+
+    const interactionsBySource: Record<AgentName, number> = {
+      notes: 0,
+      "lecture-plan": 0,
+      "assignment-tracker": 0,
+      orchestrator: 0
+    };
+    for (const interaction of interactions) {
+      interactionsBySource[interaction.notificationSource] =
+        (interactionsBySource[interaction.notificationSource] || 0) + 1;
+    }
+
+    return {
+      totalInteractions: interactions.length,
+      tapCount,
+      dismissCount,
+      actionCount,
+      averageTimeToInteractionMs,
+      interactionsByHour,
+      interactionsBySource,
+      recentInteractions: interactions.slice(0, 20)
+    };
   }
 }
 

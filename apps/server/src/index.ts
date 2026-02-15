@@ -717,6 +717,53 @@ app.put("/api/notification-preferences", (req, res) => {
   return res.json({ preferences });
 });
 
+const notificationInteractionSchema = z.object({
+  notificationId: z.string().min(1),
+  notificationTitle: z.string().min(1),
+  notificationSource: z.enum(["notes", "lecture-plan", "assignment-tracker", "orchestrator"]),
+  notificationPriority: z.enum(["low", "medium", "high", "critical"]),
+  interactionType: z.enum(["tap", "dismiss", "action"]),
+  actionType: z.string().optional(),
+  timeToInteractionMs: z.number().int().min(0).optional()
+});
+
+app.post("/api/notification-interactions", (req, res) => {
+  const parsed = notificationInteractionSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid notification interaction payload", issues: parsed.error.issues });
+  }
+
+  const interaction = store.recordNotificationInteraction(
+    parsed.data.notificationId,
+    parsed.data.notificationTitle,
+    parsed.data.notificationSource,
+    parsed.data.notificationPriority,
+    parsed.data.interactionType,
+    parsed.data.actionType,
+    parsed.data.timeToInteractionMs
+  );
+
+  return res.status(201).json({ interaction });
+});
+
+app.get("/api/notification-interactions", (req, res) => {
+  const since = typeof req.query.since === "string" ? req.query.since : undefined;
+  const until = typeof req.query.until === "string" ? req.query.until : undefined;
+  const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : undefined;
+
+  const interactions = store.getNotificationInteractions({ since, until, limit });
+  return res.json({ interactions });
+});
+
+app.get("/api/notification-interactions/metrics", (req, res) => {
+  const since = typeof req.query.since === "string" ? req.query.since : undefined;
+  const until = typeof req.query.until === "string" ? req.query.until : undefined;
+
+  const metrics = store.getNotificationInteractionMetrics({ since, until });
+  return res.json({ metrics });
+});
+
 app.post("/api/push/subscribe", (req, res) => {
   const parsed = pushSubscriptionSchema.safeParse(req.body ?? {});
 

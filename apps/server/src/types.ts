@@ -296,3 +296,28 @@ export interface ImportResult {
   };
   warnings: string[];
 }
+
+export type NotificationInteractionType = "tap" | "dismiss" | "action";
+
+export interface NotificationInteraction {
+  id: string;
+  notificationId: string;
+  notificationTitle: string;
+  notificationSource: AgentName;
+  notificationPriority: Priority;
+  interactionType: NotificationInteractionType;
+  timestamp: string;
+  actionType?: string;
+  timeToInteractionMs?: number;
+}
+
+export interface NotificationInteractionMetrics {
+  totalInteractions: number;
+  tapCount: number;
+  dismissCount: number;
+  actionCount: number;
+  averageTimeToInteractionMs: number;
+  interactionsByHour: Record<number, number>;
+  interactionsBySource: Record<AgentName, number>;
+  recentInteractions: NotificationInteraction[];
+}
