@@ -118,6 +118,17 @@ export interface DeadlineStatusConfirmation {
   reminder: DeadlineReminderState;
 }
 
+export interface WorkBlockSuggestion {
+  deadline: Deadline;
+  suggestedStartTime: string;
+  suggestedEndTime: string;
+  durationMinutes: number;
+  gapQualityScore: number;
+  priorityScore: number;
+  overallScore: number;
+  rationale: string;
+}
+
 export type Cadence = "daily" | "weekly";
 
 export interface Habit {

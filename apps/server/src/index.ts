@@ -3,6 +3,7 @@ import express from "express";
 import { z } from "zod";
 import { buildCalendarImportPreview, parseICS } from "./calendar-import.js";
 import { config } from "./config.js";
+import { generateDeadlineSuggestions } from "./deadline-suggestions.js";
 import { OrchestratorRuntime } from "./orchestrator.js";
 import { getVapidPublicKey, hasStaticVapidKeys, sendPushNotification } from "./push.js";
 import { RuntimeStore } from "./store.js";
@@ -621,6 +622,21 @@ app.delete("/api/deadlines/:id", (req, res) => {
   }
 
   return res.status(204).send();
+});
+
+app.get("/api/deadlines/suggestions", (_req, res) => {
+  const deadlines = store.getDeadlines();
+  const scheduleEvents = store.getScheduleEvents();
+  const userContext = store.getUserContext();
+  
+  const suggestions = generateDeadlineSuggestions(
+    deadlines,
+    scheduleEvents,
+    userContext,
+    new Date()
+  );
+  
+  return res.json({ suggestions });
 });
 
 app.get("/api/habits", (_req, res) => {
