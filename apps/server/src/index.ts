@@ -1043,6 +1043,38 @@ app.delete("/api/sync/cleanup", (_req, res) => {
   return res.json({ deleted });
 });
 
+// GitHub course sync endpoints
+app.get("/api/sync/github/status", (_req, res) => {
+  const metadata = store.getGitHubSyncMetadata();
+  return res.json({ metadata });
+});
+
+app.post("/api/sync/github", async (_req, res) => {
+  try {
+    const { GitHubSyncService } = await import("./github-sync.js");
+    const githubSync = new GitHubSyncService();
+    
+    const deadlines = await githubSync.syncDeadlines();
+    const result = store.syncGitHubDeadlines(deadlines);
+    
+    store.updateGitHubSyncMetadata("success");
+    
+    return res.json({ 
+      success: true,
+      result,
+      deadlinesFound: deadlines.length
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    store.updateGitHubSyncMetadata("error", errorMessage);
+    
+    return res.status(500).json({ 
+      success: false,
+      error: errorMessage 
+    });
+  }
+});
+
 async function fetchCalendarIcs(url: string): Promise<string | null> {
   try {
     const response = await fetch(url);

@@ -147,8 +147,22 @@ describe("RuntimeStore - Schedule and Deadlines", () => {
 
       expect(deadline.id).toMatch(/^deadline-/);
       expect(store.getDeadlines()).toHaveLength(1);
-      expect(store.getDeadlines()[0]).toEqual(deadline);
-      expect(store.getDeadlineById(deadline.id)).toEqual(deadline);
+      expect(store.getDeadlines()[0]).toMatchObject({
+        id: deadline.id,
+        course: "Operating Systems",
+        task: "Lab Report",
+        dueDate: "2026-02-17T23:59:00.000Z",
+        priority: "high",
+        completed: false
+      });
+      expect(store.getDeadlineById(deadline.id)).toMatchObject({
+        id: deadline.id,
+        course: "Operating Systems",
+        task: "Lab Report",
+        dueDate: "2026-02-17T23:59:00.000Z",
+        priority: "high",
+        completed: false
+      });
     });
 
     it("updates and deletes deadlines", () => {

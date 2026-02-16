@@ -155,6 +155,8 @@ export class RuntimeStore {
         dueDate TEXT NOT NULL,
         priority TEXT NOT NULL,
         completed INTEGER NOT NULL,
+        source TEXT DEFAULT 'manual',
+        externalId TEXT,
         insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
       );
 
@@ -356,6 +358,19 @@ export class RuntimeStore {
     const hasPhotosColumn = journalColumns.some((col) => col.name === "photos");
     if (!hasPhotosColumn) {
       this.db.prepare("ALTER TABLE journal_entries ADD COLUMN photos TEXT NOT NULL DEFAULT '[]'").run();
+    }
+
+    // Add source and externalId columns to deadlines table if they don't exist
+    const deadlineColumns = this.db.prepare("PRAGMA table_info(deadlines)").all() as Array<{ name: string }>;
+    const hasSourceColumn = deadlineColumns.some((col) => col.name === "source");
+    const hasExternalIdColumn = deadlineColumns.some((col) => col.name === "externalId");
+    
+    if (!hasSourceColumn) {
+      this.db.prepare("ALTER TABLE deadlines ADD COLUMN source TEXT DEFAULT 'manual'").run();
+    }
+    
+    if (!hasExternalIdColumn) {
+      this.db.prepare("ALTER TABLE deadlines ADD COLUMN externalId TEXT").run();
     }
   }
 
@@ -1419,8 +1434,17 @@ export class RuntimeStore {
     };
 
     this.db
-      .prepare("INSERT INTO deadlines (id, course, task, dueDate, priority, completed) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(deadline.id, deadline.course, deadline.task, deadline.dueDate, deadline.priority, deadline.completed ? 1 : 0);
+      .prepare("INSERT INTO deadlines (id, course, task, dueDate, priority, completed, source, externalId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(
+        deadline.id, 
+        deadline.course, 
+        deadline.task, 
+        deadline.dueDate, 
+        deadline.priority, 
+        deadline.completed ? 1 : 0,
+        deadline.source ?? "manual",
+        deadline.externalId ?? null
+      );
 
     // Trim to maxDeadlines
     const count = (this.db.prepare("SELECT COUNT(*) as count FROM deadlines").get() as { count: number }).count;
@@ -1488,6 +1512,8 @@ export class RuntimeStore {
       dueDate: string;
       priority: string;
       completed: number;
+      source: string | null;
+      externalId: string | null;
     }>;
 
     return rows.map((row) => ({
@@ -1496,7 +1522,9 @@ export class RuntimeStore {
       task: row.task,
       dueDate: row.dueDate,
       priority: row.priority as Deadline["priority"],
-      completed: Boolean(row.completed)
+      completed: Boolean(row.completed),
+      source: row.source ?? undefined,
+      externalId: row.externalId ?? undefined
     })).map((deadline) => (applyEscalation ? this.applyDeadlinePriorityEscalation(deadline, referenceDate) : deadline));
   }
 
@@ -1509,6 +1537,8 @@ export class RuntimeStore {
           dueDate: string;
           priority: string;
           completed: number;
+          source: string | null;
+          externalId: string | null;
         }
       | undefined;
 
@@ -1522,7 +1552,9 @@ export class RuntimeStore {
       task: row.task,
       dueDate: row.dueDate,
       priority: row.priority as Deadline["priority"],
-      completed: Boolean(row.completed)
+      completed: Boolean(row.completed),
+      source: row.source ?? undefined,
+      externalId: row.externalId ?? undefined
     };
 
     return applyEscalation ? this.applyDeadlinePriorityEscalation(deadline, referenceDate) : deadline;
@@ -3401,6 +3433,108 @@ export class RuntimeStore {
   deleteSyncQueueItem(id: string): boolean {
     const result = this.db.prepare("DELETE FROM sync_queue WHERE id = ?").run(id);
     return result.changes > 0;
+  }
+
+  /**
+   * Sync deadlines from GitHub course repos
+   * Updates or creates deadlines based on external ID
+   */
+  syncGitHubDeadlines(deadlines: Array<Omit<Deadline, "id" | "completed">>): { created: number; updated: number; unchanged: number } {
+    let created = 0;
+    let updated = 0;
+    let unchanged = 0;
+
+    for (const deadline of deadlines) {
+      if (!deadline.externalId) {
+        // Skip deadlines without external ID
+        continue;
+      }
+
+      // Check if deadline already exists by externalId
+      const existing = this.db.prepare("SELECT * FROM deadlines WHERE externalId = ? AND source = ?")
+        .get(deadline.externalId, deadline.source ?? "github") as 
+        | { id: string; course: string; task: string; dueDate: string; priority: string; completed: number; source: string; externalId: string }
+        | undefined;
+
+      if (existing) {
+        // Check if we need to update
+        const needsUpdate = 
+          existing.course !== deadline.course ||
+          existing.task !== deadline.task ||
+          existing.dueDate !== deadline.dueDate ||
+          existing.priority !== deadline.priority;
+
+        if (needsUpdate) {
+          this.db.prepare(
+            "UPDATE deadlines SET course = ?, task = ?, dueDate = ?, priority = ? WHERE id = ?"
+          ).run(deadline.course, deadline.task, deadline.dueDate, deadline.priority, existing.id);
+          updated++;
+        } else {
+          unchanged++;
+        }
+      } else {
+        // Create new deadline
+        this.createDeadline({
+          ...deadline,
+          completed: false
+        });
+        created++;
+      }
+    }
+
+    return { created, updated, unchanged };
+  }
+
+  /**
+   * Get GitHub sync metadata (stored in a simple key-value table)
+   */
+  getGitHubSyncMetadata(): { lastSyncAt: string | null; lastSyncStatus: "success" | "error" | "never"; lastError?: string } {
+    // Create metadata table if it doesn't exist
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS sync_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      );
+    `);
+
+    const lastSync = this.db.prepare("SELECT value, updatedAt FROM sync_metadata WHERE key = ?").get("github_last_sync") as 
+      | { value: string; updatedAt: string }
+      | undefined;
+    
+    const lastStatus = this.db.prepare("SELECT value FROM sync_metadata WHERE key = ?").get("github_last_status") as
+      | { value: string }
+      | undefined;
+    
+    const lastError = this.db.prepare("SELECT value FROM sync_metadata WHERE key = ?").get("github_last_error") as
+      | { value: string }
+      | undefined;
+
+    return {
+      lastSyncAt: lastSync?.updatedAt ?? null,
+      lastSyncStatus: (lastStatus?.value as "success" | "error") ?? "never",
+      lastError: lastError?.value
+    };
+  }
+
+  /**
+   * Update GitHub sync metadata
+   */
+  updateGitHubSyncMetadata(status: "success" | "error", error?: string): void {
+    const now = nowIso();
+    
+    this.db.prepare("INSERT OR REPLACE INTO sync_metadata (key, value, updatedAt) VALUES (?, ?, ?)")
+      .run("github_last_sync", now, now);
+    
+    this.db.prepare("INSERT OR REPLACE INTO sync_metadata (key, value, updatedAt) VALUES (?, ?, ?)")
+      .run("github_last_status", status, now);
+    
+    if (error) {
+      this.db.prepare("INSERT OR REPLACE INTO sync_metadata (key, value, updatedAt) VALUES (?, ?, ?)")
+        .run("github_last_error", error, now);
+    } else {
+      this.db.prepare("DELETE FROM sync_metadata WHERE key = ?").run("github_last_error");
+    }
   }
 }
 

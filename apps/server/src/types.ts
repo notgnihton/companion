@@ -144,6 +144,8 @@ export interface Deadline {
   dueDate: string;
   priority: Priority;
   completed: boolean;
+  source?: string; // "manual", "github-dat520", "github-dat560", "canvas", etc.
+  externalId?: string; // External identifier for deduplication
 }
 
 export interface DeadlineReminderState {
