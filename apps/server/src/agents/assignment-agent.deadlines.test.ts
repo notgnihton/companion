@@ -2,19 +2,23 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AssignmentTrackerAgent } from "./assignment-agent.js";
 import { AgentContext } from "../agent-base.js";
 import { AgentEvent } from "../types.js";
+import { RuntimeStore } from "../store.js";
 
 describe("AssignmentTrackerAgent - Deadlines & Priorities", () => {
   let agent: AssignmentTrackerAgent;
   let mockContext: AgentContext;
   let emittedEvents: AgentEvent[];
+  let mockStore: RuntimeStore;
 
   beforeEach(() => {
     agent = new AssignmentTrackerAgent();
     emittedEvents = [];
+    mockStore = new RuntimeStore();
     mockContext = {
       emit: (event: AgentEvent) => {
         emittedEvents.push(event);
-      }
+      },
+      getStore: () => mockStore
     };
   });
 
@@ -26,7 +30,7 @@ describe("AssignmentTrackerAgent - Deadlines & Priorities", () => {
 
       await agent.run(mockContext);
 
-      const event = emittedEvents[0];
+      const event = emittedEvents.find(e => e.eventType === "assignment.deadline")!;
       expect(event.priority).toBe("critical");
 
       mockRandom.mockRestore();
@@ -40,7 +44,7 @@ describe("AssignmentTrackerAgent - Deadlines & Priorities", () => {
 
       await agent.run(mockContext);
 
-      const event = emittedEvents[0];
+      const event = emittedEvents.find(e => e.eventType === "assignment.deadline")!;
       const payload = event.payload as any;
       
       // Algorithms has 28 hours, so it should be medium
@@ -62,7 +66,7 @@ describe("AssignmentTrackerAgent - Deadlines & Priorities", () => {
 
       await agent.run(mockContext);
 
-      const event = emittedEvents[0];
+      const event = emittedEvents.find(e => e.eventType === "assignment.deadline")!;
       expect(event.priority).toBe("medium");
 
       mockRandom.mockRestore();
@@ -83,7 +87,7 @@ describe("AssignmentTrackerAgent - Deadlines & Priorities", () => {
         emittedEvents = [];
         await agent.run(mockContext);
 
-        const event = emittedEvents[0];
+        const event = emittedEvents.find(e => e.eventType === "assignment.deadline")!;
         expect(event.priority).toBe(testCase.expectedPriority);
 
         mockRandom.mockRestore();
@@ -98,7 +102,7 @@ describe("AssignmentTrackerAgent - Deadlines & Priorities", () => {
 
       await agent.run(mockContext);
 
-      const event = emittedEvents[0];
+      const event = emittedEvents.find(e => e.eventType === "assignment.deadline")!;
       const payload = event.payload as any;
 
       expect(payload.course).toBe("Algorithms");
@@ -115,7 +119,7 @@ describe("AssignmentTrackerAgent - Deadlines & Priorities", () => {
 
       await agent.run(mockContext);
 
-      const event = emittedEvents[0];
+      const event = emittedEvents.find(e => e.eventType === "assignment.deadline")!;
       const payload = event.payload as any;
 
       expect(payload.course).toBe("Databases");
@@ -132,7 +136,7 @@ describe("AssignmentTrackerAgent - Deadlines & Priorities", () => {
 
       await agent.run(mockContext);
 
-      const event = emittedEvents[0];
+      const event = emittedEvents.find(e => e.eventType === "assignment.deadline")!;
       const payload = event.payload as any;
 
       expect(payload.course).toBe("Operating Systems");

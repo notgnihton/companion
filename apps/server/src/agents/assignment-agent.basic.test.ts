@@ -2,19 +2,23 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AssignmentTrackerAgent } from "./assignment-agent.js";
 import { AgentContext } from "../agent-base.js";
 import { AgentEvent } from "../types.js";
+import { RuntimeStore } from "../store.js";
 
 describe("AssignmentTrackerAgent - Basic Functionality", () => {
   let agent: AssignmentTrackerAgent;
   let mockContext: AgentContext;
   let emittedEvents: AgentEvent[];
+  let mockStore: RuntimeStore;
 
   beforeEach(() => {
     agent = new AssignmentTrackerAgent();
     emittedEvents = [];
+    mockStore = new RuntimeStore();
     mockContext = {
       emit: (event: AgentEvent) => {
         emittedEvents.push(event);
-      }
+      },
+      getStore: () => mockStore
     };
   });
 
@@ -32,18 +36,20 @@ describe("AssignmentTrackerAgent - Basic Functionality", () => {
     it("should emit an assignment deadline event", async () => {
       await agent.run(mockContext);
 
-      expect(emittedEvents).toHaveLength(1);
-      const event = emittedEvents[0];
+      // Should emit at least 1 event (the random deadline event)
+      expect(emittedEvents.length).toBeGreaterThanOrEqual(1);
 
-      expect(event.source).toBe("assignment-tracker");
-      expect(event.eventType).toBe("assignment.deadline");
-      expect(event.id).toMatch(/^assignment-tracker-/);
+      // Find the assignment.deadline event
+      const deadlineEvent = emittedEvents.find(e => e.eventType === "assignment.deadline");
+      expect(deadlineEvent).toBeDefined();
+      expect(deadlineEvent!.source).toBe("assignment-tracker");
+      expect(deadlineEvent!.id).toMatch(/^assignment-tracker-/);
     });
 
     it("should emit event with deadline data", async () => {
       await agent.run(mockContext);
 
-      const event = emittedEvents[0];
+      const event = emittedEvents.find(e => e.eventType === "assignment.deadline")!;
       const payload = event.payload as any;
 
       expect(payload).toHaveProperty("course");
@@ -60,7 +66,7 @@ describe("AssignmentTrackerAgent - Basic Functionality", () => {
 
       await agent.run(mockContext);
 
-      const event = emittedEvents[0];
+      const event = emittedEvents.find(e => e.eventType === "assignment.deadline")!;
       const payload = event.payload as any;
 
       expect(validCourses).toContain(payload.course);
@@ -71,7 +77,7 @@ describe("AssignmentTrackerAgent - Basic Functionality", () => {
     it("should emit events with valid timestamps", async () => {
       await agent.run(mockContext);
 
-      const event = emittedEvents[0];
+      const event = emittedEvents.find(e => e.eventType === "assignment.deadline")!;
       expect(event.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
       
       const timestamp = new Date(event.timestamp);
@@ -83,9 +89,11 @@ describe("AssignmentTrackerAgent - Basic Functionality", () => {
       await agent.run(mockContext);
       await agent.run(mockContext);
 
-      expect(emittedEvents).toHaveLength(3);
-      
-      emittedEvents.forEach((event) => {
+      // Should have at least 3 deadline events
+      const deadlineEvents = emittedEvents.filter(e => e.eventType === "assignment.deadline");
+      expect(deadlineEvents.length).toBeGreaterThanOrEqual(3);
+
+      deadlineEvents.forEach((event) => {
         expect(event.source).toBe("assignment-tracker");
         expect(event.eventType).toBe("assignment.deadline");
       });
@@ -98,8 +106,11 @@ describe("AssignmentTrackerAgent - Basic Functionality", () => {
       for (let i = 0; i < iterations; i++) {
         emittedEvents = [];
         await agent.run(mockContext);
-        const payload = emittedEvents[0].payload as any;
-        courses.add(payload.course);
+        const deadlineEvent = emittedEvents.find(e => e.eventType === "assignment.deadline");
+        if (deadlineEvent) {
+          const payload = deadlineEvent.payload as any;
+          courses.add(payload.course);
+        }
       }
 
       // With 20 iterations and 3 possible courses, we should see more than 1 course

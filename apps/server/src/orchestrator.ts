@@ -25,7 +25,8 @@ export class OrchestratorRuntime {
 
         try {
           await agent.run({
-            emit: (event) => this.handleEvent(event)
+            emit: (event) => this.handleEvent(event),
+            getStore: () => this.store
           });
         } catch (error) {
           this.store.markAgentError(agent.name);

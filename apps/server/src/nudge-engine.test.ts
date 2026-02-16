@@ -92,4 +92,94 @@ describe("buildContextAwareNudge", () => {
 
     expect(buildContextAwareNudge(event, defaultContext)).toBeNull();
   });
+
+  it("generates context-aware message for overdue deadlines", () => {
+    const event: AgentEvent = {
+      id: "evt-5",
+      source: "assignment-tracker",
+      eventType: "assignment.overdue",
+      priority: "high",
+      timestamp: "2026-02-16T10:00:00.000Z",
+      payload: {
+        task: "Final Report",
+        course: "Economics",
+        completed: false
+      }
+    };
+
+    const nudge = buildContextAwareNudge(event, defaultContext);
+
+    expect(nudge).not.toBeNull();
+    expect(nudge?.title).toBe("Deadline passed");
+    expect(nudge?.source).toBe("assignment-tracker");
+    expect(nudge?.message).toMatch(/Final Report for Economics is now overdue/);
+    expect(nudge?.message).toMatch(/Can you confirm the status\?/);
+  });
+
+  it("softens overdue message when stress is high", () => {
+    const event: AgentEvent = {
+      id: "evt-6",
+      source: "assignment-tracker",
+      eventType: "assignment.overdue",
+      priority: "high",
+      timestamp: "2026-02-16T10:00:00.000Z",
+      payload: {
+        task: "Homework 10",
+        course: "Physics"
+      }
+    };
+
+    const nudge = buildContextAwareNudge(event, {
+      ...defaultContext,
+      stressLevel: "high"
+    });
+
+    expect(nudge).not.toBeNull();
+    expect(nudge?.message).toMatch(/No pressure — just confirm: done or still working\?/);
+    expect(nudge?.priority).toBe("medium");
+  });
+
+  it("adapts overdue message for focus mode", () => {
+    const event: AgentEvent = {
+      id: "evt-7",
+      source: "assignment-tracker",
+      eventType: "assignment.overdue",
+      priority: "high",
+      timestamp: "2026-02-16T10:00:00.000Z",
+      payload: {
+        task: "Code Review",
+        course: "Software Engineering"
+      }
+    };
+
+    const nudge = buildContextAwareNudge(event, {
+      ...defaultContext,
+      mode: "focus"
+    });
+
+    expect(nudge).not.toBeNull();
+    expect(nudge?.message).toMatch(/Quick check-in: is this complete or still in progress\?/);
+  });
+
+  it("softens overdue priority in recovery mode", () => {
+    const event: AgentEvent = {
+      id: "evt-8",
+      source: "assignment-tracker",
+      eventType: "assignment.overdue",
+      priority: "high",
+      timestamp: "2026-02-16T10:00:00.000Z",
+      payload: {
+        task: "Lab Work",
+        course: "Chemistry"
+      }
+    };
+
+    const nudge = buildContextAwareNudge(event, {
+      ...defaultContext,
+      mode: "recovery"
+    });
+
+    expect(nudge).not.toBeNull();
+    expect(nudge?.priority).toBe("medium");
+  });
 });

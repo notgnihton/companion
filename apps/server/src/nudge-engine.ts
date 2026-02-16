@@ -11,6 +11,13 @@ export function buildContextAwareNudge(event: AgentEvent, context: UserContext):
         message: assignmentMessage(event, context),
         priority: assignmentPriority(event.priority, context)
       };
+    case "assignment.overdue":
+      return {
+        source: "assignment-tracker",
+        title: "Deadline passed",
+        message: overdueMessage(event, context),
+        priority: overduePriority(event.priority, context)
+      };
     case "lecture.reminder":
       return {
         source: "lecture-plan",
@@ -123,4 +130,36 @@ function asText(value: unknown, key: string): string {
   }
 
   return "n/a";
+}
+
+function overdueMessage(event: AgentEvent, context: UserContext): string {
+  const task = asText(event.payload, "task");
+  const course = asText(event.payload, "course");
+  const base = `${task} for ${course} is now overdue.`;
+
+  if (context.stressLevel === "high") {
+    return `${base} No pressure — just confirm: done or still working?`;
+  }
+
+  if (context.mode === "focus") {
+    return `${base} Quick check-in: is this complete or still in progress?`;
+  }
+
+  if (context.energyLevel === "low") {
+    return `${base} When you have a moment, let me know if this is done.`;
+  }
+
+  return `${base} Can you confirm the status?`;
+}
+
+function overduePriority(base: Priority, context: UserContext): Priority {
+  if (context.stressLevel === "high") {
+    return "medium";
+  }
+
+  if (context.mode === "recovery") {
+    return "medium";
+  }
+
+  return base;
 }

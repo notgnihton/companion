@@ -1,8 +1,10 @@
 import { AgentEvent, AgentName, Priority } from "./types.js";
+import { RuntimeStore } from "./store.js";
 import { makeId, nowIso } from "./utils.js";
 
 export interface AgentContext {
   emit: (event: AgentEvent) => void;
+  getStore: () => RuntimeStore;
 }
 
 export abstract class BaseAgent {

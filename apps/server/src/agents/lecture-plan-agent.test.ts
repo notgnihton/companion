@@ -2,19 +2,23 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { LecturePlanAgent } from "./lecture-plan-agent.js";
 import { AgentContext } from "../agent-base.js";
 import { AgentEvent } from "../types.js";
+import { RuntimeStore } from "../store.js";
 
 describe("LecturePlanAgent", () => {
   let agent: LecturePlanAgent;
   let mockContext: AgentContext;
   let emittedEvents: AgentEvent[];
+  let mockStore: RuntimeStore;
 
   beforeEach(() => {
     agent = new LecturePlanAgent();
     emittedEvents = [];
+    mockStore = new RuntimeStore();
     mockContext = {
       emit: (event: AgentEvent) => {
         emittedEvents.push(event);
-      }
+      },
+      getStore: () => mockStore
     };
   });
 
@@ -123,6 +127,7 @@ describe("LecturePlanAgent", () => {
 
       for (let i = 0; i < iterations; i++) {
         emittedEvents = [];
+    mockStore = new RuntimeStore();
         await agent.run(mockContext);
         const payload = emittedEvents[0].payload as any;
         titles.add(payload.title);
@@ -139,7 +144,8 @@ describe("LecturePlanAgent", () => {
       const testContext: AgentContext = {
         emit: () => {
           emitCalled = true;
-        }
+        },
+        getStore: () => new RuntimeStore()
       };
 
       await agent.run(testContext);
