@@ -81,6 +81,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `weekly-review-digest` | backend-engineer | Generate a weekly summary API from deadlines, completed tasks, and journal highlights for Sunday evening reflection. |
 | ✅ done | `calendar-import-api` | backend-engineer | Add calendar import endpoints (ICS/URL) that normalize events into lecture/deadline records. |
 | ✅ done | `notification-delivery-retries` | backend-engineer | Add retry/backoff + failure tracking for web-push deliveries to improve iPhone notification reliability. |
+| ✅ done | `canvas-sync-api` | backend-engineer | Add Canvas LMS integration: config for `CANVAS_API_TOKEN` + `CANVAS_BASE_URL`, sync service that fetches courses, assignments (with due dates, submission status, points), modules, and announcements. Store in RuntimeStore. Sync every 30 min via cron. |
 | ⬜ todo | `persistent-runtime-storage` | backend-engineer | Replace in-memory RuntimeStore with file-backed persistence (SQLite) so schedules, deadlines, preferences, and journals survive restarts. |
 | ⬜ todo | `calendar-import-ui` | frontend-engineer | Add a Calendar Import screen in the PWA to paste ICS text or URL and review imported lecture/deadline records before applying. |
 | ⬜ todo | `deadline-status-confirmation-ui` | frontend-engineer | Add UI quick actions for overdue reminders so users can confirm completed/still-working status from notifications or deadline cards. |

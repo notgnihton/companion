@@ -1,20 +1,26 @@
 import { BaseAgent } from "./agent-base.js";
 import { AssignmentTrackerAgent } from "./agents/assignment-agent.js";
+import { CanvasSyncAgent } from "./agents/canvas-sync-agent.js";
 import { LecturePlanAgent } from "./agents/lecture-plan-agent.js";
-import { buildContextAwareNudge } from "./nudge-engine.js";
 import { NotesAgent } from "./agents/notes-agent.js";
+import { CanvasSyncService } from "./canvas-sync.js";
+import { buildContextAwareNudge } from "./nudge-engine.js";
 import { RuntimeStore } from "./store.js";
 import { AgentEvent } from "./types.js";
 
 export class OrchestratorRuntime {
   private timers: NodeJS.Timeout[] = [];
-  private readonly agents: BaseAgent[] = [
-    new NotesAgent(),
-    new LecturePlanAgent(),
-    new AssignmentTrackerAgent()
-  ];
+  private readonly agents: BaseAgent[];
 
-  constructor(private readonly store: RuntimeStore) {}
+  constructor(private readonly store: RuntimeStore) {
+    const canvasSync = new CanvasSyncService();
+    this.agents = [
+      new NotesAgent(),
+      new LecturePlanAgent(),
+      new AssignmentTrackerAgent(),
+      new CanvasSyncAgent(store, canvasSync)
+    ];
+  }
 
   start(): void {
     this.emitBootNotification();

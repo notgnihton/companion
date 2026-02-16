@@ -2,6 +2,7 @@ import {
   AgentEvent,
   AgentName,
   AgentState,
+  CanvasData,
   DashboardSnapshot,
   Deadline,
   JournalEntry,
@@ -74,6 +75,14 @@ export class RuntimeStore {
       "assignment-tracker": true,
       orchestrator: true
     }
+  };
+
+  private canvasData: CanvasData = {
+    courses: [],
+    assignments: [],
+    modules: [],
+    announcements: [],
+    lastSync: null
   };
 
   markAgentRunning(name: AgentName): void {
@@ -442,6 +451,14 @@ export class RuntimeStore {
     }
 
     return "Balanced schedule with deadlines first";
+  }
+
+  updateCanvasData(data: CanvasData): void {
+    this.canvasData = data;
+  }
+
+  getCanvasData(): CanvasData {
+    return this.canvasData;
   }
 
   private updateAgent(name: AgentName, patch: Partial<AgentState>): void {

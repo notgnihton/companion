@@ -9,7 +9,9 @@ const schema = z.object({
   AXIS_USER_NAME: z.string().default("friend"),
   AXIS_VAPID_PUBLIC_KEY: z.string().optional(),
   AXIS_VAPID_PRIVATE_KEY: z.string().optional(),
-  AXIS_VAPID_SUBJECT: z.string().default("mailto:companion@example.com")
+  AXIS_VAPID_SUBJECT: z.string().default("mailto:companion@example.com"),
+  CANVAS_API_TOKEN: z.string().optional(),
+  CANVAS_BASE_URL: z.string().url().optional()
 });
 
 export const config = schema.parse(process.env);

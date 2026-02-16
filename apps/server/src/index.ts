@@ -432,6 +432,11 @@ async function fetchCalendarIcs(url: string): Promise<string | null> {
   }
 }
 
+app.get("/api/canvas", (_req, res) => {
+  const data = store.getCanvasData();
+  return res.json(data);
+});
+
 const server = app.listen(config.PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`[axis-server] listening on http://localhost:${config.PORT}`);

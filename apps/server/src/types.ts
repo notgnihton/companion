@@ -149,3 +149,47 @@ export interface WeeklySummary {
   completionRate: number;
   journalHighlights: JournalEntry[];
 }
+
+export interface CanvasCourse {
+  id: number;
+  name: string;
+  courseCode: string;
+  enrollmentType: string;
+}
+
+export interface CanvasAssignment {
+  id: number;
+  courseId: number;
+  name: string;
+  dueAt: string | null;
+  pointsPossible: number;
+  submissionStatus: "submitted" | "unsubmitted" | "graded" | "pending_review" | null;
+  grade: string | null;
+  score: number | null;
+}
+
+export interface CanvasModule {
+  id: number;
+  courseId: number;
+  name: string;
+  position: number;
+  itemsCount: number;
+  completedCount: number;
+}
+
+export interface CanvasAnnouncement {
+  id: number;
+  courseId: number;
+  title: string;
+  message: string;
+  postedAt: string;
+  author: string;
+}
+
+export interface CanvasData {
+  courses: CanvasCourse[];
+  assignments: CanvasAssignment[];
+  modules: CanvasModule[];
+  announcements: CanvasAnnouncement[];
+  lastSync: string | null;
+}
