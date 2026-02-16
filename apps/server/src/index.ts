@@ -16,6 +16,7 @@ import { TPSyncService } from "./tp-sync-service.js";
 import { CanvasSyncService } from "./canvas-sync.js";
 import { GitHubCourseSyncService } from "./github-course-sync.js";
 import { YouTubeSyncService } from "./youtube-sync.js";
+import { SocialDigestService } from "./social-digest.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
 
 const app = express();
@@ -27,6 +28,7 @@ const tpSyncService = new TPSyncService(store);
 const canvasSyncService = new CanvasSyncService(store);
 const githubCourseSyncService = new GitHubCourseSyncService(store);
 const youtubeSyncService = new YouTubeSyncService(store);
+const socialDigestService = new SocialDigestService(getGeminiClient());
 
 runtime.start();
 syncService.start();
@@ -1187,6 +1189,41 @@ app.get("/api/gemini/status", (_req, res) => {
     lastRequestAt,
     error: isConfigured ? undefined : "Gemini API key not configured"
   });
+});
+
+app.get("/api/social/digest", async (req, res) => {
+  try {
+    const platforms = typeof req.query.platforms === "string" 
+      ? req.query.platforms.split(",") 
+      : ["youtube"];
+    const hours = typeof req.query.hours === "string" 
+      ? parseInt(req.query.hours, 10) 
+      : 24;
+    const summaryLength = typeof req.query.summaryLength === "string"
+      && ["brief", "standard", "detailed"].includes(req.query.summaryLength)
+      ? (req.query.summaryLength as "brief" | "standard" | "detailed")
+      : "standard";
+    const focusAreas = typeof req.query.focusAreas === "string"
+      ? req.query.focusAreas.split(",")
+      : ["AI news", "tech", "entertainment"];
+
+    const youtubeData = store.getYouTubeData();
+
+    const digest = await socialDigestService.generateDigest(youtubeData, {
+      platforms,
+      hours,
+      summaryLength,
+      focusAreas
+    });
+
+    return res.json(digest);
+  } catch (error) {
+    console.error("Failed to generate social digest:", error);
+    return res.status(500).json({ 
+      error: "Failed to generate social digest",
+      message: error instanceof Error ? error.message : "Unknown error"
+    });
+  }
 });
 
 async function fetchCalendarIcs(url: string): Promise<string | null> {
