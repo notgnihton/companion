@@ -13,6 +13,7 @@ import { RuntimeStore } from "./store.js";
 import { fetchTPSchedule, diffScheduleEvents } from "./tp-sync.js";
 import { TPSyncService } from "./tp-sync-service.js";
 import { CanvasSyncService } from "./canvas-sync.js";
+import { GitHubCourseSyncService } from "./github-course-sync.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
 
 const app = express();
@@ -22,12 +23,14 @@ const syncService = new BackgroundSyncService(store);
 const digestService = new EmailDigestService(store);
 const tpSyncService = new TPSyncService(store);
 const canvasSyncService = new CanvasSyncService(store);
+const githubCourseSyncService = new GitHubCourseSyncService(store);
 
 runtime.start();
 syncService.start();
 digestService.start();
 tpSyncService.start();
 canvasSyncService.start();
+githubCourseSyncService.start();
 
 app.use(cors());
 app.use(express.json());
