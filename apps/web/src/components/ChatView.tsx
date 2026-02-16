@@ -1,0 +1,174 @@
+import { useEffect, useRef, useState } from "react";
+import { sendChatMessage, getChatHistory } from "../lib/api";
+import { ChatMessage } from "../types";
+
+export function ChatView(): JSX.Element {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputText, setInputText] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Scroll to bottom when new messages arrive
+  const scrollToBottom = (): void => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Load chat history on mount
+  useEffect(() => {
+    const loadHistory = async (): Promise<void> => {
+      try {
+        const response = await getChatHistory();
+        setMessages(response.messages);
+      } catch (err) {
+        setError("Failed to load chat history");
+        console.error(err);
+      }
+    };
+
+    void loadHistory();
+  }, []);
+
+  const handleSend = async (): Promise<void> => {
+    const trimmedText = inputText.trim();
+    if (!trimmedText || isSending) return;
+
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: trimmedText,
+      timestamp: new Date().toISOString()
+    };
+
+    // Add user message immediately
+    setMessages((prev) => [...prev, userMessage]);
+    setInputText("");
+    setIsSending(true);
+    setError(null);
+
+    // Add a placeholder for streaming assistant response
+    const assistantPlaceholder: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+      streaming: true
+    };
+    setMessages((prev) => [...prev, assistantPlaceholder]);
+
+    try {
+      const response = await sendChatMessage(trimmedText);
+      // Replace placeholder with actual response
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.streaming ? { ...response, streaming: false } : msg
+        )
+      );
+    } catch (err) {
+      setError("Failed to send message. Please try again.");
+      console.error(err);
+      // Remove placeholder on error
+      setMessages((prev) => prev.filter((msg) => !msg.streaming));
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void handleSend();
+    }
+  };
+
+  const handleQuickAction = (prompt: string): void => {
+    setInputText(prompt);
+    inputRef.current?.focus();
+  };
+
+  const quickActions = [
+    { label: "What's next?", prompt: "What's next on my schedule today?" },
+    { label: "How's my week?", prompt: "How is my week looking? Any deadlines coming up?" },
+    { label: "Study tips", prompt: "Any tips for staying on top of my studies?" }
+  ];
+
+  return (
+    <div className="chat-view">
+      <div className="chat-messages">
+        {messages.length === 0 && (
+          <div className="chat-welcome">
+            <h2>👋 Hi there!</h2>
+            <p>I'm your personal AI companion. I know your schedule, deadlines, and journal history.</p>
+            <p>Ask me anything about your academic life!</p>
+          </div>
+        )}
+
+        {messages.map((msg) => (
+          <div key={msg.id} className={`chat-bubble chat-bubble-${msg.role}`}>
+            <div className="chat-bubble-content">
+              {msg.streaming && msg.content === "" ? (
+                <div className="chat-typing">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              ) : (
+                msg.content
+              )}
+            </div>
+            <div className="chat-bubble-timestamp">
+              {new Date(msg.timestamp).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit"
+              })}
+            </div>
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {messages.length === 0 && (
+        <div className="chat-quick-actions">
+          {quickActions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              className="chat-quick-action-chip"
+              onClick={() => handleQuickAction(action.prompt)}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {error && <div className="chat-error">{error}</div>}
+
+      <div className="chat-input-container">
+        <input
+          ref={inputRef}
+          type="text"
+          className="chat-input"
+          placeholder="Ask me anything..."
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          onKeyPress={handleKeyPress}
+          disabled={isSending}
+        />
+        <button
+          type="button"
+          className="chat-send-button"
+          onClick={() => void handleSend()}
+          disabled={isSending || !inputText.trim()}
+        >
+          {isSending ? "..." : "➤"}
+        </button>
+      </div>
+    </div>
+  );
+}

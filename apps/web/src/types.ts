@@ -228,3 +228,24 @@ export interface SyncQueueStatus {
   failed: number;
   recentItems: ServerSyncQueueItem[];
 }
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+  streaming?: boolean;
+}
+
+export interface SendChatMessageRequest {
+  message: string;
+}
+
+export interface SendChatMessageResponse {
+  message: ChatMessage;
+}
+
+export interface GetChatHistoryResponse {
+  messages: ChatMessage[];
+  hasMore: boolean;
+}

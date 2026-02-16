@@ -2,6 +2,7 @@ import {
   CalendarImportPayload,
   CalendarImportPreview,
   CalendarImportResult,
+  ChatMessage,
   DashboardSnapshot,
   Deadline,
   Goal,
@@ -11,6 +12,9 @@ import {
   JournalSyncPayload,
   NotificationInteraction,
   NotificationPreferences,
+  SendChatMessageRequest,
+  SendChatMessageResponse,
+  GetChatHistoryResponse,
   UserContext,
   WeeklySummary,
   SyncQueueStatus
@@ -506,4 +510,20 @@ export async function getSyncQueueStatus(): Promise<{
       isProcessing: false
     };
   }
+}
+
+export async function sendChatMessage(message: string): Promise<ChatMessage> {
+  const response = await jsonOrThrow<SendChatMessageResponse>("/api/chat", {
+    method: "POST",
+    body: JSON.stringify({ message } as SendChatMessageRequest)
+  });
+  return response.message;
+}
+
+export async function getChatHistory(limit = 50, offset = 0): Promise<GetChatHistoryResponse> {
+  const params = new URLSearchParams();
+  params.set("limit", limit.toString());
+  params.set("offset", offset.toString());
+
+  return await jsonOrThrow<GetChatHistoryResponse>(`/api/chat/history?${params.toString()}`);
 }

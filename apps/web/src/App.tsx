@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AgentStatusList } from "./components/AgentStatusList";
 import { CalendarImportView } from "./components/CalendarImportView";
+import { ChatView } from "./components/ChatView";
 import { ContextControls } from "./components/ContextControls";
 import { DeadlineList } from "./components/DeadlineList";
 import { FocusTimer } from "./components/FocusTimer";
@@ -168,6 +169,7 @@ export default function App(): JSX.Element {
       {error && <p className="error">{error}</p>}
       {data && (
         <>
+          <ChatView />
           <SummaryTiles
             todayFocus={data.summary.todayFocus}
             pendingDeadlines={data.summary.pendingDeadlines}
