@@ -5,6 +5,7 @@ import {
   checkProactiveTriggersWithCooldown,
   isTriggerOnCooldown,
   markTriggerFired,
+  clearTriggerCooldowns,
   ALL_TRIGGERS
 } from "./proactive-chat-triggers.js";
 import { Deadline, LectureEvent } from "./types.js";
@@ -14,6 +15,7 @@ describe("Proactive Chat Triggers", () => {
 
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
+    clearTriggerCooldowns(); // Clear cooldowns between tests
   });
 
   describe("Morning Briefing Trigger", () => {
@@ -25,7 +27,6 @@ describe("Proactive Chat Triggers", () => {
         title: "DAT520 Lecture",
         startTime: "2026-02-17T10:00:00",
         durationMinutes: 90,
-        location: "Room 101",
         workload: "medium"
       });
 
@@ -57,7 +58,6 @@ describe("Proactive Chat Triggers", () => {
         title: "DAT520 Lecture",
         startTime: "2026-02-17T10:00:00",
         durationMinutes: 90,
-        location: "Room 101",
         workload: "medium"
       });
       
@@ -65,7 +65,6 @@ describe("Proactive Chat Triggers", () => {
         title: "DAT560 Lecture",
         startTime: "2026-02-17T14:00:00",
         durationMinutes: 90,
-        location: "Room 102",
         workload: "medium"
       });
 
@@ -85,7 +84,6 @@ describe("Proactive Chat Triggers", () => {
         title: "DAT520 Lecture",
         startTime: "2026-02-17T10:00:00",
         durationMinutes: 90,
-        location: "Room 101",
         workload: "medium"
       });
       
@@ -93,7 +91,6 @@ describe("Proactive Chat Triggers", () => {
         title: "DAT560 Lecture",
         startTime: "2026-02-17T11:30:00",
         durationMinutes: 90,
-        location: "Room 102",
         workload: "medium"
       });
 
@@ -113,7 +110,8 @@ describe("Proactive Chat Triggers", () => {
         task: "Lab 3 submission",
         course: "DAT520",
         dueDate: deadlineTime.toISOString(),
-        priority: "high"
+        priority: "high",
+        completed: false
       });
 
       const notifications = await checkProactiveTriggers(store, now);
@@ -132,7 +130,8 @@ describe("Proactive Chat Triggers", () => {
         task: "Lab 3 submission",
         course: "DAT520",
         dueDate: deadlineTime.toISOString(),
-        priority: "high"
+        priority: "high",
+        completed: false
       });
       
       store.updateDeadline(deadline.id, { completed: true });
@@ -151,7 +150,8 @@ describe("Proactive Chat Triggers", () => {
         task: "Lab 4 submission",
         course: "DAT520",
         dueDate: deadlineTime.toISOString(),
-        priority: "high"
+        priority: "high",
+        completed: false
       });
 
       const notifications = await checkProactiveTriggers(store, now);
@@ -170,7 +170,6 @@ describe("Proactive Chat Triggers", () => {
         title: "DAT520 Distributed Systems",
         startTime: "2026-02-17T10:00:00",
         durationMinutes: 90,
-        location: "Room 101",
         workload: "medium"
       });
 
@@ -189,7 +188,6 @@ describe("Proactive Chat Triggers", () => {
         title: "DAT520 Lecture",
         startTime: "2026-02-17T10:00:00",
         durationMinutes: 90,
-        location: "Room 101",
         workload: "medium"
       });
 

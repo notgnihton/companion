@@ -387,6 +387,13 @@ export function markTriggerFired(type: ProactiveTriggerType): void {
 }
 
 /**
+ * Clear all trigger cooldowns (useful for testing)
+ */
+export function clearTriggerCooldowns(): void {
+  triggerCooldowns.clear();
+}
+
+/**
  * Check proactive triggers with cooldown logic
  */
 export async function checkProactiveTriggersWithCooldown(
