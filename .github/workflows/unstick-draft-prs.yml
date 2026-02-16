@@ -12,6 +12,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Serialize merge operations to prevent cascading stale-branch conflicts
+concurrency:
+  group: agent-merge-queue
+  cancel-in-progress: false
+
 permissions:
   contents: write
   issues: write
@@ -117,7 +122,7 @@ jobs:
               }
             }
 
-            // Try to rebase a branch onto main using git
+            // Try to rebase a branch onto main using git (clean rebase only)
             function tryRebase(branchName) {
               try {
                 execSync('git config user.name "github-actions[bot]"', { stdio: 'pipe' });
@@ -133,34 +138,14 @@ jobs:
                   return { success: true, needed: false };
                 }
 
-                // Attempt clean rebase first
+                // Attempt clean rebase only — never silently overwrite agent work
                 try {
                   execSync('git rebase origin/main', { stdio: 'pipe' });
                   execSync(`git push --force-with-lease origin ${branchName}`, { stdio: 'pipe' });
                   return { success: true, needed: true };
                 } catch {
-                  // Rebase had conflicts — try auto-resolving by accepting main's version
-                  try {
-                    const conflicting = execSync('git diff --name-only --diff-filter=U', { encoding: 'utf8' }).trim();
-                    if (conflicting) {
-                      for (const f of conflicting.split('\n').filter(Boolean)) {
-                        try {
-                          execSync(`git show origin/main:"${f}" > /dev/null 2>&1`, { stdio: 'pipe' });
-                          execSync(`git checkout origin/main -- "${f}"`, { stdio: 'pipe' });
-                          execSync(`git add "${f}"`, { stdio: 'pipe' });
-                        } catch {
-                          execSync(`git rm "${f}"`, { stdio: 'pipe' });
-                        }
-                      }
-                      execSync('GIT_EDITOR=true git rebase --continue', { stdio: 'pipe' });
-                      execSync(`git push --force-with-lease origin ${branchName}`, { stdio: 'pipe' });
-                      return { success: true, needed: true, autoResolved: true };
-                    }
-                  } catch {
-                    // Auto-resolve also failed
-                  }
-
-                  // Abort the rebase to leave git clean
+                  // Clean rebase failed — conflicts exist, don't try to auto-resolve
+                  // Agent work should not be silently overwritten with main's version
                   try { execSync('git rebase --abort', { stdio: 'pipe' }); } catch {}
                   return { success: false, needed: true };
                 }
@@ -365,7 +350,15 @@ jobs:
               const rebaseResult = tryRebase(pr.head.ref);
 
               if (rebaseResult.needed && rebaseResult.success) {
-                core.info(`  ✓ Rebase successful${rebaseResult.autoResolved ? ' (auto-resolved conflicts)' : ''}`);
+                core.info(`  ✓ Rebase successful`);
+                // Remove needs-rebase label if it was set by agent-pr-automation
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner, repo,
+                    issue_number: pr.number,
+                    name: 'needs-rebase',
+                  });
+                } catch {} // Label may not exist — ignore
                 // Wait for GitHub to process the push
                 await new Promise(r => setTimeout(r, 3000));
               } else if (rebaseResult.needed && !rebaseResult.success) {
