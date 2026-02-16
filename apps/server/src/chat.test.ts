@@ -46,7 +46,8 @@ describe("chat service", () => {
 
     const result = await sendChatMessage(store, "What should I focus on today?", {
       geminiClient: fakeGemini,
-      now
+      now,
+      useFunctionCalling: false
     });
 
     expect(generateChatResponse).toHaveBeenCalled();
@@ -93,7 +94,8 @@ describe("chat service", () => {
 
     const result = await sendChatMessage(store, "What's new?", {
       geminiClient: fakeGemini,
-      now
+      now,
+      useFunctionCalling: false
     });
 
     expect(generateChatResponse).toHaveBeenCalled();
