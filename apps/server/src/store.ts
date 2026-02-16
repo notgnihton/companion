@@ -379,6 +379,13 @@ export class RuntimeStore {
     if (!hasPhotosColumn) {
       this.db.prepare("ALTER TABLE journal_entries ADD COLUMN photos TEXT NOT NULL DEFAULT '[]'").run();
     }
+
+    // Add canvasAssignmentId column if it doesn't exist
+    const deadlineColumns = this.db.prepare("PRAGMA table_info(deadlines)").all() as Array<{ name: string }>;
+    const hasCanvasAssignmentId = deadlineColumns.some((col) => col.name === "canvasAssignmentId");
+    if (!hasCanvasAssignmentId) {
+      this.db.prepare("ALTER TABLE deadlines ADD COLUMN canvasAssignmentId INTEGER").run();
+    }
   }
 
   private loadOrInitializeDefaults(): void {
@@ -1575,8 +1582,8 @@ export class RuntimeStore {
     };
 
     this.db
-      .prepare("INSERT INTO deadlines (id, course, task, dueDate, priority, completed) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(deadline.id, deadline.course, deadline.task, deadline.dueDate, deadline.priority, deadline.completed ? 1 : 0);
+      .prepare("INSERT INTO deadlines (id, course, task, dueDate, priority, completed, canvasAssignmentId) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(deadline.id, deadline.course, deadline.task, deadline.dueDate, deadline.priority, deadline.completed ? 1 : 0, deadline.canvasAssignmentId ?? null);
 
     // Trim to maxDeadlines
     const count = (this.db.prepare("SELECT COUNT(*) as count FROM deadlines").get() as { count: number }).count;
@@ -1644,6 +1651,7 @@ export class RuntimeStore {
       dueDate: string;
       priority: string;
       completed: number;
+      canvasAssignmentId: number | null;
     }>;
 
     return rows.map((row) => ({
@@ -1652,7 +1660,8 @@ export class RuntimeStore {
       task: row.task,
       dueDate: row.dueDate,
       priority: row.priority as Deadline["priority"],
-      completed: Boolean(row.completed)
+      completed: Boolean(row.completed),
+      ...(row.canvasAssignmentId && { canvasAssignmentId: row.canvasAssignmentId })
     })).map((deadline) => (applyEscalation ? this.applyDeadlinePriorityEscalation(deadline, referenceDate) : deadline));
   }
 
@@ -1665,6 +1674,7 @@ export class RuntimeStore {
           dueDate: string;
           priority: string;
           completed: number;
+          canvasAssignmentId: number | null;
         }
       | undefined;
 
@@ -1678,7 +1688,8 @@ export class RuntimeStore {
       task: row.task,
       dueDate: row.dueDate,
       priority: row.priority as Deadline["priority"],
-      completed: Boolean(row.completed)
+      completed: Boolean(row.completed),
+      ...(row.canvasAssignmentId && { canvasAssignmentId: row.canvasAssignmentId })
     };
 
     return applyEscalation ? this.applyDeadlinePriorityEscalation(deadline, referenceDate) : deadline;
@@ -1697,8 +1708,8 @@ export class RuntimeStore {
     };
 
     this.db
-      .prepare("UPDATE deadlines SET course = ?, task = ?, dueDate = ?, priority = ?, completed = ? WHERE id = ?")
-      .run(next.course, next.task, next.dueDate, next.priority, next.completed ? 1 : 0, id);
+      .prepare("UPDATE deadlines SET course = ?, task = ?, dueDate = ?, priority = ?, completed = ?, canvasAssignmentId = ? WHERE id = ?")
+      .run(next.course, next.task, next.dueDate, next.priority, next.completed ? 1 : 0, next.canvasAssignmentId ?? null, id);
 
     return this.applyDeadlinePriorityEscalation(next, new Date());
   }
@@ -2568,13 +2579,13 @@ export class RuntimeStore {
           if (existing) {
             // Update existing deadline
             this.db
-              .prepare("UPDATE deadlines SET course = ?, task = ?, dueDate = ?, priority = ?, completed = ? WHERE id = ?")
-              .run(deadline.course, deadline.task, deadline.dueDate, deadline.priority, deadline.completed ? 1 : 0, deadline.id);
+              .prepare("UPDATE deadlines SET course = ?, task = ?, dueDate = ?, priority = ?, completed = ?, canvasAssignmentId = ? WHERE id = ?")
+              .run(deadline.course, deadline.task, deadline.dueDate, deadline.priority, deadline.completed ? 1 : 0, deadline.canvasAssignmentId ?? null, deadline.id);
           } else {
             // Insert new deadline
             this.db
-              .prepare("INSERT INTO deadlines (id, course, task, dueDate, priority, completed) VALUES (?, ?, ?, ?, ?, ?)")
-              .run(deadline.id, deadline.course, deadline.task, deadline.dueDate, deadline.priority, deadline.completed ? 1 : 0);
+              .prepare("INSERT INTO deadlines (id, course, task, dueDate, priority, completed, canvasAssignmentId) VALUES (?, ?, ?, ?, ?, ?, ?)")
+              .run(deadline.id, deadline.course, deadline.task, deadline.dueDate, deadline.priority, deadline.completed ? 1 : 0, deadline.canvasAssignmentId ?? null);
           }
 
           result.imported.deadlines += 1;

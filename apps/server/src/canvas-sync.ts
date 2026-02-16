@@ -1,6 +1,7 @@
 import { RuntimeStore } from "./store.js";
 import { CanvasClient } from "./canvas-client.js";
 import { CanvasData } from "./types.js";
+import { CanvasDeadlineBridge, CanvasDeadlineBridgeResult } from "./canvas-deadline-bridge.js";
 
 export interface CanvasSyncResult {
   success: boolean;
@@ -8,6 +9,7 @@ export interface CanvasSyncResult {
   assignmentsCount: number;
   modulesCount: number;
   announcementsCount: number;
+  deadlineBridge?: CanvasDeadlineBridgeResult;
   error?: string;
 }
 
@@ -19,11 +21,13 @@ export interface CanvasSyncOptions {
 export class CanvasSyncService {
   private readonly store: RuntimeStore;
   private readonly client: CanvasClient;
+  private readonly deadlineBridge: CanvasDeadlineBridge;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(store: RuntimeStore, client?: CanvasClient) {
     this.store = store;
     this.client = client ?? new CanvasClient();
+    this.deadlineBridge = new CanvasDeadlineBridge(store);
   }
 
   /**
@@ -75,12 +79,16 @@ export class CanvasSyncService {
 
       this.store.setCanvasData(canvasData);
 
+      // Bridge Canvas assignments to deadlines
+      const deadlineBridge = this.deadlineBridge.syncAssignments(courses, assignments);
+
       return {
         success: true,
         coursesCount: courses.length,
         assignmentsCount: assignments.length,
         modulesCount: modules.length,
-        announcementsCount: announcements.length
+        announcementsCount: announcements.length,
+        deadlineBridge
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
