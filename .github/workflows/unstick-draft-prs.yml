@@ -49,27 +49,19 @@ jobs:
 
             // Track whether we need to re-run (pending PRs that couldn't be processed)
             let needsRetry = false;
+            // Track whether any issue was freed and needs agent reassignment
+            let needsReassign = false;
 
-            // All known AI coding agent bot logins
+            // Copilot-only: all known Copilot agent bot logins
             const AGENT_BOTS = new Set([
               'Copilot',
               'copilot-swe-agent[bot]',
               'app/copilot-swe-agent',
-              'Claude',
-              'anthropic-code-agent[bot]',
-              'app/anthropic-code-agent',
-              'Codex',
-              'openai-code-agent[bot]',
-              'app/openai-code-agent',
-              'chatgpt-codex-connector[bot]'
             ]);
 
-            // Map display names to their [bot] usernames for reassignment
+            // Agent for reassignment (Copilot only)
             const AGENT_REASSIGN = [
-              { botUser: 'copilot-swe-agent[bot]',    name: 'Copilot' },
-              { botUser: 'anthropic-code-agent[bot]',  name: 'Claude' },
-              { botUser: 'openai-code-agent[bot]',     name: 'Codex' },
-              { botUser: 'chatgpt-codex-connector[bot]', name: 'Codex-Connector' },
+              { botUser: 'copilot-swe-agent[bot]', name: 'Copilot' },
             ];
 
             // Timing thresholds
@@ -79,13 +71,6 @@ jobs:
 
             // Map PR author to their expected runtime workflow name
             const RUNTIME_WORKFLOWS = {
-              'Claude': 'Running Claude',
-              'anthropic-code-agent[bot]': 'Running Claude',
-              'app/anthropic-code-agent': 'Running Claude',
-              'Codex': 'Running OpenAI Codex',
-              'openai-code-agent[bot]': 'Running OpenAI Codex',
-              'app/openai-code-agent': 'Running OpenAI Codex',
-              'chatgpt-codex-connector[bot]': 'Running OpenAI Codex',
               'Copilot': 'Running Copilot coding agent',
               'copilot-swe-agent[bot]': 'Running Copilot coding agent',
               'app/copilot-swe-agent': 'Running Copilot coding agent',
@@ -210,12 +195,11 @@ jobs:
                 for (const provider of AGENT_REASSIGN) {
                   try {
                     const body = { assignees: [provider.botUser] };
-                    if (provider.name === 'Copilot') {
-                      body.agent_assignment = {
-                        target_repo: `${owner}/${repo}`,
-                        base_branch: 'main',
-                      };
-                    }
+                    body.agent_assignment = {
+                      target_repo: `${owner}/${repo}`,
+                      base_branch: 'main',
+                      model: 'claude-sonnet-4.5',
+                    };
                     const response = await fetch(
                       `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/assignees`,
                       {
@@ -309,6 +293,7 @@ jobs:
                       body: `PR #${pr.number} closed due to unresolvable merge conflicts. Unassigned for fresh agent pickup.`,
                     });
                     core.info(`  Unassigned issue #${bestMatch.number} for reassignment`);
+                    needsReassign = true;
                   } else {
                     core.warning(`  No matching issue found — PR closed, needs manual review`);
                   }
@@ -406,6 +391,7 @@ jobs:
                       body: `PR #${pr.number} closed — agent produced no code changes. Issue is now unassigned and ready for a fresh agent dispatch.`,
                     });
                     core.info(`  Cleared assignees on issue #${issueNumber}`);
+                    needsReassign = true;
                   }
 
                   continue;
@@ -640,7 +626,8 @@ jobs:
 
             core.info(`\nDone. Processed ${agentPRs.length} agent PRs.`);
             core.setOutput('needs_retry', needsRetry ? 'true' : 'false');
-            core.info(`Needs retry: ${needsRetry}`);
+            core.setOutput('needs_reassign', needsReassign ? 'true' : 'false');
+            core.info(`Needs retry: ${needsRetry}, needs reassign: ${needsReassign}`);
 
       - name: Self-dispatch retry if work remains
         if: steps.process.outputs.needs_retry == 'true'
@@ -659,3 +646,18 @@ jobs:
               ref: 'main',
             });
             core.info('Self-dispatched unstick workflow for retry');
+
+      - name: Trigger orchestrator to reassign freed issues
+        if: steps.process.outputs.needs_reassign == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PAT_COLLAB_TWO || secrets.AGENT_PAT_COLLAB || secrets.AGENT_PAT || secrets.GITHUB_TOKEN }}
+          script: |
+            core.info('Issue(s) freed — dispatching orchestrator for reassignment...');
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'orchestrator.yml',
+              ref: 'main',
+            });
+            core.info('Orchestrator dispatched');

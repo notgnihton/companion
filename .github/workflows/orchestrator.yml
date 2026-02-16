@@ -21,7 +21,7 @@ on:
         options: ['true', 'false']
 
   schedule:
-    - cron: '0 */8 * * *'  # Every 8 hours (3x/day)
+    - cron: '0 */2 * * *'  # Every 2 hours (fallback; primary trigger is dispatch from unstick workflow)
 
   issues:
     types: [closed]
