@@ -993,3 +993,168 @@ Response `200`:
 - Failed operations are retried with exponential backoff (1s, 2s, 4s, 8s, 16s)
 - Operations are marked as failed after 5 retry attempts
 - Completed items older than 7 days can be cleaned up via the cleanup endpoint
+
+## Canvas LMS Integration
+
+Canvas LMS sync requires configuration:
+- `CANVAS_API_TOKEN`: Personal access token from Canvas Settings
+- `CANVAS_BASE_URL`: Canvas instance URL (default: `https://stavanger.instructure.com`)
+
+### `GET /api/canvas/status`
+
+Get Canvas sync status including last sync time, next scheduled sync, and counts.
+
+Response `200`:
+
+```json
+{
+  "status": {
+    "lastSyncAt": "2026-02-16T12:00:00.000Z",
+    "nextSyncAt": "2026-02-16T12:30:00.000Z",
+    "syncing": false,
+    "coursesCount": 3,
+    "assignmentsCount": 15,
+    "modulesCount": 8,
+    "announcementsCount": 5,
+    "errors": []
+  }
+}
+```
+
+### `POST /api/canvas/sync`
+
+Trigger a manual Canvas sync. Fetches courses, assignments, modules, and announcements from Canvas LMS.
+
+Response `200`:
+
+```json
+{
+  "status": {
+    "lastSyncAt": "2026-02-16T12:00:00.000Z",
+    "nextSyncAt": "2026-02-16T12:30:00.000Z",
+    "syncing": false,
+    "coursesCount": 3,
+    "assignmentsCount": 15,
+    "modulesCount": 8,
+    "announcementsCount": 5,
+    "errors": []
+  },
+  "message": "Canvas sync completed"
+}
+```
+
+Response `500` (on error):
+
+```json
+{
+  "error": "Canvas sync failed",
+  "message": "Canvas API request failed: Unauthorized"
+}
+```
+
+### `GET /api/canvas/courses`
+
+Get all synced Canvas courses.
+
+Response `200`:
+
+```json
+{
+  "courses": [
+    {
+      "id": 12345,
+      "name": "DAT520 Distributed Systems",
+      "courseCode": "DAT520",
+      "enrollmentTermId": 100,
+      "startAt": "2026-01-13T00:00:00Z",
+      "endAt": "2026-06-13T00:00:00Z",
+      "workflowState": "available"
+    }
+  ]
+}
+```
+
+### `GET /api/canvas/assignments`
+
+Get all synced Canvas assignments. Optionally filter by course.
+
+Query parameters:
+- `courseId` (optional): Filter assignments by course ID
+
+Response `200`:
+
+```json
+{
+  "assignments": [
+    {
+      "id": 67890,
+      "courseId": 12345,
+      "name": "Lab 1: MapReduce",
+      "description": "Implement MapReduce framework",
+      "dueAt": "2026-01-22T23:59:00Z",
+      "pointsPossible": 100,
+      "submissionTypes": ["online_upload"],
+      "hasSubmittedSubmissions": false,
+      "workflowState": "published",
+      "htmlUrl": "https://stavanger.instructure.com/courses/12345/assignments/67890"
+    }
+  ]
+}
+```
+
+### `GET /api/canvas/modules`
+
+Get all synced Canvas modules. Optionally filter by course.
+
+Query parameters:
+- `courseId` (optional): Filter modules by course ID
+
+Response `200`:
+
+```json
+{
+  "modules": [
+    {
+      "id": 11111,
+      "courseId": 12345,
+      "name": "Week 1: Introduction to Distributed Systems",
+      "position": 1,
+      "unlockAt": null,
+      "requireSequentialProgress": false,
+      "state": "unlocked"
+    }
+  ]
+}
+```
+
+### `GET /api/canvas/announcements`
+
+Get all synced Canvas announcements. Optionally filter by course.
+
+Query parameters:
+- `courseId` (optional): Filter announcements by course ID
+
+Response `200`:
+
+```json
+{
+  "announcements": [
+    {
+      "id": 22222,
+      "courseId": 12345,
+      "title": "Welcome to DAT520!",
+      "message": "<p>Looking forward to a great semester.</p>",
+      "postedAt": "2026-01-13T10:00:00Z",
+      "author": {
+        "displayName": "Professor Smith"
+      }
+    }
+  ]
+}
+```
+
+**Automatic Canvas Sync**:
+- Canvas sync runs automatically every 30 minutes after service start
+- Syncs courses, assignments, modules, and announcements for all active courses
+- Errors during sync are logged in the sync status
+- Manual sync can be triggered via `POST /api/canvas/sync`
