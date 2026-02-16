@@ -372,6 +372,13 @@ export class RuntimeStore {
         announcements TEXT NOT NULL DEFAULT '[]',
         lastSyncedAt TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS youtube_data (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        channels TEXT NOT NULL DEFAULT '[]',
+        videos TEXT NOT NULL DEFAULT '[]',
+        lastSyncedAt TEXT
+      );
     `);
 
     const journalColumns = this.db.prepare("PRAGMA table_info(journal_entries)").all() as Array<{ name: string }>;
@@ -3615,6 +3622,49 @@ export class RuntimeStore {
       assignments: JSON.parse(row.assignments),
       modules: JSON.parse(row.modules),
       announcements: JSON.parse(row.announcements),
+      lastSyncedAt: row.lastSyncedAt
+    };
+  }
+
+  /**
+   * Set YouTube data
+   */
+  setYouTubeData(data: import("./types.js").YouTubeData): void {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO youtube_data (
+        id, channels, videos, lastSyncedAt
+      ) VALUES (1, ?, ?, ?)
+    `);
+
+    stmt.run(
+      JSON.stringify(data.channels),
+      JSON.stringify(data.videos),
+      data.lastSyncedAt
+    );
+  }
+
+  /**
+   * Get YouTube data
+   */
+  getYouTubeData(): import("./types.js").YouTubeData | null {
+    const stmt = this.db.prepare(`
+      SELECT channels, videos, lastSyncedAt
+      FROM youtube_data WHERE id = 1
+    `);
+
+    const row = stmt.get() as {
+      channels: string;
+      videos: string;
+      lastSyncedAt: string | null;
+    } | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      channels: JSON.parse(row.channels),
+      videos: JSON.parse(row.videos),
       lastSyncedAt: row.lastSyncedAt
     };
   }

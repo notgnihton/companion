@@ -497,3 +497,27 @@ export interface CanvasData {
   announcements: CanvasAnnouncement[];
   lastSyncedAt: string | null;
 }
+
+export interface YouTubeData {
+  channels: Array<{
+    id: string;
+    title: string;
+    description: string;
+    thumbnailUrl: string;
+    subscriberCount: number;
+  }>;
+  videos: Array<{
+    id: string;
+    channelId: string;
+    channelTitle: string;
+    title: string;
+    description: string;
+    publishedAt: string;
+    thumbnailUrl: string;
+    duration: string;
+    viewCount: number;
+    likeCount: number;
+    commentCount: number;
+  }>;
+  lastSyncedAt: string | null;
+}
