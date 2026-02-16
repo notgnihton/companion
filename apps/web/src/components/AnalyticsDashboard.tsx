@@ -13,9 +13,9 @@ import {
   Filler
 } from "chart.js";
 import { Line, Bar } from "react-chartjs-2";
-import { getDeadlines, getHabits, getGoals, getWeeklySummary } from "../lib/api";
-import { loadContext, loadJournalEntries } from "../lib/storage";
-import { Deadline, Habit, UserContext } from "../types";
+import { getDeadlines, getHabits, getWeeklySummary } from "../lib/api";
+import { loadContext } from "../lib/storage";
+import { Deadline, Habit } from "../types";
 
 ChartJS.register(
   CategoryScale,
@@ -153,8 +153,8 @@ export function AnalyticsDashboard(): JSX.Element {
     ]
   };
 
-  // Energy/Stress patterns - using journal entries
-  const journalEntries = loadJournalEntries();
+  // Energy/Stress patterns - using current context values
+  // Note: Historical context tracking would be needed for true patterns over time
   const last14Days = Array.from({ length: 14 }, (_, i) => {
     const date = new Date(today);
     date.setDate(date.getDate() - (13 - i));
@@ -162,6 +162,7 @@ export function AnalyticsDashboard(): JSX.Element {
   });
 
   // Mock data for now - would need context history to be stored
+  // Currently shows baseline levels; future enhancement: track daily context changes
   const context = loadContext();
   const stressLevelMap = { low: 1, medium: 2, high: 3 };
   const energyLevelMap = { low: 1, medium: 2, high: 3 };
@@ -265,7 +266,7 @@ export function AnalyticsDashboard(): JSX.Element {
         </div>
 
         <div className="analytics-card">
-          <h3>Energy & Stress Patterns</h3>
+          <h3>Energy & Stress Patterns (Current Levels)</h3>
           <div className="chart-container">
             <Line data={energyStressData} options={{
               ...chartOptions,
