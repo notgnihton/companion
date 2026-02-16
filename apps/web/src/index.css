@@ -1924,12 +1924,47 @@ button:disabled {
   padding: 0 4px;
 }
 
+.chat-bubble-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.chat-bubble-user .chat-bubble-footer {
+  flex-direction: row-reverse;
+}
+
 .chat-bubble-user .chat-bubble-timestamp {
   text-align: right;
 }
 
 .chat-bubble-assistant .chat-bubble-timestamp {
   text-align: left;
+}
+
+.chat-save-to-journal-btn {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  color: var(--text);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.chat-save-to-journal-btn:hover:not(:disabled) {
+  background: var(--accent-surface);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.chat-save-to-journal-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .chat-typing {
