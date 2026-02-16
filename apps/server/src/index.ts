@@ -18,6 +18,7 @@ import { GitHubCourseSyncService } from "./github-course-sync.js";
 import { YouTubeSyncService } from "./youtube-sync.js";
 import { XSyncService } from "./x-sync.js";
 import { SocialMediaSummarizer } from "./social-media-summarizer.js";
+import { GmailOAuthService } from "./gmail-oauth.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
 
 const app = express();
@@ -30,6 +31,7 @@ const canvasSyncService = new CanvasSyncService(store);
 const githubCourseSyncService = new GitHubCourseSyncService(store);
 const youtubeSyncService = new YouTubeSyncService(store);
 const xSyncService = new XSyncService(store);
+const gmailOAuthService = new GmailOAuthService(store);
 
 runtime.start();
 syncService.start();
@@ -1204,6 +1206,41 @@ app.get("/api/gemini/status", (_req, res) => {
     lastRequestAt,
     error: isConfigured ? undefined : "Gemini API key not configured"
   });
+});
+
+app.get("/api/auth/gmail", (_req, res) => {
+  try {
+    const authUrl = gmailOAuthService.getAuthUrl();
+    return res.redirect(authUrl);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return res.status(500).json({ error: `Gmail OAuth error: ${errorMessage}` });
+  }
+});
+
+app.get("/api/auth/gmail/callback", async (req, res) => {
+  const code = typeof req.query.code === "string" ? req.query.code : null;
+
+  if (!code) {
+    return res.status(400).json({ error: "Missing authorization code" });
+  }
+
+  try {
+    const result = await gmailOAuthService.handleCallback(code);
+    return res.json({
+      status: "connected",
+      email: result.email,
+      connectedAt: result.connectedAt
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return res.status(500).json({ error: `Gmail authorization failed: ${errorMessage}` });
+  }
+});
+
+app.get("/api/gmail/status", (_req, res) => {
+  const connectionInfo = gmailOAuthService.getConnectionInfo();
+  return res.json(connectionInfo);
 });
 
 app.post("/api/social-media/digest", async (req, res) => {
