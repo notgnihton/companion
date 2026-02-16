@@ -61,6 +61,8 @@ self.addEventListener("push", (event) => {
     for (const action of requestedActions) {
       if (action === "complete") {
         actionButtons.push({ action: "complete", title: "Complete" });
+      } else if (action === "working") {
+        actionButtons.push({ action: "working", title: "Still working" });
       } else if (action === "snooze") {
         actionButtons.push({ action: "snooze", title: "Snooze 30m" });
       } else if (action === "view") {

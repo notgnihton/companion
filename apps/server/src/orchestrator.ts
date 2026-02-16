@@ -139,12 +139,12 @@ export class OrchestratorRuntime {
       this.store.pushNotification({
         source: "assignment-tracker",
         title: "Deadline status check",
-        message: `${deadline.task} for ${deadline.course} is overdue by ${overdueHours}h. Confirm status via POST /api/deadlines/${deadline.id}/confirm-status.`,
+        message: `${deadline.task} for ${deadline.course} is overdue by ${overdueHours}h. Mark complete or let me know you're still working.`,
         priority: deadline.priority === "critical" || overdueHours >= 24 ? "critical" : "high",
         metadata: {
           deadlineId: deadline.id
         },
-        actions: ["complete", "snooze", "view"],
+        actions: ["complete", "working", "view"],
         url: "/companion/"
       });
     }
