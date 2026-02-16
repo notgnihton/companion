@@ -123,9 +123,11 @@ Feature ID: \`${feature.id}\`
 
 Implement this feature following the project brief. Use existing patterns in the codebase.
 
+## ⛔ CRITICAL: Do NOT start MCP servers
+**NEVER start Playwright or GitHub MCP servers.** Zero exceptions. Every task in this repo is a pure coding task — read files, write code, run tests. Starting MCP servers wastes your entire token budget on initialization and you will crash before finishing any real work. Agents that start MCP servers have a 100% failure rate on this repo.
+
 ## Token budget — IMPORTANT
 Your session has a hard per-task token limit. To avoid crashing mid-task:
-- **Do NOT start Playwright or GitHub MCP servers** unless this task explicitly requires browser testing or external repo access. Most tasks don't need them.
 - **Keep changes focused**: 1-3 files changed, < 200 lines of new code.
 - **Prefer creating new files** over heavily modifying \`store.ts\`, \`index.ts\`, or \`App.tsx\`.
 - **If the task feels too large**: implement the core piece, commit, and note remaining work in the PR description.

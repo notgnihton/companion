@@ -47,11 +47,13 @@ Each agent session has a **per-task token limit** (separate from the monthly quo
    - Auto-merge (if `agent-automerge` label is present)
 
 ### MCP server usage policy
+**⛔ NEVER start Playwright or GitHub MCP servers.** Every task in this repo is a pure coding task. Starting MCP servers wastes your entire token budget on initialization and causes 100% failure rate. Just read files, write code, and run tests.
+
 | Server | When to use | When NOT to use |
 |--------|------------|----------------|
-| **Playwright** | E2E testing, visual verification | Pure code tasks, API implementation, refactoring |
-| **GitHub MCP** | Querying issues, reading external repos | Reading files already in the workspace |
-| **Neither** | Most coding tasks — just read files and write code | —— |
+| **Playwright** | NEVER — not needed for any task in this repo | ALL tasks |
+| **GitHub MCP** | NEVER — all files are in the workspace already | ALL tasks |
+| **Neither** | ✅ Correct choice for every task | — |
 
 ## Recursive collaboration loop
 The system operates in a continuous loop:
