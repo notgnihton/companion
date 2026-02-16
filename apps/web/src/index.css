@@ -2213,6 +2213,8 @@ button:disabled {
   border: 2px solid var(--accent);
   border-top-color: transparent;
   border-radius: 50%;
+}
+
 /* Pull-to-refresh */
 .pull-to-refresh-container {
   position: relative;
