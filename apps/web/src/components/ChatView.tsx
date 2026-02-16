@@ -100,9 +100,15 @@ export function ChatView(): JSX.Element {
     setSavingMessageId(message.id);
     try {
       const entry = addJournalEntry(message.content, ["chat-reflection"]);
+      // addJournalEntry guarantees id and clientEntryId are set to the same value
+      const entryId = entry.clientEntryId || entry.id;
+      if (!entryId) {
+        throw new Error("Failed to create journal entry: missing entry ID");
+      }
+
       const submitted = await submitJournalEntry(
         message.content,
-        entry.clientEntryId ?? entry.id,
+        entryId,
         ["chat-reflection"]
       );
 
@@ -110,7 +116,8 @@ export function ChatView(): JSX.Element {
         enqueueJournalEntry(entry);
       }
 
-      setSavedMessageIds((prev) => new Set(prev).add(message.id));
+      // Create a new Set to trigger React re-render
+      setSavedMessageIds((prev) => new Set([...prev, message.id]));
     } catch (err) {
       console.error("Failed to save to journal:", err);
       setError("Failed to save to journal. Please try again.");
@@ -161,7 +168,7 @@ export function ChatView(): JSX.Element {
                 <button
                   type="button"
                   className="chat-save-to-journal-btn"
-                  onClick={() => void handleSaveToJournal(msg)}
+                  onClick={() => handleSaveToJournal(msg)}
                   disabled={savedMessageIds.has(msg.id) || savingMessageId === msg.id}
                   title={savedMessageIds.has(msg.id) ? "Saved to journal" : "Save to journal"}
                 >
