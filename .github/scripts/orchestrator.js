@@ -444,17 +444,23 @@ async function main() {
   const availableSlots = Math.max(0, MAX_CONCURRENT_AGENTS - activeAgents);
   console.log(`\n🔄 Active agents: ${activeAgents}/${MAX_CONCURRENT_AGENTS} (${availableSlots} slot(s) available)`);
 
-  // Cap at both MAX_ISSUES_PER_RUN and available slots
-  const maxToCreate = Math.min(MAX_ISSUES_PER_RUN, availableSlots);
+  // PRIORITY: Reassign existing unassigned issues FIRST (they've been waiting longer)
+  const reassigned = await reassignUnassignedIssues(availableSlots);
+  const slotsAfterReassign = Math.max(0, availableSlots - reassigned);
+
+  // Then create new issues from roadmap with remaining slots
+  const maxToCreate = Math.min(MAX_ISSUES_PER_RUN, slotsAfterReassign);
   const batch = issuesToCreate.slice(0, maxToCreate);
 
   if (availableSlots === 0) {
     console.log('\n⏸  All agent slots full — skipping issue creation and assignment');
     console.log(`   ${issuesToCreate.length} issue(s) queued for next run`);
+  } else if (slotsAfterReassign === 0) {
+    console.log(`\n⏸  All slots used by reassigned issues — ${issuesToCreate.length} new issue(s) queued for next run`);
   } else if (batch.length === 0) {
     console.log('\nAll features have issues or are done. Nothing to create!');
   } else {
-    console.log(`\nCreating ${batch.length} issues (capped by ${availableSlots} available slot(s))...\n`);
+    console.log(`\nCreating ${batch.length} issues (${slotsAfterReassign} slot(s) remaining after reassignment)...\n`);
 
     let created = 0;
     for (const issue of batch) {
@@ -465,10 +471,6 @@ async function main() {
 
     console.log(`\nCreated ${created}/${batch.length} issues`);
   }
-
-  // Reassign any existing unassigned agent-task issues (respecting slots)
-  const slotsAfterCreation = Math.max(0, availableSlots - batch.length);
-  await reassignUnassignedIssues(slotsAfterCreation);
 
   console.log('\nOrchestrator will re-run on next cron schedule.');
   console.log('='.repeat(60));
