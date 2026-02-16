@@ -65,14 +65,9 @@ export class GitHubCourseSyncService {
   parseDeadlines(markdown: string, courseCode: string): Array<Omit<Deadline, "id">> {
     const deadlines: Array<Omit<Deadline, "id">> = [];
     
-    // Match markdown tables with deadline information
-    // Looking for patterns like:
-    // | Lab 1 | 2026-02-28 |
-    // | Assignment 1 | Feb 28, 2026 |
-    
     const lines = markdown.split("\n");
     let inTable = false;
-    let headerIndices: { lab?: number; deadline?: number; task?: number } = {};
+    let headerIndices: { deadline?: number; task?: number } = {};
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -80,12 +75,18 @@ export class GitHubCourseSyncService {
       // Check if this is a table row
       if (!line.startsWith("|")) {
         inTable = false;
+        headerIndices = {};
         continue;
       }
       
       const cells = line.split("|").map(cell => cell.trim()).filter(cell => cell.length > 0);
       
       if (cells.length === 0) continue;
+      
+      // Check if this is a separator row (e.g., |-----|------|)
+      if (cells.every(cell => /^-+$/.test(cell))) {
+        continue; // Skip separator rows
+      }
       
       // Check if this is a header row
       if (!inTable) {
@@ -109,9 +110,6 @@ export class GitHubCourseSyncService {
               headerIndices.task = idx;
             }
           });
-          
-          // Skip the separator row
-          i++;
           continue;
         }
       }
@@ -123,8 +121,8 @@ export class GitHubCourseSyncService {
         
         if (!taskCell || !deadlineCell) continue;
         
-        // Skip empty or header-like rows
-        if (/lab|assignment|task|deadline/i.test(taskCell) && taskCell.length < 15) continue;
+        // Skip empty or header-like rows (but allow longer lab names)
+        if (/^(lab|assignment|task|deadline)$/i.test(taskCell)) continue;
         
         // Parse the deadline date
         const parsedDate = this.parseDate(deadlineCell);
