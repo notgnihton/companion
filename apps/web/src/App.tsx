@@ -1,24 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { AgentStatusList } from "./components/AgentStatusList";
-import { CalendarImportView } from "./components/CalendarImportView";
-import { ChatView } from "./components/ChatView";
-import { ContextControls } from "./components/ContextControls";
-import { DeadlineList } from "./components/DeadlineList";
+import { ChatTab } from "./components/ChatTab";
+import { ScheduleTab } from "./components/ScheduleTab";
 import { FocusTimer } from "./components/FocusTimer";
 import { InstallPrompt } from "./components/InstallPrompt";
 import { JournalView } from "./components/JournalView";
-import { NotificationFeed } from "./components/NotificationFeed";
-import { NotificationHistoryView } from "./components/NotificationHistoryView";
 import { OnboardingFlow } from "./components/OnboardingFlow";
-import { NotificationSettings } from "./components/NotificationSettings";
-import { ScheduleView } from "./components/ScheduleView";
-import { SummaryTiles } from "./components/SummaryTiles";
-import { WeeklyReviewView } from "./components/WeeklyReviewView";
-import { AppearanceSettings } from "./components/AppearanceSettings";
+import { SettingsView } from "./components/SettingsView";
 import { HabitsGoalsView } from "./components/HabitsGoalsView";
 import { FloatingQuickCapture } from "./components/FloatingQuickCapture";
-import { CanvasSettings } from "./components/CanvasSettings";
 import { SyncStatusBadge } from "./components/SyncStatusBadge";
+import { TabBar, TabId } from "./components/TabBar";
 import { useDashboard } from "./hooks/useDashboard";
 import { enablePushNotifications, isPushEnabled, supportsPushNotifications } from "./lib/push";
 import { setupSyncListeners } from "./lib/sync";
@@ -36,6 +27,7 @@ export default function App(): JSX.Element {
   const [profile, setProfile] = useState<OnboardingProfile | null>(loadOnboardingProfile());
   const [scheduleRevision, setScheduleRevision] = useState(0);
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => loadThemePreference());
+  const [activeTab, setActiveTab] = useState<TabId>("chat");
   const seenCriticalNotifications = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -149,52 +141,56 @@ export default function App(): JSX.Element {
       <InstallPrompt />
       <FloatingQuickCapture onUpdated={refresh} />
       <SyncStatusBadge />
-      <header className="hero">
-        <div>
-          <p className="eyebrow">Companion</p>
-          <h1>Personal AI Assistant</h1>
-          <p>Welcome back, {profile.name}.</p>
-        </div>
-        <div className="hero-actions">
-          <button type="button" onClick={() => void refresh()}>
-            Refresh
-          </button>
-          <button type="button" onClick={() => void handleEnablePush()} disabled={pushButtonDisabled}>
-            {pushButtonLabel}
-          </button>
-        </div>
-      </header>
-      {pushMessage && <p>{pushMessage}</p>}
 
-      {loading && <p>Loading dashboard...</p>}
+      {/* Header shown only for push notifications setup */}
+      {pushState !== "enabled" && (
+        <header className="hero-compact">
+          <div className="hero-actions">
+            <button type="button" onClick={() => void handleEnablePush()} disabled={pushButtonDisabled}>
+              {pushButtonLabel}
+            </button>
+          </div>
+        </header>
+      )}
+      {pushMessage && <p className="push-message">{pushMessage}</p>}
+
+      {loading && <p>Loading...</p>}
       {error && <p className="error">{error}</p>}
+
       {data && (
         <>
-          <ChatView />
-          <SummaryTiles
-            todayFocus={data.summary.todayFocus}
-            pendingDeadlines={data.summary.pendingDeadlines}
-            activeAgents={data.summary.activeAgents}
-            journalStreak={data.summary.journalStreak}
-          />
-          <HabitsGoalsView />
-          <FocusTimer onUpdated={refresh} />
-          <JournalView />
-          <WeeklyReviewView />
-          <CalendarImportView onImported={() => setScheduleRevision((revision) => revision + 1)} />
-          <div className="grid-two">
-            <ScheduleView key={`schedule-${scheduleRevision}`} />
-            <DeadlineList key={`deadline-${scheduleRevision}`} />
+          {/* Tab content area */}
+          <div className="tab-content-area">
+            {activeTab === "chat" && (
+              <ChatTab
+                todayFocus={data.summary.todayFocus}
+                pendingDeadlines={data.summary.pendingDeadlines}
+                activeAgents={data.summary.activeAgents}
+                journalStreak={data.summary.journalStreak}
+              />
+            )}
+            {activeTab === "schedule" && (
+              <ScheduleTab scheduleKey={`schedule-${scheduleRevision}`} />
+            )}
+            {activeTab === "journal" && (
+              <div className="journal-tab-container">
+                <JournalView />
+                <HabitsGoalsView />
+                <FocusTimer onUpdated={refresh} />
+              </div>
+            )}
+            {activeTab === "settings" && (
+              <SettingsView
+                themePreference={themePreference}
+                onThemeChange={handleThemeChange}
+                onUpdated={refresh}
+                onCalendarImported={() => setScheduleRevision((revision) => revision + 1)}
+              />
+            )}
           </div>
-          <div className="grid-two">
-            <AgentStatusList states={data.agentStates} />
-            <NotificationFeed notifications={data.notifications} />
-          </div>
-          <NotificationHistoryView />
-          <CanvasSettings />
-          <ContextControls onUpdated={refresh} />
-          <NotificationSettings />
-          <AppearanceSettings preference={themePreference} onChange={handleThemeChange} />
+
+          {/* Bottom tab bar */}
+          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
         </>
       )}
     </main>
