@@ -328,7 +328,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | | | | |
 | | **— Phase 4: Production Deployment & Gmail —** | | |
 | ✅ done | `server-deployment` | backend-engineer | Deploy `apps/server` to a production host (Railway, Fly.io, or VPS). Add health check, environment variable config, and deployment workflow. Update frontend API base URL to point to production server. |
-| ⬜ todo | `gmail-oauth-flow` | backend-engineer | Implement Gmail OAuth 2.0 consent flow: redirect user to Google consent screen, handle callback, store refresh token securely. Config: `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` env vars. |
+| ✅ done | `gmail-oauth-flow` | backend-engineer | Implement Gmail OAuth 2.0 consent flow: redirect user to Google consent screen, handle callback, store refresh token securely. Config: `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` env vars. |
 | ⬜ todo | `gmail-sync-api` | backend-engineer | Add Gmail sync service: fetch recent unread emails (subjects, senders, snippets), generate summaries for LLM context. Sync every 30 min. Scope: `gmail.readonly`. |
 | ⬜ todo | `gmail-context-injection` | backend-engineer | Add email summary to Gemini context window: inject unread count, important sender highlights, and actionable items (Canvas notifications, deadline reminders from profs) into chat context. |
 | ⬜ todo | `gemini-function-calling` | backend-engineer | Add Gemini function calling (tools): define callable functions (`getSchedule`, `getDeadlines`, `searchJournal`, `getEmails`, `getSocialDigest`) that Gemini can invoke on demand instead of relying solely on context injection. |

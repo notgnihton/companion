@@ -385,6 +385,13 @@ export class RuntimeStore {
         tweets TEXT NOT NULL DEFAULT '[]',
         lastSyncedAt TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS gmail_data (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        refreshToken TEXT,
+        email TEXT,
+        connectedAt TEXT
+      );
     `);
 
     const journalColumns = this.db.prepare("PRAGMA table_info(journal_entries)").all() as Array<{ name: string }>;
@@ -3712,6 +3719,50 @@ export class RuntimeStore {
     return {
       tweets: JSON.parse(row.tweets),
       lastSyncedAt: row.lastSyncedAt
+    };
+  }
+
+  /**
+   * Set Gmail OAuth tokens
+   */
+  setGmailTokens(data: { refreshToken: string; email: string; connectedAt: string }): void {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO gmail_data (
+        id, refreshToken, email, connectedAt
+      ) VALUES (1, ?, ?, ?)
+    `);
+
+    stmt.run(data.refreshToken, data.email, data.connectedAt);
+  }
+
+  /**
+   * Get Gmail OAuth tokens
+   */
+  getGmailTokens(): { refreshToken: string; email: string; connectedAt: string } | null {
+    const stmt = this.db.prepare(`
+      SELECT refreshToken, email, connectedAt
+      FROM gmail_data WHERE id = 1
+    `);
+
+    const row = stmt.get() as {
+      refreshToken: string | null;
+      email: string | null;
+      connectedAt: string | null;
+    } | undefined;
+
+    if (!row || !row.refreshToken) {
+      return null;
+    }
+
+    // Log warning if required fields are missing
+    if (!row.email || !row.connectedAt) {
+      console.warn("[store] Gmail tokens missing email or connectedAt fields");
+    }
+
+    return {
+      refreshToken: row.refreshToken,
+      email: row.email || "unknown",
+      connectedAt: row.connectedAt || new Date().toISOString()
     };
   }
 }
