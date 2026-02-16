@@ -8,6 +8,8 @@ import {
   buildSystemPrompt,
   getGeminiClient
 } from "./gemini.js";
+import { Part } from "@google/generative-ai";
+import { functionDeclarations, executeFunctionCall } from "./gemini-tools.js";
 import { RuntimeStore } from "./store.js";
 import { ChatHistoryPage, ChatMessage, ChatMessageMetadata, UserContext } from "./types.js";
 
@@ -190,32 +192,92 @@ export interface SendChatResult {
 export async function sendChatMessage(
   store: RuntimeStore,
   userInput: string,
-  options: { now?: Date; geminiClient?: GeminiClient } = {}
+  options: { now?: Date; geminiClient?: GeminiClient; useFunctionCalling?: boolean } = {}
 ): Promise<SendChatResult> {
   const now = options.now ?? new Date();
   const gemini = options.geminiClient ?? getGeminiClient();
-  const { contextWindow, history } = buildChatContext(store, now);
+  const useFunctionCalling = options.useFunctionCalling ?? true;
+  
+  // Build lightweight context for function calling mode (or full context for legacy mode)
+  const { contextWindow, history } = useFunctionCalling 
+    ? { contextWindow: "", history: store.getRecentChatMessages(10) }
+    : buildChatContext(store, now);
 
-  const systemInstruction = buildSystemPrompt(config.AXIS_USER_NAME, contextWindow);
+  const systemInstruction = useFunctionCalling
+    ? `You are Companion, a personal AI assistant for ${config.AXIS_USER_NAME}, a university student at UiS (University of Stavanger). 
+
+When you need information about the user's schedule, deadlines, journal entries, emails, or social media, use the available tools to fetch that data on demand. Keep responses concise, encouraging, and conversational.`
+    : buildSystemPrompt(config.AXIS_USER_NAME, contextWindow);
+
   const messages = toGeminiMessages(history, userInput);
 
-  const response = await gemini.generateChatResponse({
+  // First request with function calling enabled
+  let response = await gemini.generateChatResponse({
     messages,
-    systemInstruction
+    systemInstruction,
+    tools: useFunctionCalling ? functionDeclarations : undefined
   });
 
   const userMessage = store.recordChatMessage("user", userInput);
+  let totalUsage = response.usageMetadata
+    ? {
+        promptTokens: response.usageMetadata.promptTokenCount,
+        responseTokens: response.usageMetadata.candidatesTokenCount,
+        totalTokens: response.usageMetadata.totalTokenCount
+      }
+    : undefined;
+
+  // Handle function calls if present
+  if (response.functionCalls && response.functionCalls.length > 0) {
+    // Execute all function calls
+    const functionResponses = response.functionCalls.map((fnCall) => {
+      const result = executeFunctionCall(fnCall.name, fnCall.args as Record<string, unknown>, store);
+      return {
+        name: result.name,
+        response: result.response
+      };
+    });
+
+    // Build function response messages
+    const functionResponseParts = functionResponses.map((fnResp) => ({
+      functionResponse: {
+        name: fnResp.name,
+        response: fnResp.response
+      }
+    })) as Part[];
+
+    // Continue conversation with function results
+    messages.push({
+      role: "model" as const,
+      parts: response.functionCalls.map((fnCall) => ({
+        functionCall: fnCall
+      })) as Part[]
+    });
+
+    messages.push({
+      role: "user" as const,
+      parts: functionResponseParts
+    });
+
+    // Get final response from Gemini with function results
+    response = await gemini.generateChatResponse({
+      messages,
+      systemInstruction,
+      tools: useFunctionCalling ? functionDeclarations : undefined
+    });
+
+    // Accumulate usage metrics
+    if (response.usageMetadata && totalUsage) {
+      totalUsage.promptTokens += response.usageMetadata.promptTokenCount;
+      totalUsage.responseTokens += response.usageMetadata.candidatesTokenCount;
+      totalUsage.totalTokens += response.usageMetadata.totalTokenCount;
+    }
+  }
 
   const assistantMetadata: ChatMessageMetadata = {
     contextWindow,
     finishReason: response.finishReason,
-    usage: response.usageMetadata
-      ? {
-          promptTokens: response.usageMetadata.promptTokenCount,
-          responseTokens: response.usageMetadata.candidatesTokenCount,
-          totalTokens: response.usageMetadata.totalTokenCount
-        }
-      : undefined
+    usage: totalUsage
   };
 
   const assistantMessage = store.recordChatMessage("assistant", response.text, assistantMetadata);

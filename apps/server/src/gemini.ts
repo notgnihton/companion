@@ -1,15 +1,16 @@
-import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from "@google/generative-ai";
+import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult, FunctionDeclaration, FunctionCall, Part } from "@google/generative-ai";
 import { config } from "./config.js";
 import { Deadline, JournalEntry, LectureEvent, UserContext } from "./types.js";
 
 export interface GeminiMessage {
   role: "user" | "model";
-  parts: Array<{ text: string }>;
+  parts: Part[];
 }
 
 export interface GeminiChatRequest {
   messages: GeminiMessage[];
   systemInstruction?: string;
+  tools?: FunctionDeclaration[];
 }
 
 export interface GeminiChatResponse {
@@ -20,6 +21,7 @@ export interface GeminiChatResponse {
     candidatesTokenCount: number;
     totalTokenCount: number;
   };
+  functionCalls?: FunctionCall[];
 }
 
 export interface ContextWindow {
@@ -97,6 +99,7 @@ export class GeminiClient {
 
     if (key) {
       this.client = new GoogleGenerativeAI(key);
+      // Model instance will be created per-request to support tools configuration
       this.model = this.client.getGenerativeModel({ model: this.modelName });
     }
 
@@ -115,7 +118,15 @@ export class GeminiClient {
     await this.rateLimiter.waitForSlot();
 
     try {
-      const chat = this.model!.startChat({
+      // Create model with or without tools
+      const model = request.tools && request.tools.length > 0
+        ? this.client!.getGenerativeModel({ 
+            model: this.modelName,
+            tools: [{ functionDeclarations: request.tools }]
+          })
+        : this.model!;
+
+      const chat = model.startChat({
         history: request.messages.slice(0, -1),
         systemInstruction: request.systemInstruction
       });
@@ -127,7 +138,18 @@ export class GeminiClient {
 
       const result: GenerateContentResult = await chat.sendMessage(lastMessage.parts[0]?.text ?? "");
       const response = result.response;
-      const text = response.text();
+      
+      // Extract function calls if present
+      const functionCalls = response.functionCalls();
+
+      // Get text (may be empty if there are function calls)
+      let text = "";
+      try {
+        text = response.text();
+      } catch {
+        // Response may not have text if it only contains function calls
+        text = "";
+      }
 
       return {
         text,
@@ -138,7 +160,8 @@ export class GeminiClient {
               candidatesTokenCount: response.usageMetadata.candidatesTokenCount,
               totalTokenCount: response.usageMetadata.totalTokenCount
             }
-          : undefined
+          : undefined,
+        functionCalls: functionCalls && functionCalls.length > 0 ? functionCalls : undefined
       };
     } catch (error) {
       if (error instanceof Error) {
