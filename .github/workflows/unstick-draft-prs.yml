@@ -786,9 +786,18 @@ jobs:
             core.info(`\nDone. Processed ${agentPRs.length} agent PRs.`);
 
             // ─── Auto-assign next unassigned issue if a slot freed up ───
-            if (needsAssignment) {
+            // On manual dispatch or push-to-main, always try to assign (kickstart)
+            const shouldAssign = needsAssignment
+              || context.eventName === 'workflow_dispatch'
+              || context.eventName === 'push';
+            if (shouldAssign) {
               core.info('\n--- Attempting to assign next unassigned agent-task issue ---');
               await assignNextUnassignedIssue();
+            }
+
+            // Run roadmap scanner on manual dispatch too (create missing issues)
+            if (context.eventName === 'workflow_dispatch') {
+              needsRoadmapScan = true;
             }
 
             core.setOutput('needs_retry', needsRetry ? 'true' : 'false');
