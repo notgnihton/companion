@@ -6,12 +6,14 @@ import { NotesAgent } from "./agents/notes-agent.js";
 import { RuntimeStore } from "./store.js";
 import { calculateOptimalNotificationTime } from "./smart-timing.js";
 import { AgentEvent } from "./types.js";
+import { checkProactiveTriggersWithCooldown } from "./proactive-chat-triggers.js";
 
 export class OrchestratorRuntime {
   private timers: NodeJS.Timeout[] = [];
   private readonly deadlineReminderIntervalMs = 60_000;
   private readonly deadlineReminderCooldownMinutes = 180;
   private readonly scheduledNotificationCheckIntervalMs = 30_000;
+  private readonly proactiveTriggerCheckIntervalMs = 5 * 60 * 1000; // Check every 5 minutes
   private readonly agents: BaseAgent[] = [
     new NotesAgent(),
     new LecturePlanAgent(),
@@ -62,6 +64,13 @@ export class OrchestratorRuntime {
       this.processScheduledNotifications();
     }, this.scheduledNotificationCheckIntervalMs);
     this.timers.push(scheduledNotifTimer);
+
+    // Check proactive chat triggers
+    this.checkProactiveTriggers();
+    const proactiveTriggerTimer = setInterval(() => {
+      this.checkProactiveTriggers();
+    }, this.proactiveTriggerCheckIntervalMs);
+    this.timers.push(proactiveTriggerTimer);
   }
 
   stop(): void {
@@ -159,9 +168,27 @@ export class OrchestratorRuntime {
     for (const scheduled of dueNotifications) {
       // Push the notification immediately
       this.store.pushNotification(scheduled.notification);
-      
+
       // Remove from scheduled queue
       this.store.removeScheduledNotification(scheduled.id);
     }
+  }
+
+  /**
+   * Check proactive chat triggers and queue notifications
+   */
+  private checkProactiveTriggers(): void {
+    void (async () => {
+      try {
+        const notifications = await checkProactiveTriggersWithCooldown(this.store);
+
+        for (const notification of notifications) {
+          this.store.pushNotification(notification);
+        }
+      } catch (error) {
+        // Log error but don't crash the orchestrator
+        console.error("Failed to check proactive triggers:", error);
+      }
+    })();
   }
 }
