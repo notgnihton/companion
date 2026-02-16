@@ -3,11 +3,25 @@ import { confirmDeadlineStatus, getDeadlines } from "../lib/api";
 import { hapticSuccess } from "../lib/haptics";
 import { Deadline } from "../types";
 import { loadDeadlines, saveDeadlines } from "../lib/storage";
+import { usePullToRefresh } from "../hooks/usePullToRefresh";
+import { PullToRefreshIndicator } from "./PullToRefreshIndicator";
 
 export function DeadlineList(): JSX.Element {
   const [deadlines, setDeadlines] = useState<Deadline[]>(() => loadDeadlines());
   const [syncMessage, setSyncMessage] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const handleRefresh = async (): Promise<void> => {
+    const next = await getDeadlines();
+    setDeadlines(next);
+    setSyncMessage("Deadlines refreshed");
+    setTimeout(() => setSyncMessage(""), 2000);
+  };
+
+  const { containerRef, isPulling, pullDistance, isRefreshing } = usePullToRefresh<HTMLDivElement>({
+    onRefresh: handleRefresh,
+    threshold: 80
+  });
 
   useEffect(() => {
     let disposed = false;
@@ -110,59 +124,71 @@ export function DeadlineList(): JSX.Element {
       </header>
       {syncMessage && <p className="deadline-sync-status">{syncMessage}</p>}
 
-      {sortedDeadlines.length > 0 ? (
-        <ul className="deadline-list">
-          {sortedDeadlines.map((deadline) => (
-            <li
-              key={deadline.id}
-              className={`deadline-item ${getUrgencyClass(deadline.dueDate)} ${deadline.completed ? "deadline-completed" : ""}`}
-            >
-              <div className="deadline-checkbox-wrapper">
-                <input
-                  type="checkbox"
-                  checked={deadline.completed}
-                  onChange={() => void setCompletion(deadline.id, !deadline.completed)}
-                  className="deadline-checkbox"
-                  disabled={updatingId === deadline.id}
-                />
-                <div className="deadline-content">
-                  <div className="deadline-header">
-                    <h3 className="deadline-task">{deadline.task}</h3>
-                    <span className="deadline-time-remaining">
-                      {formatTimeRemaining(deadline.dueDate)}
-                    </span>
-                  </div>
-                  <div className="deadline-details">
-                    <span className="deadline-course">{deadline.course}</span>
-                    <span className="deadline-separator">•</span>
-                    <span className="deadline-due">{formatDueDate(deadline.dueDate)}</span>
+      <div 
+        ref={containerRef}
+        className="pull-to-refresh-container"
+      >
+        {(isPulling || isRefreshing) && (
+          <PullToRefreshIndicator
+            pullDistance={pullDistance}
+            threshold={80}
+            isRefreshing={isRefreshing}
+          />
+        )}
+        {sortedDeadlines.length > 0 ? (
+          <ul className="deadline-list">
+            {sortedDeadlines.map((deadline) => (
+              <li
+                key={deadline.id}
+                className={`deadline-item ${getUrgencyClass(deadline.dueDate)} ${deadline.completed ? "deadline-completed" : ""}`}
+              >
+                <div className="deadline-checkbox-wrapper">
+                  <input
+                    type="checkbox"
+                    checked={deadline.completed}
+                    onChange={() => void setCompletion(deadline.id, !deadline.completed)}
+                    className="deadline-checkbox"
+                    disabled={updatingId === deadline.id}
+                  />
+                  <div className="deadline-content">
+                    <div className="deadline-header">
+                      <h3 className="deadline-task">{deadline.task}</h3>
+                      <span className="deadline-time-remaining">
+                        {formatTimeRemaining(deadline.dueDate)}
+                      </span>
+                    </div>
+                    <div className="deadline-details">
+                      <span className="deadline-course">{deadline.course}</span>
+                      <span className="deadline-separator">•</span>
+                      <span className="deadline-due">{formatDueDate(deadline.dueDate)}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              {!deadline.completed && getUrgencyClass(deadline.dueDate) === "deadline-overdue" && (
-                <div className="deadline-actions">
-                  <button
-                    type="button"
-                    onClick={() => void setCompletion(deadline.id, true)}
-                    disabled={updatingId === deadline.id}
-                  >
-                    Mark complete
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void setCompletion(deadline.id, false)}
-                    disabled={updatingId === deadline.id}
-                  >
-                    Still working
-                  </button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="deadline-empty">No deadlines tracked. Add assignments to stay on top of your work.</p>
-      )}
+                {!deadline.completed && getUrgencyClass(deadline.dueDate) === "deadline-overdue" && (
+                  <div className="deadline-actions">
+                    <button
+                      type="button"
+                      onClick={() => void setCompletion(deadline.id, true)}
+                      disabled={updatingId === deadline.id}
+                    >
+                      Mark complete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void setCompletion(deadline.id, false)}
+                      disabled={updatingId === deadline.id}
+                    >
+                      Still working
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="deadline-empty">No deadlines tracked. Add assignments to stay on top of your work.</p>
+        )}
+      </div>
     </section>
   );
 }

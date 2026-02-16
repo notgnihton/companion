@@ -1,9 +1,23 @@
 import { useState } from "react";
 import { LectureEvent } from "../types";
 import { loadSchedule } from "../lib/storage";
+import { usePullToRefresh } from "../hooks/usePullToRefresh";
+import { PullToRefreshIndicator } from "./PullToRefreshIndicator";
 
 export function ScheduleView(): JSX.Element {
-  const [schedule] = useState<LectureEvent[]>(() => loadSchedule());
+  const [schedule, setSchedule] = useState<LectureEvent[]>(() => loadSchedule());
+
+  const handleRefresh = async (): Promise<void> => {
+    // Reload schedule from storage
+    const refreshedSchedule = loadSchedule();
+    setSchedule(refreshedSchedule);
+    await new Promise(resolve => setTimeout(resolve, 500)); // Smooth visual feedback
+  };
+
+  const { containerRef, isPulling, pullDistance, isRefreshing } = usePullToRefresh<HTMLDivElement>({
+    onRefresh: handleRefresh,
+    threshold: 80
+  });
 
   const formatTime = (isoString: string): string => {
     const date = new Date(isoString);
@@ -61,43 +75,55 @@ export function ScheduleView(): JSX.Element {
         <span className="schedule-count">{schedule.length} classes</span>
       </header>
 
-      {sortedSchedule.length > 0 ? (
-        <ul className="schedule-list">
-          {sortedSchedule.map((lecture) => {
-            const minutesUntil = getMinutesUntil(lecture.startTime);
-            const isUpcoming = minutesUntil >= 0 && minutesUntil < 120;
-            
-            return (
-              <li 
-                key={lecture.id} 
-                className={`schedule-item ${isUpcoming ? "schedule-item-upcoming" : ""}`}
-              >
-                <div className="schedule-item-header">
-                  <h3 className="schedule-item-title">{lecture.title}</h3>
-                  <span className={`workload workload-${lecture.workload}`}>
-                    {lecture.workload}
-                  </span>
-                </div>
-                <div className="schedule-item-details">
-                  <span className="schedule-date">{formatDate(lecture.startTime)}</span>
-                  <span className="schedule-separator">•</span>
-                  <span className="schedule-time">{formatTime(lecture.startTime)}</span>
-                  <span className="schedule-separator">•</span>
-                  <span className="schedule-duration">{lecture.durationMinutes}min</span>
-                  {isUpcoming && (
-                    <>
-                      <span className="schedule-separator">•</span>
-                      <span className="schedule-until">{getTimeUntilLabel(lecture.startTime)}</span>
-                    </>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p className="schedule-empty">No classes scheduled. Add your lecture plan to get started.</p>
-      )}
+      <div 
+        ref={containerRef}
+        className="pull-to-refresh-container"
+      >
+        {(isPulling || isRefreshing) && (
+          <PullToRefreshIndicator
+            pullDistance={pullDistance}
+            threshold={80}
+            isRefreshing={isRefreshing}
+          />
+        )}
+        {sortedSchedule.length > 0 ? (
+          <ul className="schedule-list">
+            {sortedSchedule.map((lecture) => {
+              const minutesUntil = getMinutesUntil(lecture.startTime);
+              const isUpcoming = minutesUntil >= 0 && minutesUntil < 120;
+              
+              return (
+                <li 
+                  key={lecture.id} 
+                  className={`schedule-item ${isUpcoming ? "schedule-item-upcoming" : ""}`}
+                >
+                  <div className="schedule-item-header">
+                    <h3 className="schedule-item-title">{lecture.title}</h3>
+                    <span className={`workload workload-${lecture.workload}`}>
+                      {lecture.workload}
+                    </span>
+                  </div>
+                  <div className="schedule-item-details">
+                    <span className="schedule-date">{formatDate(lecture.startTime)}</span>
+                    <span className="schedule-separator">•</span>
+                    <span className="schedule-time">{formatTime(lecture.startTime)}</span>
+                    <span className="schedule-separator">•</span>
+                    <span className="schedule-duration">{lecture.durationMinutes}min</span>
+                    {isUpcoming && (
+                      <>
+                        <span className="schedule-separator">•</span>
+                        <span className="schedule-until">{getTimeUntilLabel(lecture.startTime)}</span>
+                      </>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="schedule-empty">No classes scheduled. Add your lecture plan to get started.</p>
+        )}
+      </div>
     </section>
   );
 }

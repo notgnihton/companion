@@ -9,6 +9,8 @@ import {
 import { JournalEntry, JournalPhoto } from "../types";
 import { TagInput } from "./TagInput";
 import { useSharedContent } from "../hooks/useSharedContent";
+import { usePullToRefresh } from "../hooks/usePullToRefresh";
+import { PullToRefreshIndicator } from "./PullToRefreshIndicator";
 
 export function JournalView(): JSX.Element {
   const normalizeEntry = (entry: JournalEntry): JournalEntry => ({
@@ -35,6 +37,24 @@ export function JournalView(): JSX.Element {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleRefresh = async (): Promise<void> => {
+    const synced = await syncQueuedJournalEntries(loadJournalQueue());
+    if (synced > 0) {
+      const updated = loadJournalEntries().map(normalizeEntry);
+      setEntries(updated);
+      applyFilters(updated);
+      setSyncMessage(`Synced ${synced} queued journal entr${synced === 1 ? "y" : "ies"}.`);
+    } else {
+      setSyncMessage("Already up to date");
+      setTimeout(() => setSyncMessage(""), 2000);
+    }
+  };
+
+  const { containerRef, isPulling, pullDistance, isRefreshing } = usePullToRefresh<HTMLDivElement>({
+    onRefresh: handleRefresh,
+    threshold: 80
+  });
 
   // Handle shared content from Web Share Target API
   useEffect(() => {
@@ -418,41 +438,53 @@ export function JournalView(): JSX.Element {
         </div>
       </div>
 
-      {displayedEntries.length > 0 ? (
-        <ul className="journal-list">
-          {displayedEntries.map((entry) => (
-            <li key={entry.id} className="journal-entry">
-              <p className="journal-entry-text">{entry.text}</p>
-              {entry.tags && entry.tags.length > 0 && (
-                <div className="journal-entry-tags">
-                  {entry.tags.map((tag) => (
-                    <span key={tag} className="journal-tag-pill">{tag}</span>
-                  ))}
-                </div>
-              )}
-              {entry.photos && entry.photos.length > 0 && (
-                <div className="journal-entry-photos">
-                  {entry.photos.map((photo) => (
-                    <img
-                      key={photo.id}
-                      src={photo.dataUrl}
-                      alt={photo.fileName ?? "Journal attachment"}
-                      className="journal-entry-photo"
-                    />
-                  ))}
-                </div>
-              )}
-              <time className="journal-entry-time">{formatDate(entry.timestamp)}</time>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="journal-empty">
-          {searchQuery || startDate || endDate || filterTags.length > 0
-            ? "No entries found matching your filters."
-            : "No entries yet. Start journaling to track your thoughts."}
-        </p>
-      )}
+      <div 
+        ref={containerRef}
+        className="pull-to-refresh-container"
+      >
+        {(isPulling || isRefreshing) && (
+          <PullToRefreshIndicator
+            pullDistance={pullDistance}
+            threshold={80}
+            isRefreshing={isRefreshing}
+          />
+        )}
+        {displayedEntries.length > 0 ? (
+          <ul className="journal-list">
+            {displayedEntries.map((entry) => (
+              <li key={entry.id} className="journal-entry">
+                <p className="journal-entry-text">{entry.text}</p>
+                {entry.tags && entry.tags.length > 0 && (
+                  <div className="journal-entry-tags">
+                    {entry.tags.map((tag) => (
+                      <span key={tag} className="journal-tag-pill">{tag}</span>
+                    ))}
+                  </div>
+                )}
+                {entry.photos && entry.photos.length > 0 && (
+                  <div className="journal-entry-photos">
+                    {entry.photos.map((photo) => (
+                      <img
+                        key={photo.id}
+                        src={photo.dataUrl}
+                        alt={photo.fileName ?? "Journal attachment"}
+                        className="journal-entry-photo"
+                      />
+                    ))}
+                  </div>
+                )}
+                <time className="journal-entry-time">{formatDate(entry.timestamp)}</time>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="journal-empty">
+            {searchQuery || startDate || endDate || filterTags.length > 0
+              ? "No entries found matching your filters."
+              : "No entries yet. Start journaling to track your thoughts."}
+          </p>
+        )}
+      </div>
     </section>
   );
 }

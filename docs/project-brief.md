@@ -310,7 +310,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ⬜ todo | `biometric-authentication` | frontend-engineer | Add Web Authentication API integration for Face ID/Touch ID login on iPhone to reduce friction on app reopens and protect sensitive journal data. |
 | ✅ done | `haptic-feedback-system` | frontend-engineer | Integrate Vibration API for tactile feedback on task completions, timer events, and critical notifications to make interactions feel native on iPhone. |
 | ✅ done | `sync-status-indicator` | frontend-engineer | Add persistent sync status badge showing online/offline state, pending queue count, and last sync timestamp so users know when data is safely persisted. |
-| ⬜ todo | `pull-to-refresh-gesture` | frontend-engineer | Add pull-to-refresh gesture to all list views (journal, schedule, deadlines) using touch event handlers for familiar iPhone UX pattern. |
+| ✅ done | `pull-to-refresh-gesture` | frontend-engineer | Add pull-to-refresh gesture to all list views (journal, schedule, deadlines) using touch event handlers for familiar iPhone UX pattern. |
 | | | | |
 | | **— Phase 2: Conversational AI & Data Integrations —** | | |
 | ✅ done | `gemini-client` | backend-engineer | Add Gemini API client module (`apps/server/src/gemini.ts`) with typed request/response, context window builder, rate limiting (15 RPM free tier), and error handling. Store API key as `GEMINI_API_KEY` env var. |
