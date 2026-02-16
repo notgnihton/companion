@@ -12,6 +12,7 @@ import { sendChatMessage, GeminiError, RateLimitError } from "./chat.js";
 import { RuntimeStore } from "./store.js";
 import { fetchTPSchedule, diffScheduleEvents } from "./tp-sync.js";
 import { TPSyncService } from "./tp-sync-service.js";
+import { CanvasSyncService } from "./canvas-sync-service.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
 
 const app = express();
@@ -20,11 +21,13 @@ const runtime = new OrchestratorRuntime(store);
 const syncService = new BackgroundSyncService(store);
 const digestService = new EmailDigestService(store);
 const tpSyncService = new TPSyncService(store);
+const canvasSyncService = new CanvasSyncService(store);
 
 runtime.start();
 syncService.start();
 digestService.start();
 tpSyncService.start();
+canvasSyncService.start();
 
 app.use(cors());
 app.use(express.json());
@@ -1123,6 +1126,23 @@ app.post("/api/sync/tp", async (_req, res) => {
       lecturesCreated: 0,
       lecturesUpdated: 0,
       lecturesDeleted: 0
+    });
+  }
+});
+
+app.post("/api/sync/canvas", async (_req, res) => {
+  try {
+    const result = await canvasSyncService.sync();
+
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+      coursesProcessed: 0,
+      assignmentsProcessed: 0,
+      modulesProcessed: 0,
+      announcementsProcessed: 0
     });
   }
 });

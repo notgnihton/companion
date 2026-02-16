@@ -11,7 +11,9 @@ const schema = z.object({
   AXIS_VAPID_PRIVATE_KEY: z.string().optional(),
   AXIS_VAPID_SUBJECT: z.string().default("mailto:companion@example.com"),
   AXIS_FALLBACK_EMAIL: z.string().email().default("user@example.com"),
-  GEMINI_API_KEY: z.string().optional()
+  GEMINI_API_KEY: z.string().optional(),
+  CANVAS_API_TOKEN: z.string().optional(),
+  CANVAS_BASE_URL: z.string().default("https://stavanger.instructure.com")
 });
 
 export const config = schema.parse(process.env);

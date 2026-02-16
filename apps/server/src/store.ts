@@ -44,7 +44,11 @@ import {
   SyncOperationType,
   ChatMessage,
   ChatMessageMetadata,
-  ChatHistoryPage
+  ChatHistoryPage,
+  CanvasCourse,
+  CanvasAssignment,
+  CanvasModule,
+  CanvasAnnouncement
 } from "./types.js";
 import { makeId, nowIso } from "./utils.js";
 
@@ -363,6 +367,62 @@ export class RuntimeStore {
 
       CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);
       CREATE INDEX IF NOT EXISTS idx_sync_queue_createdAt ON sync_queue(createdAt);
+
+      CREATE TABLE IF NOT EXISTS canvas_courses (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        courseCode TEXT NOT NULL,
+        enrollmentTerm TEXT,
+        startAt TEXT,
+        endAt TEXT,
+        createdAt TEXT NOT NULL,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
+      );
+
+      CREATE TABLE IF NOT EXISTS canvas_assignments (
+        id TEXT PRIMARY KEY,
+        courseId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        dueAt TEXT,
+        pointsPossible REAL,
+        submissionTypes TEXT NOT NULL,
+        hasSubmittedSubmissions INTEGER NOT NULL,
+        gradingType TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000),
+        FOREIGN KEY (courseId) REFERENCES canvas_courses(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS canvas_modules (
+        id TEXT PRIMARY KEY,
+        courseId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        unlockAt TEXT,
+        requireSequentialProgress INTEGER NOT NULL,
+        state TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000),
+        FOREIGN KEY (courseId) REFERENCES canvas_courses(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS canvas_announcements (
+        id TEXT PRIMARY KEY,
+        courseId TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        postedAt TEXT NOT NULL,
+        author TEXT,
+        createdAt TEXT NOT NULL,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000),
+        FOREIGN KEY (courseId) REFERENCES canvas_courses(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_canvas_assignments_courseId ON canvas_assignments(courseId);
+      CREATE INDEX IF NOT EXISTS idx_canvas_assignments_dueAt ON canvas_assignments(dueAt);
+      CREATE INDEX IF NOT EXISTS idx_canvas_modules_courseId ON canvas_modules(courseId);
+      CREATE INDEX IF NOT EXISTS idx_canvas_announcements_courseId ON canvas_announcements(courseId);
     `);
 
     const journalColumns = this.db.prepare("PRAGMA table_info(journal_entries)").all() as Array<{ name: string }>;
@@ -3548,6 +3608,267 @@ export class RuntimeStore {
   deleteSyncQueueItem(id: string): boolean {
     const result = this.db.prepare("DELETE FROM sync_queue WHERE id = ?").run(id);
     return result.changes > 0;
+  }
+
+  // Canvas LMS Methods
+
+  /**
+   * Store or update Canvas courses
+   */
+  upsertCanvasCourses(courses: CanvasCourse[]): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO canvas_courses (id, name, courseCode, enrollmentTerm, startAt, endAt, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        courseCode = excluded.courseCode,
+        enrollmentTerm = excluded.enrollmentTerm,
+        startAt = excluded.startAt,
+        endAt = excluded.endAt
+    `);
+
+    let upserted = 0;
+    for (const course of courses) {
+      stmt.run(
+        course.id,
+        course.name,
+        course.courseCode,
+        course.enrollmentTerm ?? null,
+        course.startAt ?? null,
+        course.endAt ?? null,
+        course.createdAt
+      );
+      upserted += 1;
+    }
+
+    return upserted;
+  }
+
+  /**
+   * Get all Canvas courses
+   */
+  getCanvasCourses(): CanvasCourse[] {
+    const rows = this.db.prepare("SELECT * FROM canvas_courses ORDER BY createdAt DESC").all() as Array<{
+      id: string;
+      name: string;
+      courseCode: string;
+      enrollmentTerm: string | null;
+      startAt: string | null;
+      endAt: string | null;
+      createdAt: string;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      courseCode: row.courseCode,
+      enrollmentTerm: row.enrollmentTerm ?? undefined,
+      startAt: row.startAt,
+      endAt: row.endAt,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  /**
+   * Store or update Canvas assignments
+   */
+  upsertCanvasAssignments(assignments: CanvasAssignment[]): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO canvas_assignments (id, courseId, name, description, dueAt, pointsPossible, submissionTypes, hasSubmittedSubmissions, gradingType, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        description = excluded.description,
+        dueAt = excluded.dueAt,
+        pointsPossible = excluded.pointsPossible,
+        submissionTypes = excluded.submissionTypes,
+        hasSubmittedSubmissions = excluded.hasSubmittedSubmissions,
+        gradingType = excluded.gradingType
+    `);
+
+    let upserted = 0;
+    for (const assignment of assignments) {
+      stmt.run(
+        assignment.id,
+        assignment.courseId,
+        assignment.name,
+        assignment.description ?? null,
+        assignment.dueAt ?? null,
+        assignment.pointsPossible ?? null,
+        JSON.stringify(assignment.submissionTypes),
+        assignment.hasSubmittedSubmissions ? 1 : 0,
+        assignment.gradingType,
+        assignment.createdAt
+      );
+      upserted += 1;
+    }
+
+    return upserted;
+  }
+
+  /**
+   * Get all Canvas assignments
+   */
+  getCanvasAssignments(courseId?: string): CanvasAssignment[] {
+    const query = courseId
+      ? "SELECT * FROM canvas_assignments WHERE courseId = ? ORDER BY dueAt ASC"
+      : "SELECT * FROM canvas_assignments ORDER BY dueAt ASC";
+
+    const rows = (courseId
+      ? this.db.prepare(query).all(courseId)
+      : this.db.prepare(query).all()) as Array<{
+      id: string;
+      courseId: string;
+      name: string;
+      description: string | null;
+      dueAt: string | null;
+      pointsPossible: number | null;
+      submissionTypes: string;
+      hasSubmittedSubmissions: number;
+      gradingType: string;
+      createdAt: string;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      courseId: row.courseId,
+      name: row.name,
+      description: row.description,
+      dueAt: row.dueAt,
+      pointsPossible: row.pointsPossible,
+      submissionTypes: JSON.parse(row.submissionTypes),
+      hasSubmittedSubmissions: row.hasSubmittedSubmissions === 1,
+      gradingType: row.gradingType,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  /**
+   * Store or update Canvas modules
+   */
+  upsertCanvasModules(modules: CanvasModule[]): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO canvas_modules (id, courseId, name, position, unlockAt, requireSequentialProgress, state, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        position = excluded.position,
+        unlockAt = excluded.unlockAt,
+        requireSequentialProgress = excluded.requireSequentialProgress,
+        state = excluded.state
+    `);
+
+    let upserted = 0;
+    for (const module of modules) {
+      stmt.run(
+        module.id,
+        module.courseId,
+        module.name,
+        module.position,
+        module.unlockAt ?? null,
+        module.requireSequentialProgress ? 1 : 0,
+        module.state,
+        module.createdAt
+      );
+      upserted += 1;
+    }
+
+    return upserted;
+  }
+
+  /**
+   * Get all Canvas modules
+   */
+  getCanvasModules(courseId?: string): CanvasModule[] {
+    const query = courseId
+      ? "SELECT * FROM canvas_modules WHERE courseId = ? ORDER BY position ASC"
+      : "SELECT * FROM canvas_modules ORDER BY position ASC";
+
+    const rows = (courseId
+      ? this.db.prepare(query).all(courseId)
+      : this.db.prepare(query).all()) as Array<{
+      id: string;
+      courseId: string;
+      name: string;
+      position: number;
+      unlockAt: string | null;
+      requireSequentialProgress: number;
+      state: string;
+      createdAt: string;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      courseId: row.courseId,
+      name: row.name,
+      position: row.position,
+      unlockAt: row.unlockAt,
+      requireSequentialProgress: row.requireSequentialProgress === 1,
+      state: row.state,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  /**
+   * Store or update Canvas announcements
+   */
+  upsertCanvasAnnouncements(announcements: CanvasAnnouncement[]): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO canvas_announcements (id, courseId, title, message, postedAt, author, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        message = excluded.message,
+        postedAt = excluded.postedAt,
+        author = excluded.author
+    `);
+
+    let upserted = 0;
+    for (const announcement of announcements) {
+      stmt.run(
+        announcement.id,
+        announcement.courseId,
+        announcement.title,
+        announcement.message,
+        announcement.postedAt,
+        announcement.author ?? null,
+        announcement.createdAt
+      );
+      upserted += 1;
+    }
+
+    return upserted;
+  }
+
+  /**
+   * Get all Canvas announcements
+   */
+  getCanvasAnnouncements(courseId?: string): CanvasAnnouncement[] {
+    const query = courseId
+      ? "SELECT * FROM canvas_announcements WHERE courseId = ? ORDER BY postedAt DESC"
+      : "SELECT * FROM canvas_announcements ORDER BY postedAt DESC";
+
+    const rows = (courseId
+      ? this.db.prepare(query).all(courseId)
+      : this.db.prepare(query).all()) as Array<{
+      id: string;
+      courseId: string;
+      title: string;
+      message: string;
+      postedAt: string;
+      author: string | null;
+      createdAt: string;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      courseId: row.courseId,
+      title: row.title,
+      message: row.message,
+      postedAt: row.postedAt,
+      author: row.author ?? undefined,
+      createdAt: row.createdAt,
+    }));
   }
 }
 
