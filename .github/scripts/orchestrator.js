@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Feature-Driven Agent Orchestrator
+ * Roadmap Scanner
  *
  * Reads the Roadmap table from docs/project-brief.md dynamically:
  *   | ⬜ todo | `feature-id` | agent-name | Description |
@@ -9,13 +9,8 @@
  * For each "⬜ todo" row without a matching open issue, creates a GitHub issue
  * and assigns it to Copilot coding agent via the REST API.
  *
- * All tasks use the Copilot coding agent with model selection:
- *   - Model: claude-sonnet-4.5 (1x premium requests on Pro plan)
- *   - Assignment: REST API POST /repos/:owner/:repo/issues/:number/assignees
- *   - No session cookies or internal GraphQL needed
- *
- * When there are few todo items remaining, creates an "idea generation" issue
- * asking the agent to propose new roadmap items — so work never runs out.
+ * Called by unstick-draft-prs.yml after merging a PR (slot freed up).
+ * Assignment of existing unassigned issues is handled by unstick directly.
  */
 
 const fs = require('fs');
@@ -31,7 +26,6 @@ const DRY_RUN = process.env.DRY_RUN === 'true';
 const API = 'https://api.github.com';
 const CAN_ASSIGN_AGENTS = Boolean(AGENT_PAT);
 const MAX_ISSUES_PER_RUN = 2;
-const MAX_CONCURRENT_AGENTS = 1; // Keep at 1 to avoid Copilot rate limits
 const LOW_TODO_THRESHOLD = 2; // When <= this many todos remain, generate ideas
 
 // ── Copilot coding agent config ─────────────────────────────────────
@@ -198,107 +192,12 @@ async function countActiveAgents() {
     const prs = await githubAPI(
       `/repos/${OWNER}/${REPO_NAME}/pulls?state=open&per_page=100`
     );
-    // Count draft PRs (agents actively working)
-    const drafts = prs.filter(pr => pr.draft === true);
-    // Also count non-draft agent PRs waiting to merge
     const COPILOT_LOGINS = new Set(['Copilot', 'copilot-swe-agent[bot]']);
-    const agentReady = prs.filter(pr => !pr.draft && COPILOT_LOGINS.has(pr.user?.login));
-    const total = drafts.length + agentReady.length;
+    const total = prs.filter(pr => COPILOT_LOGINS.has(pr.user?.login)).length;
     return total;
   } catch (e) {
     console.error('  Failed to count active agents:', e.message);
-    return MAX_CONCURRENT_AGENTS; // Assume full on errors (conservative)
-  }
-}
-
-// Check if agents recently hit rate limits (avoid reassigning into a rate-limit storm)
-async function isRateLimited() {
-  try {
-    // Look for PRs closed in the last 60 minutes with rate-limit comments
-    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const prs = await githubAPI(
-      `/repos/${OWNER}/${REPO_NAME}/pulls?state=closed&sort=updated&direction=desc&per_page=10`
-    );
-    const recent = prs.filter(pr => new Date(pr.closed_at) > new Date(since));
-    for (const pr of recent) {
-      try {
-        const comments = await githubAPI(
-          `/repos/${OWNER}/${REPO_NAME}/issues/${pr.number}/comments?per_page=5&sort=created&direction=desc`
-        );
-        const hasRateLimit = comments.some(c =>
-          c.body && (c.body.includes('rate limit') || c.body.includes('rate_limit'))
-        );
-        if (hasRateLimit) {
-          console.log(`  ⚠️ Rate limit detected on recently closed PR #${pr.number}`);
-          return true;
-        }
-      } catch {}
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-// ── Reassign unassigned agent-task issues ───────────────────────────
-
-async function reassignUnassignedIssues(availableSlots) {
-  console.log('\n--- Checking for unassigned agent-task issues ---');
-
-  if (!CAN_ASSIGN_AGENTS) {
-    console.log('  Skipping (no AGENT_PAT configured)');
-    return 0;
-  }
-
-  if (availableSlots <= 0) {
-    console.log(`  No available slots (${MAX_CONCURRENT_AGENTS} agents already active)`);
-    return 0;
-  }
-
-  try {
-    const issues = await githubAPI(
-      `/repos/${OWNER}/${REPO_NAME}/issues?state=open&labels=agent-task&per_page=100`
-    );
-
-    const unassigned = issues.filter(i => !i.assignees || i.assignees.length === 0);
-    if (unassigned.length === 0) {
-      console.log('  All agent-task issues have assignees ✓');
-      return 0;
-    }
-
-    console.log(`  Found ${unassigned.length} unassigned issue(s), ${availableSlots} slot(s) available`);
-    const batch = unassigned.slice(0, availableSlots);
-    let assigned = 0;
-
-    for (const issue of batch) {
-      console.log(`  #${issue.number} → Copilot (${COPILOT_MODEL})...`);
-
-      if (DRY_RUN) {
-        console.log(`    [DRY RUN] Would assign Copilot`);
-        assigned++;
-        continue;
-      }
-
-      try {
-        await assignCopilotToIssue(issue.number);
-        console.log(`    ✅ Assigned Copilot (${COPILOT_MODEL})`);
-        assigned++;
-      } catch (e) {
-        console.log(`    ❌ Failed: ${e.message}`);
-      }
-
-      await new Promise(r => setTimeout(r, 1000));
-    }
-
-    const remaining = unassigned.length - batch.length;
-    if (remaining > 0) {
-      console.log(`  ⏳ ${remaining} issue(s) waiting for slots (next orchestrator run)`);
-    }
-    console.log(`  Assigned ${assigned}/${batch.length} issues`);
-    return assigned;
-  } catch (e) {
-    console.error('  Failed to fetch issues:', e.message);
-    return 0;
+    return 1; // Assume full on errors (conservative)
   }
 }
 
@@ -373,7 +272,7 @@ async function createAndAssignIssue(title, body, agent) {
 
 async function main() {
   console.log('='.repeat(60));
-  console.log('Feature-Driven Agent Orchestrator');
+  console.log('Roadmap Scanner');
   console.log('='.repeat(60));
   console.log(`Repository: ${OWNER}/${REPO_NAME}`);
   console.log(`Dry run: ${DRY_RUN}`);
@@ -428,41 +327,18 @@ async function main() {
     }
   }
 
-  // Check how many agents are currently active (draft PRs + ready PRs)
+  // Check if an agent slot is available before creating + assigning
   const activeAgents = await countActiveAgents();
-  const availableSlots = Math.max(0, MAX_CONCURRENT_AGENTS - activeAgents);
-  console.log(`\n🔄 Active agents: ${activeAgents}/${MAX_CONCURRENT_AGENTS} (${availableSlots} slot(s) available)`);
-
-  // Check for recent rate limits — back off if agents are being throttled
-  // Skip this check on manual dispatch (user explicitly wants to run)
-  const isManualDispatch = process.env.TRIGGER_EVENT === 'workflow_dispatch';
-  if (availableSlots > 0 && !isManualDispatch) {
-    const rateLimited = await isRateLimited();
-    if (rateLimited) {
-      console.log('\n⏸  Backing off — Copilot hit rate limits recently. Will retry next scheduled run.');
-      return;
-    }
-  } else if (isManualDispatch) {
-    console.log('  Manual dispatch — skipping rate-limit check');
+  if (activeAgents >= 1) {
+    console.log(`\n⏸  Agent slot full (${activeAgents} active) — creating issues WITHOUT assignment`);
   }
 
-  // PRIORITY: Reassign existing unassigned issues FIRST (they've been waiting longer)
-  const reassigned = await reassignUnassignedIssues(availableSlots);
-  const slotsAfterReassign = Math.max(0, availableSlots - reassigned);
+  const batch = issuesToCreate.slice(0, MAX_ISSUES_PER_RUN);
 
-  // Then create new issues from roadmap with remaining slots
-  const maxToCreate = Math.min(MAX_ISSUES_PER_RUN, slotsAfterReassign);
-  const batch = issuesToCreate.slice(0, maxToCreate);
-
-  if (availableSlots === 0) {
-    console.log('\n⏸  All agent slots full — skipping issue creation and assignment');
-    console.log(`   ${issuesToCreate.length} issue(s) queued for next run`);
-  } else if (slotsAfterReassign === 0) {
-    console.log(`\n⏸  All slots used by reassigned issues — ${issuesToCreate.length} new issue(s) queued for next run`);
-  } else if (batch.length === 0) {
+  if (batch.length === 0) {
     console.log('\nAll features have issues or are done. Nothing to create!');
   } else {
-    console.log(`\nCreating ${batch.length} issues (${slotsAfterReassign} slot(s) remaining after reassignment)...\n`);
+    console.log(`\nCreating ${batch.length} issue(s)...\n`);
 
     let created = 0;
     for (const issue of batch) {
@@ -474,7 +350,7 @@ async function main() {
     console.log(`\nCreated ${created}/${batch.length} issues`);
   }
 
-  console.log('\nOrchestrator will re-run on next cron schedule.');
+  console.log('\nRoadmap scan complete.');
   console.log('='.repeat(60));
 }
 
