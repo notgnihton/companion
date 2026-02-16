@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import type { gmail_v1 } from "googleapis";
 import { RuntimeStore } from "./store.js";
 import { GmailOAuthService } from "./gmail-oauth.js";
 
@@ -38,7 +39,7 @@ const DEADLINE_KEYWORDS = ["deadline", "due date", "submit", "submission", "assi
 const CANVAS_KEYWORDS = ["canvas", "assignment", "announcement", "grade"];
 
 export class GmailSyncService {
-  private timer: NodeJS.Timeout | null = null;
+  private timer: ReturnType<typeof setInterval> | null = null;
   private readonly syncIntervalMs = 30 * 60 * 1000; // 30 minutes
 
   constructor(
@@ -100,9 +101,9 @@ export class GmailSyncService {
           });
 
           const headers = details.data.payload?.headers || [];
-          const from = headers.find((h) => h.name === "From")?.value || "Unknown";
-          const subject = headers.find((h) => h.name === "Subject")?.value || "(No subject)";
-          const dateStr = headers.find((h) => h.name === "Date")?.value;
+          const from = headers.find((h: gmail_v1.Schema$MessagePartHeader) => h.name === "From")?.value || "Unknown";
+          const subject = headers.find((h: gmail_v1.Schema$MessagePartHeader) => h.name === "Subject")?.value || "(No subject)";
+          const dateStr = headers.find((h: gmail_v1.Schema$MessagePartHeader) => h.name === "Date")?.value;
           const snippet = details.data.snippet || "";
           const labels = details.data.labelIds || [];
 
