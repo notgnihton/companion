@@ -15,7 +15,7 @@ export interface AgentEvent<T = unknown> {
   payload: T;
 }
 
-export type NotificationAction = "complete" | "snooze" | "view";
+export type NotificationAction = "complete" | "working" | "snooze" | "view";
 
 export interface Notification {
   id: string;
