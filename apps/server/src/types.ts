@@ -172,6 +172,8 @@ export interface Deadline {
   dueDate: string;
   priority: Priority;
   completed: boolean;
+  canvasAssignmentId?: string; // Track Canvas assignment source
+  canvasCourseId?: string; // Track Canvas course for sync
 }
 
 export interface DeadlineReminderState {

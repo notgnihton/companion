@@ -168,6 +168,8 @@ export class RuntimeStore {
         dueDate TEXT NOT NULL,
         priority TEXT NOT NULL,
         completed INTEGER NOT NULL,
+        canvasAssignmentId TEXT,
+        canvasCourseId TEXT,
         insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
       );
 
