@@ -385,6 +385,14 @@ export class RuntimeStore {
         tweets TEXT NOT NULL DEFAULT '[]',
         lastSyncedAt TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS gmail_data (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        refreshToken TEXT,
+        email TEXT,
+        connectedAt TEXT,
+        lastSyncedAt TEXT
+      );
     `);
 
     const journalColumns = this.db.prepare("PRAGMA table_info(journal_entries)").all() as Array<{ name: string }>;
@@ -3713,6 +3721,54 @@ export class RuntimeStore {
       tweets: JSON.parse(row.tweets),
       lastSyncedAt: row.lastSyncedAt
     };
+  }
+
+  /**
+   * Set Gmail auth data (refresh token, email, connected timestamp)
+   */
+  setGmailAuth(data: { refreshToken: string; email: string; connectedAt: string }): void {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO gmail_data (
+        id, refreshToken, email, connectedAt
+      ) VALUES (1, ?, ?, ?)
+    `);
+
+    stmt.run(data.refreshToken, data.email, data.connectedAt);
+  }
+
+  /**
+   * Get Gmail auth data
+   */
+  getGmailAuth(): { refreshToken: string; email: string; connectedAt: string; lastSyncedAt: string | null } | null {
+    const stmt = this.db.prepare(`
+      SELECT refreshToken, email, connectedAt, lastSyncedAt
+      FROM gmail_data WHERE id = 1
+    `);
+
+    const row = stmt.get() as {
+      refreshToken: string | null;
+      email: string | null;
+      connectedAt: string | null;
+      lastSyncedAt: string | null;
+    } | undefined;
+
+    if (!row || !row.refreshToken || !row.email || !row.connectedAt) {
+      return null;
+    }
+
+    return {
+      refreshToken: row.refreshToken,
+      email: row.email,
+      connectedAt: row.connectedAt,
+      lastSyncedAt: row.lastSyncedAt
+    };
+  }
+
+  /**
+   * Update Gmail last synced timestamp
+   */
+  updateGmailLastSyncedAt(timestamp: string): void {
+    this.db.prepare("UPDATE gmail_data SET lastSyncedAt = ? WHERE id = 1").run(timestamp);
   }
 }
 

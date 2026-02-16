@@ -18,6 +18,7 @@ import { GitHubCourseSyncService } from "./github-course-sync.js";
 import { YouTubeSyncService } from "./youtube-sync.js";
 import { XSyncService } from "./x-sync.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
+import { getAuthorizationUrl, handleOAuthCallback, isGmailConnected } from "./gmail-auth.js";
 
 const app = express();
 const store = new RuntimeStore();
@@ -1202,6 +1203,58 @@ app.get("/api/gemini/status", (_req, res) => {
     rateLimitRemaining: rateLimitStatus.limit - rateLimitStatus.requestCount,
     lastRequestAt,
     error: isConfigured ? undefined : "Gemini API key not configured"
+  });
+});
+
+// Gmail OAuth endpoints
+app.get("/api/auth/gmail", (_req, res) => {
+  try {
+    const authUrl = getAuthorizationUrl();
+    return res.redirect(authUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to generate authorization URL";
+    return res.status(500).json({ error: message });
+  }
+});
+
+app.get("/api/auth/gmail/callback", async (req, res) => {
+  const code = req.query.code as string;
+
+  if (!code) {
+    return res.status(400).json({ error: "Missing authorization code" });
+  }
+
+  try {
+    const result = await handleOAuthCallback(store, code);
+    return res.json({
+      status: "connected",
+      email: result.email,
+      connectedAt: result.connectedAt
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "OAuth callback failed";
+    return res.status(500).json({ error: message });
+  }
+});
+
+app.get("/api/gmail/status", (_req, res) => {
+  const connected = isGmailConnected(store);
+  
+  if (!connected) {
+    return res.json({
+      connected: false,
+      email: null,
+      connectedAt: null,
+      lastSyncedAt: null
+    });
+  }
+
+  const auth = store.getGmailAuth();
+  return res.json({
+    connected: true,
+    email: auth?.email ?? null,
+    connectedAt: auth?.connectedAt ?? null,
+    lastSyncedAt: auth?.lastSyncedAt ?? null
   });
 });
 

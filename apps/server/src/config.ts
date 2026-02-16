@@ -20,7 +20,9 @@ const schema = z.object({
   X_API_KEY_SECRET: z.string().optional(),
   X_ACCESS_TOKEN: z.string().optional(),
   X_ACCESS_TOKEN_SECRET: z.string().optional(),
-  X_BEARER_TOKEN: z.string().optional()
+  X_BEARER_TOKEN: z.string().optional(),
+  GMAIL_CLIENT_ID: z.string().optional(),
+  GMAIL_CLIENT_SECRET: z.string().optional()
 });
 
 export const config = schema.parse(process.env);
