@@ -9,6 +9,8 @@ import { OrchestratorRuntime } from "./orchestrator.js";
 import { EmailDigestService } from "./email-digest.js";
 import { getVapidPublicKey, hasStaticVapidKeys, sendPushNotification } from "./push.js";
 import { RuntimeStore } from "./store.js";
+import { fetchTPSchedule, diffScheduleEvents } from "./tp-sync.js";
+import { TPSyncService } from "./tp-sync-service.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
 
 const app = express();
@@ -16,10 +18,12 @@ const store = new RuntimeStore();
 const runtime = new OrchestratorRuntime(store);
 const syncService = new BackgroundSyncService(store);
 const digestService = new EmailDigestService(store);
+const tpSyncService = new TPSyncService(store);
 
 runtime.start();
 syncService.start();
 digestService.start();
+tpSyncService.start();
 
 app.use(cors());
 app.use(express.json());
@@ -1043,6 +1047,32 @@ app.delete("/api/sync/cleanup", (_req, res) => {
   return res.json({ deleted });
 });
 
+app.post("/api/sync/tp", async (_req, res) => {
+  try {
+    const tpEvents = await fetchTPSchedule();
+    const existingEvents = store.getScheduleEvents();
+    const diff = diffScheduleEvents(existingEvents, tpEvents);
+    const result = store.upsertScheduleEvents(diff.toCreate, diff.toUpdate, diff.toDelete);
+
+    return res.json({
+      success: true,
+      eventsProcessed: tpEvents.length,
+      lecturesCreated: result.created,
+      lecturesUpdated: result.updated,
+      lecturesDeleted: result.deleted
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+      eventsProcessed: 0,
+      lecturesCreated: 0,
+      lecturesUpdated: 0,
+      lecturesDeleted: 0
+    });
+  }
+});
+
 async function fetchCalendarIcs(url: string): Promise<string | null> {
   try {
     const response = await fetch(url);
@@ -1066,6 +1096,7 @@ const shutdown = (): void => {
   runtime.stop();
   syncService.stop();
   digestService.stop();
+  tpSyncService.stop();
   server.close(() => {
     process.exit(0);
   });

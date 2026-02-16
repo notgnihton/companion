@@ -1412,6 +1412,38 @@ export class RuntimeStore {
     return result.changes > 0;
   }
 
+  upsertScheduleEvents(
+    toCreate: Array<Omit<LectureEvent, "id">>,
+    toUpdate: Array<{ id: string; event: Partial<Omit<LectureEvent, "id">> }>,
+    toDelete: string[]
+  ): { created: number; updated: number; deleted: number } {
+    let created = 0;
+    let updated = 0;
+    let deleted = 0;
+
+    // Delete events
+    for (const id of toDelete) {
+      if (this.deleteScheduleEvent(id)) {
+        deleted += 1;
+      }
+    }
+
+    // Update events
+    for (const { id, event } of toUpdate) {
+      if (this.updateScheduleEvent(id, event)) {
+        updated += 1;
+      }
+    }
+
+    // Create events
+    for (const event of toCreate) {
+      this.createLectureEvent(event);
+      created += 1;
+    }
+
+    return { created, updated, deleted };
+  }
+
   createDeadline(entry: Omit<Deadline, "id">): Deadline {
     const deadline: Deadline = {
       id: makeId("deadline"),
