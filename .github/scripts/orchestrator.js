@@ -7,21 +7,15 @@
  *   | ⬜ todo | `feature-id` | agent-name | Description |
  *
  * For each "⬜ todo" row without a matching open issue, creates a GitHub issue
- * and triggers an AI coding agent with fallback:
- *   Claude → Copilot → Codex (round-robin)
+ * and assigns it to Copilot coding agent via the REST API.
  *
- * Each agent has a different trigger mechanism:
- *   - Claude:  Playwright workflow_dispatch → internal GraphQL assignment
- *   - Copilot: REST API `agent_assignment` payload on POST /assignees
- *   - Codex:   @codex comment  (triggers chatgpt-codex-connector app)
- *
- * Note: Claude can only be triggered via GitHub's internal GraphQL (browser context).
- * We use a Playwright wrapper (.github/workflows/assign-claude.yml) to automate this.
- *
- * Issues are distributed round-robin across providers to spread load.
+ * All tasks use the Copilot coding agent with model selection:
+ *   - Model: claude-sonnet-4.5 (1x premium requests on Pro plan)
+ *   - Assignment: REST API POST /repos/:owner/:repo/issues/:number/assignees
+ *   - No session cookies or internal GraphQL needed
  *
  * When there are few todo items remaining, creates an "idea generation" issue
- * asking an agent to propose new roadmap items — so work never runs out.
+ * asking the agent to propose new roadmap items — so work never runs out.
  */
 
 const fs = require('fs');
@@ -40,16 +34,12 @@ const MAX_ISSUES_PER_RUN = 3;
 const MAX_CONCURRENT_AGENTS = 3; // Max agents working at once (prevents rate limits)
 const LOW_TODO_THRESHOLD = 2; // When <= this many todos remain, generate ideas
 
-// ── AI Agent providers (round-robin order) ──────────────────────────
-// Each provider has a different trigger mechanism:
-//   All agents use the assign-agent.yml workflow dispatch which calls
-//   GitHub's internal GraphQL to assign the bot to the issue.
-
-const AGENT_PROVIDERS = [
-  { name: 'Claude',  trigger: 'workflow', botId: 'BOT_kgDODnPHJg', display: 'Claude (Anthropic)' },
-  { name: 'Copilot', trigger: 'workflow', botId: 'BOT_kgDOC9w8XQ', display: 'Copilot (GitHub)' },
-  { name: 'Codex',   trigger: 'workflow', botId: 'BOT_kgDODnSAjQ', display: 'Codex (OpenAI)' },
-];
+// ── Copilot coding agent config ─────────────────────────────────────
+// All tasks go through GitHub Copilot coding agent with model selection.
+// Uses the REST API directly — no session cookies or internal GraphQL needed.
+// Model: claude-sonnet-4.5 (1x premium requests on Pro plan)
+const COPILOT_MODEL = process.env.COPILOT_MODEL || 'claude-sonnet-4.5';
+const COPILOT_BOT_LOGIN = 'copilot-swe-agent[bot]';
 
 // ── GitHub REST API helper ──────────────────────────────────────────
 
@@ -247,22 +237,17 @@ async function reassignUnassignedIssues(availableSlots) {
     let assigned = 0;
 
     for (const issue of batch) {
-      const provider = AGENT_PROVIDERS[providerIndex % AGENT_PROVIDERS.length];
-      providerIndex++;
-
-      console.log(`  #${issue.number} → ${provider.name}...`);
+      console.log(`  #${issue.number} → Copilot (${COPILOT_MODEL})...`);
 
       if (DRY_RUN) {
-        console.log(`    [DRY RUN] Would assign ${provider.name}`);
+        console.log(`    [DRY RUN] Would assign Copilot`);
         assigned++;
         continue;
       }
 
       try {
-        await triggerAgentWorkflow(
-          issue.number, issue.node_id, provider.botId, provider.name
-        );
-        console.log(`    ✅ Triggered ${provider.name}`);
+        await assignCopilotToIssue(issue.number);
+        console.log(`    ✅ Assigned Copilot (${COPILOT_MODEL})`);
         assigned++;
       } catch (e) {
         console.log(`    ❌ Failed: ${e.message}`);
@@ -283,29 +268,26 @@ async function reassignUnassignedIssues(availableSlots) {
   }
 }
 
-// ── Agent triggering ────────────────────────────────────────────────
-// Each provider uses a different mechanism to start working on an issue.
+// ── Agent assignment via REST API ────────────────────────────────────
+// Assigns Copilot coding agent to an issue using the official REST API.
+// No session cookies, no internal GraphQL, no workflow dispatch needed.
 
 /**
- * Trigger Copilot via REST API agent_assignment payload.
- * This is the official API for triggering GitHub's coding agent.
+ * Assign Copilot coding agent to an issue via REST API.
+ * Uses agent_assignment to specify model (claude-sonnet-4.5 by default).
  */
-/**
- * Trigger an agent (Claude, Copilot, or Codex) via the assign-agent workflow.
- * Dispatches .github/workflows/assign-agent.yml which uses fetch to call
- * GitHub's internal GraphQL and assign the bot to the issue.
- */
-async function triggerAgentWorkflow(issueNumber, issueNodeId, botId, displayName) {
+async function assignCopilotToIssue(issueNumber) {
   await githubAPI(
-    `/repos/${OWNER}/${REPO_NAME}/actions/workflows/assign-agent.yml/dispatches`,
+    `/repos/${OWNER}/${REPO_NAME}/issues/${issueNumber}/assignees`,
     'POST',
     {
-      ref: 'main',
-      inputs: {
-        issue_number: String(issueNumber),
-        issue_node_id: issueNodeId,
-        agent_bot_id: botId,
-        agent_display_name: displayName,
+      assignees: [COPILOT_BOT_LOGIN],
+      agent_assignment: {
+        target_repo: `${OWNER}/${REPO_NAME}`,
+        base_branch: 'main',
+        custom_instructions: '',
+        custom_agent: '',
+        model: COPILOT_MODEL,
       },
     },
     AGENT_PAT
@@ -313,17 +295,7 @@ async function triggerAgentWorkflow(issueNumber, issueNodeId, botId, displayName
   return true;
 }
 
-/**
- * Try to trigger the given provider on an issue.
- * Returns true if the trigger was sent successfully.
- */
-async function tryTriggerAgent(issueNumber, provider, agentProfile, issueNodeId) {
-  return triggerAgentWorkflow(issueNumber, issueNodeId, provider.botId, provider.name);
-}
-
 // ── Issue creation ──────────────────────────────────────────────────
-
-let providerIndex = 0; // round-robin counter
 
 async function createAndAssignIssue(title, body, agent) {
   console.log(`\n  Creating: "${title}"`);
@@ -351,31 +323,13 @@ async function createAndAssignIssue(title, body, agent) {
     return true;
   }
 
-  // Round-robin across providers, with fallback on failure
-  const startIdx = providerIndex % AGENT_PROVIDERS.length;
-  providerIndex++;
-  let assigned = false;
-
-  for (let i = 0; i < AGENT_PROVIDERS.length; i++) {
-    const provider = AGENT_PROVIDERS[(startIdx + i) % AGENT_PROVIDERS.length];
-    console.log(`   Trying ${provider.display} (${provider.trigger === 'assign' ? 'agent_assignment' : 'workflow dispatch'})...`);
-
-    try {
-      const ok = await tryTriggerAgent(created.number, provider, agent, created.node_id);
-      if (ok) {
-        console.log(`   ✅ Triggered ${provider.display}`);
-        assigned = true;
-        break;
-      } else {
-        console.log(`   ⚠  ${provider.name} trigger failed — trying next`);
-      }
-    } catch (e) {
-      console.log(`   ⚠  ${provider.name} error: ${e.message}`);
-    }
-  }
-
-  if (!assigned) {
-    console.log('   ❌ All providers failed — issue created but no agent triggered');
+  // Assign Copilot coding agent via REST API (model: claude-sonnet-4.5)
+  console.log(`   Assigning Copilot (model: ${COPILOT_MODEL})...`);
+  try {
+    await assignCopilotToIssue(created.number);
+    console.log(`   ✅ Copilot assigned (${COPILOT_MODEL})`);
+  } catch (e) {
+    console.log(`   ❌ Failed to assign Copilot: ${e.message}`);
   }
 
   return true;
@@ -389,6 +343,7 @@ async function main() {
   console.log('='.repeat(60));
   console.log(`Repository: ${OWNER}/${REPO_NAME}`);
   console.log(`Dry run: ${DRY_RUN}`);
+  console.log(`Agent: Copilot coding agent (model: ${COPILOT_MODEL})`);
   console.log(`Agent assignment: ${CAN_ASSIGN_AGENTS ? 'enabled' : 'DISABLED'}`);
   console.log('');
 

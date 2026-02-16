@@ -1,6 +1,6 @@
 # Copilot Collaboration Protocol
 
-This repository is managed through an **agent-orchestrated workflow** where GitHub Copilot, Claude, and Codex collaborate recursively.
+This repository is managed through an **agent-orchestrated workflow** where GitHub Copilot coding agent (powered by Claude Sonnet 4.5) works autonomously on tasks.
 
 ## Product Context
 Companion is a **personal AI companion for a university student at UiS (University of Stavanger)**. It integrates with:
@@ -58,10 +58,10 @@ Each agent session has a **per-task token limit** (separate from the monthly quo
 ## Recursive collaboration loop
 The system operates in a continuous loop:
 1. **Orchestrator** reads `docs/project-brief.md` roadmap → creates issues for `⬜ todo` items
-2. **Agents** (Claude/Copilot/Codex) are assigned round-robin → create PRs
+2. **Copilot coding agent** is assigned via REST API (model: `claude-sonnet-4.5`) → creates PRs
 3. **Workflows** auto-rebase, approve, and merge PRs
-4. **Agents update the roadmap** in their PR: change `⬜ todo` → `✅ done`
-5. If an agent discovers new features needed, **add new `⬜ todo` rows** to the roadmap
+4. **Agent updates the roadmap** in its PR: change `⬜ todo` → `✅ done`
+5. If the agent discovers new features needed, **add new `⬜ todo` rows** to the roadmap
 6. When todos run low, the orchestrator creates an "idea generation" issue
 7. Loop repeats on next cron cycle or push to main
 
