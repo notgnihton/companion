@@ -357,7 +357,63 @@ jobs:
               });
 
               if (files.length === 0) {
-                core.info(`  Skipping: 0 files changed`);
+                // Check if runtime is stalled (same logic used later, computed early here)
+                const earlyRuntimeStalled =
+                  (!runtime.done && !runtime.active && staleMins >= MIN_RUNTIME_STALL_MINUTES);
+
+                if (runtime.done || earlyRuntimeStalled) {
+                  // Agent finished or stalled but produced no code — close PR and free the issue
+                  core.warning(`  Agent produced 0 files (runtime done=${runtime.done}, stalled=${earlyRuntimeStalled}) — closing PR`);
+
+                  await github.rest.issues.createComment({
+                    owner, repo,
+                    issue_number: pr.number,
+                    body: [
+                      '🛑 **Agent session ended with no code changes.**',
+                      '',
+                      'The agent runtime finished but produced 0 file changes (likely crashed or hit rate limits).',
+                      'Closing this PR and freeing the linked issue for a fresh agent attempt.',
+                    ].join('\n'),
+                  });
+
+                  await github.rest.pulls.update({
+                    owner, repo,
+                    pull_number: pr.number,
+                    state: 'closed',
+                  });
+                  core.info(`  Closed empty PR #${pr.number}`);
+
+                  // Find linked issue and clear assignees
+                  const issueNumber = extractLinkedIssue(pr.body);
+                  if (issueNumber) {
+                    try {
+                      const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+                      const currentAssignees = issue.assignees.map(a => a.login);
+                      if (currentAssignees.length > 0) {
+                        await github.rest.issues.removeAssignees({
+                          owner, repo,
+                          issue_number: issueNumber,
+                          assignees: currentAssignees,
+                        });
+                      }
+                    } catch (err) {
+                      core.warning(`  Could not remove assignees from issue #${issueNumber}: ${err.message}`);
+                    }
+
+                    await github.rest.issues.createComment({
+                      owner, repo,
+                      issue_number: issueNumber,
+                      body: `PR #${pr.number} closed — agent produced no code changes. Issue is now unassigned and ready for a fresh agent dispatch.`,
+                    });
+                    core.info(`  Cleared assignees on issue #${issueNumber}`);
+                  }
+
+                  continue;
+                }
+
+                // Agent still running but hasn't pushed code yet — retry later
+                core.info(`  Skipping: 0 files changed, agent still running — will retry`);
+                needsRetry = true;
                 continue;
               }
               core.info(`  ${files.length} file(s) changed`);
