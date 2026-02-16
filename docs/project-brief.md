@@ -105,17 +105,17 @@ The key difference from a generic chatbot: Companion has **context**. It knows y
 | Component | Status | Details |
 |-----------|--------|--------|
 | **Frontend** (`apps/web`) | ✅ Deployed | GitHub Pages — static files only, auto-deploys on push to `main` |
-| **Backend** (`apps/server`) | ⚠️ Local only | Runs on `localhost:8787` during development. **No production server yet.** |
-| **API calls** | ⚠️ Dev only | Vite proxies `/api/*` → `localhost:8787` in dev. On GitHub Pages, APIs return 404 (frontend falls back to localStorage). |
-| **Database** | ⚠️ Local only | SQLite file exists only on developer's machine |
-| **Cron jobs/sync** | ⚠️ Local only | Canvas, TP, GitHub sync only runs when server is running locally |
-| **Push notifications** | ⚠️ Local only | VAPID push requires the server to send |
+| **Backend** (`apps/server`) | ✅ Deployment ready | Railway-ready with Dockerfile, health checks, and workflow. Awaiting production deployment. |
+| **API calls** | ✅ Configurable | In dev: Vite proxies `/api/*` → `localhost:8787`. In prod: configurable via `VITE_API_BASE_URL` secret. |
+| **Database** | ⚠️ Ephemeral | SQLite in-memory on Railway (ephemeral storage). For persistence, add Railway volume or migrate to PostgreSQL. |
+| **Cron jobs/sync** | ✅ Ready | Canvas, TP, GitHub, YouTube, X sync services run automatically when server starts. |
+| **Push notifications** | ✅ Ready | Web Push configured with VAPID keys (set via Railway environment variables). |
 
 **What this means for agents:**
-- Backend code is real, tested, and works — it just doesn't have a production host yet
-- Frontend code should gracefully handle missing API (offline-first pattern with localStorage fallback)
-- A future Phase 4 will add proper server deployment (VPS, Railway, or Fly.io)
-- Keep building the server — it will deploy eventually. Don't skip features because "there's no server."
+- Backend is production-ready with Docker, health checks, and deployment workflow
+- To deploy: Connect Railway to the GitHub repo, set environment variables (see `apps/server/ENV.md`), and Railway will auto-deploy
+- Frontend can connect to production API by setting `VITE_API_BASE_URL` GitHub secret to the Railway URL
+- Database persistence requires adding a Railway volume at `/app/data` or migrating to PostgreSQL
 
 ## LLM Architecture: Gemini with Tools
 
@@ -327,7 +327,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `social-media-chat-integration` | backend-engineer | Integrate social media context into Gemini chat: "What did I miss on X?" or "Any new AI videos?" queries pull from cached social media data and generate contextual summaries. |
 | | | | |
 | | **— Phase 4: Production Deployment & Gmail —** | | |
-| ⬜ todo | `server-deployment` | backend-engineer | Deploy `apps/server` to a production host (Railway, Fly.io, or VPS). Add health check, environment variable config, and deployment workflow. Update frontend API base URL to point to production server. |
+| ✅ done | `server-deployment` | backend-engineer | Deploy `apps/server` to a production host (Railway, Fly.io, or VPS). Add health check, environment variable config, and deployment workflow. Update frontend API base URL to point to production server. |
 | ⬜ todo | `gmail-oauth-flow` | backend-engineer | Implement Gmail OAuth 2.0 consent flow: redirect user to Google consent screen, handle callback, store refresh token securely. Config: `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` env vars. |
 | ⬜ todo | `gmail-sync-api` | backend-engineer | Add Gmail sync service: fetch recent unread emails (subjects, senders, snippets), generate summaries for LLM context. Sync every 30 min. Scope: `gmail.readonly`. |
 | ⬜ todo | `gmail-context-injection` | backend-engineer | Add email summary to Gemini context window: inject unread count, important sender highlights, and actionable items (Canvas notifications, deadline reminders from profs) into chat context. |

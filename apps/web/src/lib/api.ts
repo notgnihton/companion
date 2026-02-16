@@ -48,9 +48,11 @@ import {
   saveJournalEntries,
   saveNotificationPreferences
 } from "./storage";
+import { apiUrl } from "./config";
 
 async function jsonOrThrow<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, {
+  const url = typeof input === "string" ? apiUrl(input) : input;
+  const response = await fetch(url, {
     headers: {
       "Content-Type": "application/json"
     },
