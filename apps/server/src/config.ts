@@ -9,7 +9,8 @@ const schema = z.object({
   AXIS_USER_NAME: z.string().default("friend"),
   AXIS_VAPID_PUBLIC_KEY: z.string().optional(),
   AXIS_VAPID_PRIVATE_KEY: z.string().optional(),
-  AXIS_VAPID_SUBJECT: z.string().default("mailto:companion@example.com")
+  AXIS_VAPID_SUBJECT: z.string().default("mailto:companion@example.com"),
+  COURSE_GITHUB_PAT: z.string().optional()
 });
 
 export const config = schema.parse(process.env);

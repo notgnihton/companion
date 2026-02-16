@@ -85,3 +85,4 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ⬜ todo | `calendar-import-ui` | frontend-engineer | Add a Calendar Import screen in the PWA to paste ICS text or URL and review imported lecture/deadline records before applying. |
 | ⬜ todo | `deadline-status-confirmation-ui` | frontend-engineer | Add UI quick actions for overdue reminders so users can confirm completed/still-working status from notifications or deadline cards. |
 | ⬜ todo | `weekly-review-ui` | frontend-engineer | Build a weekly reflection view that renders `/api/weekly-review` with completion rate, highlights, and suggested next priorities. |
+| ✅ done | `github-course-sync` | backend-engineer | Add GitHub course sync service: fetch lab READMEs from `dat520-2026/assignments` and `dat560-2026/info` repos via GitHub API, parse deadline tables from markdown, auto-create/update deadlines. Config: `COURSE_GITHUB_PAT` env var. Sync daily. |
