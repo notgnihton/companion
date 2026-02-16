@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { sendChatMessage, getChatHistory } from "../lib/api";
+import { sendChatMessage, getChatHistory, submitJournalEntry } from "../lib/api";
 import { ChatMessage } from "../types";
+import { addJournalEntry, enqueueJournalEntry } from "../lib/storage";
 
 export function ChatView(): JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
+  const [savingMessageId, setSavingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -91,6 +94,39 @@ export function ChatView(): JSX.Element {
     inputRef.current?.focus();
   };
 
+  const handleSaveToJournal = async (message: ChatMessage): Promise<void> => {
+    if (savedMessageIds.has(message.id) || savingMessageId === message.id) return;
+
+    setSavingMessageId(message.id);
+    try {
+      const entry = addJournalEntry(message.content, ["chat-reflection"]);
+      // addJournalEntry guarantees id and clientEntryId are set to the same value
+      const entryId = entry.clientEntryId || entry.id;
+      if (!entryId) {
+        throw new Error("Failed to create journal entry: missing entry ID");
+      }
+
+      const submitted = await submitJournalEntry(
+        message.content,
+        entryId,
+        ["chat-reflection"]
+      );
+
+      if (!submitted) {
+        enqueueJournalEntry(entry);
+      }
+
+      // Create a new Set to trigger React re-render
+      setSavedMessageIds((prev) => new Set([...prev, message.id]));
+    } catch (err) {
+      console.error("Failed to save to journal:", err);
+      setError("Failed to save to journal. Please try again.");
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setSavingMessageId(null);
+    }
+  };
+
   const quickActions = [
     { label: "What's next?", prompt: "What's next on my schedule today?" },
     { label: "How's my week?", prompt: "How is my week looking? Any deadlines coming up?" },
@@ -121,11 +157,28 @@ export function ChatView(): JSX.Element {
                 msg.content
               )}
             </div>
-            <div className="chat-bubble-timestamp">
-              {new Date(msg.timestamp).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit"
-              })}
+            <div className="chat-bubble-footer">
+              <div className="chat-bubble-timestamp">
+                {new Date(msg.timestamp).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit"
+                })}
+              </div>
+              {msg.role === "assistant" && !msg.streaming && (
+                <button
+                  type="button"
+                  className="chat-save-to-journal-btn"
+                  onClick={() => handleSaveToJournal(msg)}
+                  disabled={savedMessageIds.has(msg.id) || savingMessageId === msg.id}
+                  title={savedMessageIds.has(msg.id) ? "Saved to journal" : "Save to journal"}
+                >
+                  {savingMessageId === msg.id
+                    ? "💾..."
+                    : savedMessageIds.has(msg.id)
+                    ? "✓ Saved"
+                    : "📔 Save to journal"}
+                </button>
+              )}
             </div>
           </div>
         ))}
