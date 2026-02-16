@@ -2330,3 +2330,75 @@ button:disabled {
   font-weight: 600;
   color: var(--text);
 }
+
+/* Tab-based Layout */
+.hero-compact {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 0;
+  margin-bottom: 12px;
+}
+
+.push-message {
+  padding: 8px;
+  margin-bottom: 12px;
+  background: var(--warn-surface);
+  border: 1px solid var(--warn-border);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.tab-content-area {
+  padding-bottom: max(80px, calc(80px + env(safe-area-inset-bottom)));
+  min-height: calc(100vh - 120px);
+}
+
+.chat-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chat-context-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.journal-tab-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.schedule-tab-container h2 {
+  margin: 0 0 16px;
+  font-size: 1.5rem;
+  color: var(--text);
+}
+
+.schedule-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 860px) {
+  .schedule-grid {
+    grid-template-columns: 0.9fr 1.1fr;
+  }
+}
+
+.settings-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-container h2 {
+  margin: 0 0 8px;
+  font-size: 1.5rem;
+  color: var(--text);
+}
