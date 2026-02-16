@@ -256,12 +256,61 @@ jobs:
                   });
                 }
               } else {
-                core.info(`  No linked issue — labeling for manual attention`);
-                await github.rest.issues.addLabels({
+                // No linked issue in PR body — try to find matching issue by title similarity
+                core.info(`  No linked issue in PR body — searching for matching open issue...`);
+
+                // Close the PR first
+                await github.rest.pulls.update({
                   owner, repo,
-                  issue_number: pr.number,
-                  labels: ['needs-conflict-resolution'],
+                  pull_number: pr.number,
+                  state: 'closed',
                 });
+                core.info(`  Closed conflicting PR #${pr.number}`);
+
+                // Search open issues with agent-task label for a title match
+                try {
+                  const { data: openIssues } = await github.rest.issues.listForRepo({
+                    owner, repo,
+                    state: 'open',
+                    labels: 'agent-task',
+                    per_page: 30,
+                  });
+                  // Find best match: issue title words overlap with PR title
+                  const prWords = new Set(pr.title.toLowerCase().replace(/\[wip\]/gi, '').split(/\W+/).filter(w => w.length > 3));
+                  let bestMatch = null;
+                  let bestScore = 0;
+                  for (const issue of openIssues) {
+                    const issueWords = new Set(issue.title.toLowerCase().split(/\W+/).filter(w => w.length > 3));
+                    const overlap = [...prWords].filter(w => issueWords.has(w)).length;
+                    const score = overlap / Math.max(prWords.size, 1);
+                    if (score > bestScore && score >= 0.3) {
+                      bestScore = score;
+                      bestMatch = issue;
+                    }
+                  }
+                  if (bestMatch) {
+                    core.info(`  Found matching issue #${bestMatch.number}: ${bestMatch.title} (score: ${bestScore.toFixed(2)})`);
+                    // Remove existing assignees and let orchestrator reassign
+                    const currentAssignees = bestMatch.assignees.map(a => a.login);
+                    if (currentAssignees.length > 0) {
+                      await github.rest.issues.removeAssignees({
+                        owner, repo,
+                        issue_number: bestMatch.number,
+                        assignees: currentAssignees,
+                      });
+                    }
+                    await github.rest.issues.createComment({
+                      owner, repo,
+                      issue_number: bestMatch.number,
+                      body: `PR #${pr.number} closed due to unresolvable merge conflicts. Unassigned for fresh agent pickup.`,
+                    });
+                    core.info(`  Unassigned issue #${bestMatch.number} for reassignment`);
+                  } else {
+                    core.warning(`  No matching issue found — PR closed, needs manual review`);
+                  }
+                } catch (err) {
+                  core.warning(`  Issue search failed: ${err.message}`);
+                }
               }
             }
 
