@@ -168,6 +168,9 @@ export class RuntimeStore {
         dueDate TEXT NOT NULL,
         priority TEXT NOT NULL,
         completed INTEGER NOT NULL,
+        source TEXT DEFAULT 'manual',
+        canvasAssignmentId INTEGER,
+        canvasCourseId INTEGER,
         insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
       );
 
@@ -1566,8 +1569,18 @@ export class RuntimeStore {
     };
 
     this.db
-      .prepare("INSERT INTO deadlines (id, course, task, dueDate, priority, completed) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(deadline.id, deadline.course, deadline.task, deadline.dueDate, deadline.priority, deadline.completed ? 1 : 0);
+      .prepare("INSERT INTO deadlines (id, course, task, dueDate, priority, completed, source, canvasAssignmentId, canvasCourseId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(
+        deadline.id,
+        deadline.course,
+        deadline.task,
+        deadline.dueDate,
+        deadline.priority,
+        deadline.completed ? 1 : 0,
+        deadline.source ?? "manual",
+        deadline.canvasAssignmentId ?? null,
+        deadline.canvasCourseId ?? null
+      );
 
     // Trim to maxDeadlines
     const count = (this.db.prepare("SELECT COUNT(*) as count FROM deadlines").get() as { count: number }).count;
@@ -1635,6 +1648,9 @@ export class RuntimeStore {
       dueDate: string;
       priority: string;
       completed: number;
+      source?: string;
+      canvasAssignmentId?: number;
+      canvasCourseId?: number;
     }>;
 
     return rows.map((row) => ({
@@ -1643,7 +1659,10 @@ export class RuntimeStore {
       task: row.task,
       dueDate: row.dueDate,
       priority: row.priority as Deadline["priority"],
-      completed: Boolean(row.completed)
+      completed: Boolean(row.completed),
+      source: row.source as Deadline["source"],
+      canvasAssignmentId: row.canvasAssignmentId ?? undefined,
+      canvasCourseId: row.canvasCourseId ?? undefined
     })).map((deadline) => (applyEscalation ? this.applyDeadlinePriorityEscalation(deadline, referenceDate) : deadline));
   }
 
@@ -1656,6 +1675,9 @@ export class RuntimeStore {
           dueDate: string;
           priority: string;
           completed: number;
+          source?: string;
+          canvasAssignmentId?: number;
+          canvasCourseId?: number;
         }
       | undefined;
 
@@ -1669,7 +1691,10 @@ export class RuntimeStore {
       task: row.task,
       dueDate: row.dueDate,
       priority: row.priority as Deadline["priority"],
-      completed: Boolean(row.completed)
+      completed: Boolean(row.completed),
+      source: row.source as Deadline["source"],
+      canvasAssignmentId: row.canvasAssignmentId ?? undefined,
+      canvasCourseId: row.canvasCourseId ?? undefined
     };
 
     return applyEscalation ? this.applyDeadlinePriorityEscalation(deadline, referenceDate) : deadline;
@@ -1688,8 +1713,18 @@ export class RuntimeStore {
     };
 
     this.db
-      .prepare("UPDATE deadlines SET course = ?, task = ?, dueDate = ?, priority = ?, completed = ? WHERE id = ?")
-      .run(next.course, next.task, next.dueDate, next.priority, next.completed ? 1 : 0, id);
+      .prepare("UPDATE deadlines SET course = ?, task = ?, dueDate = ?, priority = ?, completed = ?, source = ?, canvasAssignmentId = ?, canvasCourseId = ? WHERE id = ?")
+      .run(
+        next.course,
+        next.task,
+        next.dueDate,
+        next.priority,
+        next.completed ? 1 : 0,
+        next.source ?? "manual",
+        next.canvasAssignmentId ?? null,
+        next.canvasCourseId ?? null,
+        id
+      );
 
     return this.applyDeadlinePriorityEscalation(next, new Date());
   }
@@ -1698,6 +1733,113 @@ export class RuntimeStore {
     const result = this.db.prepare("DELETE FROM deadlines WHERE id = ?").run(id);
     this.db.prepare("DELETE FROM deadline_reminder_state WHERE deadlineId = ?").run(id);
     return result.changes > 0;
+  }
+
+  /**
+   * Bridge Canvas assignments into the deadline system.
+   * Auto-creates or updates deadlines from Canvas assignments.
+   * Avoids duplicating manually-created deadlines.
+   */
+  upsertCanvasDeadline(canvasAssignment: {
+    assignmentId: number;
+    courseId: number;
+    courseName: string;
+    assignmentName: string;
+    dueAt: string | null;
+    submissionStatus?: "submitted" | "unsubmitted" | "graded";
+  }): Deadline | null {
+    // Skip assignments without due dates
+    if (!canvasAssignment.dueAt) {
+      return null;
+    }
+
+    // Check if this Canvas assignment already exists as a deadline
+    const existingRow = this.db
+      .prepare("SELECT id FROM deadlines WHERE canvasAssignmentId = ? AND canvasCourseId = ?")
+      .get(canvasAssignment.assignmentId, canvasAssignment.courseId) as { id: string } | undefined;
+
+    const completed = canvasAssignment.submissionStatus === "submitted" || canvasAssignment.submissionStatus === "graded";
+
+    // Determine priority based on due date
+    const dueDate = new Date(canvasAssignment.dueAt);
+    const now = new Date();
+    const daysUntilDue = (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+
+    let priority: Deadline["priority"] = "low";
+    if (daysUntilDue <= 1) {
+      priority = "critical";
+    } else if (daysUntilDue <= 3) {
+      priority = "high";
+    } else if (daysUntilDue <= 7) {
+      priority = "medium";
+    }
+
+    if (existingRow) {
+      // Update existing Canvas deadline
+      return this.updateDeadline(existingRow.id, {
+        course: canvasAssignment.courseName,
+        task: canvasAssignment.assignmentName,
+        dueDate: canvasAssignment.dueAt,
+        priority,
+        completed
+      });
+    } else {
+      // Create new Canvas deadline
+      return this.createDeadline({
+        course: canvasAssignment.courseName,
+        task: canvasAssignment.assignmentName,
+        dueDate: canvasAssignment.dueAt,
+        priority,
+        completed,
+        source: "canvas",
+        canvasAssignmentId: canvasAssignment.assignmentId,
+        canvasCourseId: canvasAssignment.courseId
+      });
+    }
+  }
+
+  /**
+   * Mark a Canvas deadline as completed when submitted.
+   */
+  markCanvasDeadlineCompleted(assignmentId: number, courseId: number): Deadline | null {
+    const row = this.db
+      .prepare("SELECT id FROM deadlines WHERE canvasAssignmentId = ? AND canvasCourseId = ?")
+      .get(assignmentId, courseId) as { id: string } | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return this.updateDeadline(row.id, { completed: true });
+  }
+
+  /**
+   * Get all Canvas deadlines.
+   */
+  getCanvasDeadlines(): Deadline[] {
+    const rows = this.db.prepare("SELECT * FROM deadlines WHERE source = 'canvas' ORDER BY dueDate DESC").all() as Array<{
+      id: string;
+      course: string;
+      task: string;
+      dueDate: string;
+      priority: string;
+      completed: number;
+      source?: string;
+      canvasAssignmentId?: number;
+      canvasCourseId?: number;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      course: row.course,
+      task: row.task,
+      dueDate: row.dueDate,
+      priority: row.priority as Deadline["priority"],
+      completed: Boolean(row.completed),
+      source: row.source as Deadline["source"],
+      canvasAssignmentId: row.canvasAssignmentId ?? undefined,
+      canvasCourseId: row.canvasCourseId ?? undefined
+    }));
   }
 
   createHabit(entry: Omit<Habit, "id" | "createdAt"> & { createdAt?: string }): HabitWithStatus {
