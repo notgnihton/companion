@@ -26,7 +26,7 @@ import { resolve } from 'path';
 const COLLAB = process.argv.includes('--collab');
 const SECRET_NAME = COLLAB ? 'GH_SESSION_COOKIE_COLLAB' : 'GH_SESSION_COOKIE';
 const STATE_FILE = resolve(COLLAB ? '.github/.playwright-state-collab.json' : '.github/.playwright-state.json');
-const REPO = process.env.GITHUB_REPOSITORY || 'svewat/companion';
+const REPO = process.env.GITHUB_REPOSITORY || 'svngwtn/companion';
 const TOKEN = process.env.TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
 
 if (COLLAB) {

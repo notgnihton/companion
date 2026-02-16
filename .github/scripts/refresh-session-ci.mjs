@@ -17,7 +17,7 @@
 
 import { chromium } from 'playwright';
 
-const REPO = process.env.GITHUB_REPOSITORY || 'svewat/companion';
+const REPO = process.env.GITHUB_REPOSITORY || 'svngwtn/companion';
 const SECRET_NAME = process.env.SECRET_NAME || 'GH_SESSION_COOKIE';
 const SESSION_COOKIE = process.env.GH_SESSION_COOKIE || '';
 

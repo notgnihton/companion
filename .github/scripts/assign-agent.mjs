@@ -33,7 +33,7 @@ async function assignAgent() {
     AGENT_DISPLAY_NAME = 'agent',
     ISSUE_NODE_ID,
     GH_SESSION_COOKIE,
-    REPO_NWO = 'svewat/companion',
+    REPO_NWO = 'svngwtn/companion',
     ISSUE_NUMBER,
   } = process.env;
 

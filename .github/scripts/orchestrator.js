@@ -31,7 +31,7 @@ const path = require('path');
 
 const AGENT_PAT = process.env.AGENT_PAT || '';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || AGENT_PAT;
-const REPO = process.env.GITHUB_REPOSITORY || 'svewat/companion';
+const REPO = process.env.GITHUB_REPOSITORY || 'svngwtn/companion';
 const [OWNER, REPO_NAME] = REPO.split('/');
 const DRY_RUN = process.env.DRY_RUN === 'true';
 const API = 'https://api.github.com';
