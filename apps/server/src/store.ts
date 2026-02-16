@@ -41,7 +41,10 @@ import {
   LocationHistory,
   SyncQueueItem,
   SyncQueueStatus,
-  SyncOperationType
+  SyncOperationType,
+  ChatMessage,
+  ChatMessageMetadata,
+  ChatHistoryPage
 } from "./types.js";
 import { makeId, nowIso } from "./utils.js";
 
@@ -55,6 +58,7 @@ const agentNames: AgentName[] = [
 export class RuntimeStore {
   private readonly maxEvents = 100;
   private readonly maxNotifications = 40;
+  private readonly maxChatMessages = 500;
   private readonly maxJournalEntries = 100;
   private readonly maxScheduleEvents = 200;
   private readonly maxDeadlines = 200;
@@ -96,6 +100,15 @@ export class RuntimeStore {
         message TEXT NOT NULL,
         priority TEXT NOT NULL,
         timestamp TEXT NOT NULL,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
+      );
+
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id TEXT PRIMARY KEY,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        metadata TEXT,
         insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
       );
 
@@ -563,6 +576,108 @@ export class RuntimeStore {
     for (const listener of this.notificationListeners) {
       listener(full);
     }
+  }
+
+  private parseChatMetadata(raw: string | null): ChatMessageMetadata | undefined {
+    if (!raw) {
+      return undefined;
+    }
+
+    try {
+      return JSON.parse(raw) as ChatMessageMetadata;
+    } catch {
+      return undefined;
+    }
+  }
+
+  recordChatMessage(role: ChatMessage["role"], content: string, metadata?: ChatMessageMetadata): ChatMessage {
+    const message: ChatMessage = {
+      id: makeId("chat"),
+      role,
+      content,
+      timestamp: nowIso(),
+      ...(metadata ? { metadata } : {})
+    };
+
+    this.db
+      .prepare(
+        "INSERT INTO chat_messages (id, role, content, timestamp, metadata, insertOrder) VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(insertOrder), 0) + 1 FROM chat_messages))"
+      )
+      .run(message.id, message.role, message.content, message.timestamp, metadata ? JSON.stringify(metadata) : null);
+
+    const count = (this.db.prepare("SELECT COUNT(*) as count FROM chat_messages").get() as { count: number }).count;
+    if (count > this.maxChatMessages) {
+      this.db
+        .prepare(
+          `DELETE FROM chat_messages WHERE id IN (
+            SELECT id FROM chat_messages ORDER BY insertOrder ASC LIMIT ?
+          )`
+        )
+        .run(count - this.maxChatMessages);
+    }
+
+    return message;
+  }
+
+  getRecentChatMessages(limit: number): ChatMessage[] {
+    if (limit <= 0) {
+      return [];
+    }
+
+    const rows = this.db
+      .prepare("SELECT id, role, content, timestamp, metadata FROM chat_messages ORDER BY insertOrder DESC LIMIT ?")
+      .all(limit) as Array<{
+      id: string;
+      role: string;
+      content: string;
+      timestamp: string;
+      metadata: string | null;
+    }>;
+
+    return rows
+      .map((row) => ({
+        id: row.id,
+        role: row.role as ChatMessage["role"],
+        content: row.content,
+        timestamp: row.timestamp,
+        metadata: this.parseChatMetadata(row.metadata)
+      }))
+      .reverse();
+  }
+
+  getChatHistory(options: { page?: number; pageSize?: number } = {}): ChatHistoryPage {
+    const page = Math.max(1, options.page ?? 1);
+    const pageSize = Math.max(1, Math.min(options.pageSize ?? 20, 50));
+    const total = (this.db.prepare("SELECT COUNT(*) as count FROM chat_messages").get() as { count: number }).count;
+    const offset = (page - 1) * pageSize;
+
+    const rows = this.db
+      .prepare("SELECT id, role, content, timestamp, metadata FROM chat_messages ORDER BY insertOrder DESC LIMIT ? OFFSET ?")
+      .all(pageSize, offset) as Array<{
+      id: string;
+      role: string;
+      content: string;
+      timestamp: string;
+      metadata: string | null;
+    }>;
+
+    const messages: ChatMessage[] = rows.map((row) => ({
+      id: row.id,
+      role: row.role as ChatMessage["role"],
+      content: row.content,
+      timestamp: row.timestamp,
+      metadata: this.parseChatMetadata(row.metadata)
+    }));
+
+    const hasMore = offset + messages.length < total;
+
+    return {
+      messages,
+      page,
+      pageSize,
+      total,
+      hasMore
+    };
   }
 
   private recordContextHistory(context: UserContext, timestamp: string): void {

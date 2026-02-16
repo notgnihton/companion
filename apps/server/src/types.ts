@@ -29,6 +29,34 @@ export interface Notification {
   url?: string;
 }
 
+export type ChatRole = "user" | "assistant";
+
+export interface ChatMessageMetadata {
+  contextWindow?: string;
+  finishReason?: string;
+  usage?: {
+    promptTokens?: number;
+    responseTokens?: number;
+    totalTokens?: number;
+  };
+}
+
+export interface ChatMessage {
+  id: string;
+  role: ChatRole;
+  content: string;
+  timestamp: string;
+  metadata?: ChatMessageMetadata;
+}
+
+export interface ChatHistoryPage {
+  messages: ChatMessage[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
+
 export type EmailDigestType = "daily" | "weekly";
 
 export type EmailDigestReason = "push-failures" | "inactivity";

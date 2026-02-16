@@ -8,6 +8,7 @@ import { generateDeadlineSuggestions } from "./deadline-suggestions.js";
 import { OrchestratorRuntime } from "./orchestrator.js";
 import { EmailDigestService } from "./email-digest.js";
 import { getVapidPublicKey, hasStaticVapidKeys, sendPushNotification } from "./push.js";
+import { sendChatMessage, GeminiError, RateLimitError } from "./chat.js";
 import { RuntimeStore } from "./store.js";
 import { fetchTPSchedule, diffScheduleEvents } from "./tp-sync.js";
 import { TPSyncService } from "./tp-sync-service.js";
@@ -45,6 +46,50 @@ app.get("/api/weekly-review", (req, res) => {
 app.get("/api/trends", (_req, res) => {
   const trends = store.getContextTrends();
   return res.json({ trends });
+});
+
+app.post("/api/chat", async (req, res) => {
+  const parsed = chatRequestSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid chat payload", issues: parsed.error.issues });
+  }
+
+  try {
+    const result = await sendChatMessage(store, parsed.data.message);
+    return res.json({
+      reply: result.reply,
+      message: result.assistantMessage,
+      userMessage: result.userMessage,
+      finishReason: result.finishReason,
+      usage: result.usage,
+      history: result.history
+    });
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return res.status(429).json({ error: error.message });
+    }
+    if (error instanceof GeminiError) {
+      return res.status(error.statusCode ?? 500).json({ error: error.message });
+    }
+
+    return res.status(500).json({ error: "Chat request failed" });
+  }
+});
+
+app.get("/api/chat/history", (req, res) => {
+  const parsed = chatHistoryQuerySchema.safeParse(req.query ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid history query", issues: parsed.error.issues });
+  }
+
+  const history = store.getChatHistory({
+    page: parsed.data.page ?? 1,
+    pageSize: parsed.data.pageSize ?? 20
+  });
+
+  return res.json({ history });
 });
 
 app.get("/api/export", (_req, res) => {
@@ -169,6 +214,15 @@ const contextSchema = z.object({
   stressLevel: z.enum(["low", "medium", "high"]).optional(),
   energyLevel: z.enum(["low", "medium", "high"]).optional(),
   mode: z.enum(["focus", "balanced", "recovery"]).optional()
+});
+
+const chatRequestSchema = z.object({
+  message: z.string().trim().min(1).max(4000)
+});
+
+const chatHistoryQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(50).optional()
 });
 
 const tagIdSchema = z.string().trim().min(1);
