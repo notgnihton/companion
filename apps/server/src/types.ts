@@ -498,6 +498,28 @@ export interface CanvasData {
   lastSyncedAt: string | null;
 }
 
+// Gmail types
+export interface GmailMessage {
+  id: string;
+  from: string;
+  subject: string;
+  snippet: string;
+  receivedAt: string;
+  labels: string[];
+  isRead: boolean;
+}
+
+export interface GmailData {
+  messages: GmailMessage[];
+  lastSyncedAt: string;
+}
+
+export interface GmailSyncResult {
+  success: boolean;
+  messagesCount: number;
+  error?: string;
+}
+
 export interface YouTubeData {
   channels: Array<{
     id: string;

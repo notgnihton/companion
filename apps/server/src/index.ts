@@ -19,6 +19,7 @@ import { YouTubeSyncService } from "./youtube-sync.js";
 import { XSyncService } from "./x-sync.js";
 import { SocialMediaSummarizer } from "./social-media-summarizer.js";
 import { GmailOAuthService } from "./gmail-oauth.js";
+import { GmailSyncService } from "./gmail-sync.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
 
 const app = express();
@@ -32,6 +33,7 @@ const githubCourseSyncService = new GitHubCourseSyncService(store);
 const youtubeSyncService = new YouTubeSyncService(store);
 const xSyncService = new XSyncService(store);
 const gmailOAuthService = new GmailOAuthService(store);
+const gmailSyncService = new GmailSyncService(store, gmailOAuthService);
 
 runtime.start();
 syncService.start();
@@ -41,6 +43,7 @@ canvasSyncService.start();
 githubCourseSyncService.start();
 youtubeSyncService.start();
 xSyncService.start();
+gmailSyncService.start();
 
 app.use(cors());
 app.use(express.json());
@@ -1253,6 +1256,52 @@ app.get("/api/auth/gmail/callback", async (req, res) => {
 app.get("/api/gmail/status", (_req, res) => {
   const connectionInfo = gmailOAuthService.getConnectionInfo();
   return res.json(connectionInfo);
+});
+
+app.post("/api/gmail/sync", async (_req, res) => {
+  try {
+    const result = await gmailSyncService.triggerSync();
+    return res.json({
+      status: result.success ? "syncing" : "failed",
+      messagesFound: result.messagesCount,
+      startedAt: new Date().toISOString(),
+      error: result.error
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return res.status(500).json({ error: errorMessage });
+  }
+});
+
+app.get("/api/gmail/summary", (req, res) => {
+  try {
+    const data = gmailSyncService.getData();
+    const hours = typeof req.query?.hours === "string" ? parseInt(req.query.hours, 10) : 24;
+    const now = new Date();
+    const cutoffTime = new Date(now.getTime() - hours * 60 * 60 * 1000);
+
+    // Filter messages by time
+    const recentMessages = data.messages.filter((msg) => {
+      const receivedAt = new Date(msg.receivedAt);
+      return receivedAt >= cutoffTime;
+    });
+
+    return res.json({
+      generatedAt: new Date().toISOString(),
+      period: {
+        from: cutoffTime.toISOString(),
+        to: now.toISOString()
+      },
+      totalMessages: recentMessages.length,
+      summary: recentMessages.length > 0 
+        ? `You have ${recentMessages.length} recent email${recentMessages.length === 1 ? "" : "s"}`
+        : "No recent emails",
+      messages: recentMessages
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return res.status(500).json({ error: errorMessage });
+  }
 });
 
 app.post("/api/social-media/digest", async (req, res) => {

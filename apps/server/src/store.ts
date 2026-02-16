@@ -44,7 +44,8 @@ import {
   SyncOperationType,
   ChatMessage,
   ChatMessageMetadata,
-  ChatHistoryPage
+  ChatHistoryPage,
+  GmailMessage
 } from "./types.js";
 import { makeId, nowIso } from "./utils.js";
 
@@ -390,7 +391,9 @@ export class RuntimeStore {
         id INTEGER PRIMARY KEY CHECK (id = 1),
         refreshToken TEXT,
         email TEXT,
-        connectedAt TEXT
+        connectedAt TEXT,
+        messages TEXT DEFAULT '[]',
+        lastSyncedAt TEXT
       );
     `);
 
@@ -405,6 +408,17 @@ export class RuntimeStore {
     const hasCanvasAssignmentId = deadlineColumns.some((col) => col.name === "canvasAssignmentId");
     if (!hasCanvasAssignmentId) {
       this.db.prepare("ALTER TABLE deadlines ADD COLUMN canvasAssignmentId INTEGER").run();
+    }
+
+    // Add Gmail messages and lastSyncedAt columns if they don't exist
+    const gmailColumns = this.db.prepare("PRAGMA table_info(gmail_data)").all() as Array<{ name: string }>;
+    const hasMessagesColumn = gmailColumns.some((col) => col.name === "messages");
+    if (!hasMessagesColumn) {
+      this.db.prepare("ALTER TABLE gmail_data ADD COLUMN messages TEXT DEFAULT '[]'").run();
+    }
+    const hasLastSyncedAtColumn = gmailColumns.some((col) => col.name === "lastSyncedAt");
+    if (!hasLastSyncedAtColumn) {
+      this.db.prepare("ALTER TABLE gmail_data ADD COLUMN lastSyncedAt TEXT").run();
     }
   }
 
@@ -3764,6 +3778,65 @@ export class RuntimeStore {
       email: row.email || "unknown",
       connectedAt: row.connectedAt || new Date().toISOString()
     };
+  }
+
+  /**
+   * Set Gmail messages
+   */
+  setGmailMessages(messages: GmailMessage[], lastSyncedAt: string): void {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO gmail_data (id, messages, lastSyncedAt)
+      VALUES (1, ?, ?)
+    `);
+
+    stmt.run(JSON.stringify(messages), lastSyncedAt);
+  }
+
+  /**
+   * Get Gmail messages
+   */
+  getGmailMessages(): GmailMessage[] {
+    const stmt = this.db.prepare(`
+      SELECT messages FROM gmail_data WHERE id = 1
+    `);
+
+    const row = stmt.get() as { messages: string | null } | undefined;
+
+    if (!row || !row.messages) {
+      return [];
+    }
+
+    try {
+      return JSON.parse(row.messages) as GmailMessage[];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get Gmail data (messages + sync info)
+   */
+  getGmailData(): { messages: GmailMessage[]; lastSyncedAt: string | null } {
+    const stmt = this.db.prepare(`
+      SELECT messages, lastSyncedAt FROM gmail_data WHERE id = 1
+    `);
+
+    const row = stmt.get() as { messages: string | null; lastSyncedAt: string | null } | undefined;
+
+    if (!row) {
+      return { messages: [], lastSyncedAt: null };
+    }
+
+    let messages: GmailMessage[] = [];
+    if (row.messages) {
+      try {
+        messages = JSON.parse(row.messages) as GmailMessage[];
+      } catch {
+        messages = [];
+      }
+    }
+
+    return { messages, lastSyncedAt: row.lastSyncedAt };
   }
 }
 
