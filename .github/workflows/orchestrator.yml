@@ -21,7 +21,7 @@ on:
         options: ['true', 'false']
 
   schedule:
-    - cron: '0 6 * * *'  # Daily at 6am UTC
+    - cron: '0 */8 * * *'  # Every 8 hours (3x/day)
 
   issues:
     types: [closed]

@@ -198,6 +198,63 @@ async function getExistingIssueTitles() {
   }
 }
 
+// ── Reassign unassigned agent-task issues ───────────────────────────
+
+async function reassignUnassignedIssues() {
+  console.log('\n--- Checking for unassigned agent-task issues ---');
+
+  if (!CAN_ASSIGN_AGENTS) {
+    console.log('  Skipping (no AGENT_PAT configured)');
+    return 0;
+  }
+
+  try {
+    const issues = await githubAPI(
+      `/repos/${OWNER}/${REPO_NAME}/issues?state=open&labels=agent-task&per_page=100`
+    );
+
+    const unassigned = issues.filter(i => !i.assignees || i.assignees.length === 0);
+    if (unassigned.length === 0) {
+      console.log('  All agent-task issues have assignees ✓');
+      return 0;
+    }
+
+    console.log(`  Found ${unassigned.length} unassigned issue(s)`);
+    let assigned = 0;
+
+    for (const issue of unassigned) {
+      const provider = AGENT_PROVIDERS[providerIndex % AGENT_PROVIDERS.length];
+      providerIndex++;
+
+      console.log(`  #${issue.number} → ${provider.name}...`);
+
+      if (DRY_RUN) {
+        console.log(`    [DRY RUN] Would assign ${provider.name}`);
+        assigned++;
+        continue;
+      }
+
+      try {
+        await triggerAgentWorkflow(
+          issue.number, issue.node_id, provider.botId, provider.name
+        );
+        console.log(`    ✅ Triggered ${provider.name}`);
+        assigned++;
+      } catch (e) {
+        console.log(`    ❌ Failed: ${e.message}`);
+      }
+
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    console.log(`  Assigned ${assigned}/${unassigned.length} issues`);
+    return assigned;
+  } catch (e) {
+    console.error('  Failed to fetch issues:', e.message);
+    return 0;
+  }
+}
+
 // ── Agent triggering ────────────────────────────────────────────────
 // Each provider uses a different mechanism to start working on an issue.
 
@@ -371,6 +428,9 @@ async function main() {
 
     console.log(`\nCreated ${created}/${batch.length} issues`);
   }
+
+  // Reassign any existing unassigned agent-task issues
+  await reassignUnassignedIssues();
 
   console.log('\nOrchestrator will re-run on next cron schedule.');
   console.log('='.repeat(60));
