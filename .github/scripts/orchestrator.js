@@ -30,8 +30,8 @@ const [OWNER, REPO_NAME] = REPO.split('/');
 const DRY_RUN = process.env.DRY_RUN === 'true';
 const API = 'https://api.github.com';
 const CAN_ASSIGN_AGENTS = Boolean(AGENT_PAT);
-const MAX_ISSUES_PER_RUN = 3;
-const MAX_CONCURRENT_AGENTS = 3; // Max agents working at once (prevents rate limits)
+const MAX_ISSUES_PER_RUN = 2;
+const MAX_CONCURRENT_AGENTS = 1; // Keep at 1 to avoid Copilot rate limits
 const LOW_TODO_THRESHOLD = 2; // When <= this many todos remain, generate ideas
 
 // ── Copilot coding agent config ─────────────────────────────────────
@@ -198,11 +198,45 @@ async function countActiveAgents() {
     const prs = await githubAPI(
       `/repos/${OWNER}/${REPO_NAME}/pulls?state=open&per_page=100`
     );
+    // Count draft PRs (agents actively working)
     const drafts = prs.filter(pr => pr.draft === true);
-    return drafts.length;
+    // Also count non-draft agent PRs waiting to merge
+    const COPILOT_LOGINS = new Set(['Copilot', 'copilot-swe-agent[bot]']);
+    const agentReady = prs.filter(pr => !pr.draft && COPILOT_LOGINS.has(pr.user?.login));
+    const total = drafts.length + agentReady.length;
+    return total;
   } catch (e) {
     console.error('  Failed to count active agents:', e.message);
-    return 0; // Assume 0 so we don't block on API errors
+    return MAX_CONCURRENT_AGENTS; // Assume full on errors (conservative)
+  }
+}
+
+// Check if agents recently hit rate limits (avoid reassigning into a rate-limit storm)
+async function isRateLimited() {
+  try {
+    // Look for PRs closed in the last 60 minutes with rate-limit comments
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const prs = await githubAPI(
+      `/repos/${OWNER}/${REPO_NAME}/pulls?state=closed&sort=updated&direction=desc&per_page=10`
+    );
+    const recent = prs.filter(pr => new Date(pr.closed_at) > new Date(since));
+    for (const pr of recent) {
+      try {
+        const comments = await githubAPI(
+          `/repos/${OWNER}/${REPO_NAME}/issues/${pr.number}/comments?per_page=5&sort=created&direction=desc`
+        );
+        const hasRateLimit = comments.some(c =>
+          c.body && (c.body.includes('rate limit') || c.body.includes('rate_limit'))
+        );
+        if (hasRateLimit) {
+          console.log(`  ⚠️ Rate limit detected on recently closed PR #${pr.number}`);
+          return true;
+        }
+      } catch {}
+    }
+    return false;
+  } catch {
+    return false;
   }
 }
 
@@ -394,10 +428,19 @@ async function main() {
     }
   }
 
-  // Check how many agents are currently active (draft PRs)
+  // Check how many agents are currently active (draft PRs + ready PRs)
   const activeAgents = await countActiveAgents();
   const availableSlots = Math.max(0, MAX_CONCURRENT_AGENTS - activeAgents);
   console.log(`\n🔄 Active agents: ${activeAgents}/${MAX_CONCURRENT_AGENTS} (${availableSlots} slot(s) available)`);
+
+  // Check for recent rate limits — back off if agents are being throttled
+  if (availableSlots > 0) {
+    const rateLimited = await isRateLimited();
+    if (rateLimited) {
+      console.log('\n⏸  Backing off — Copilot hit rate limits recently. Will retry next scheduled run.');
+      return;
+    }
+  }
 
   // PRIORITY: Reassign existing unassigned issues FIRST (they've been waiting longer)
   const reassigned = await reassignUnassignedIssues(availableSlots);
