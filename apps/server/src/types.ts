@@ -172,6 +172,7 @@ export interface Deadline {
   dueDate: string;
   priority: Priority;
   completed: boolean;
+  canvasAssignmentId?: number;
 }
 
 export interface DeadlineReminderState {
