@@ -56,13 +56,13 @@ The system operates in a continuous loop:
 - Sync runs as a background cron job every 30 minutes
 - Canvas assignments bridge into existing deadline system (avoid duplicates)
 
-### TP EduCloud Integration
-- REST API at `https://tp.educloud.no/uis/ws/1.4/` (OpenAPI 3.0.1)
-- Auth: API key from `TP_API_KEY` env var (all endpoints require `ApiKeyAuth`)
-- Key endpoint: `GET /ws/1.4/studtime.php?id[]=DAT520-1&sem=26v` for lecture schedule
-- Event schema: `dtstart`, `dtend`, `summary`, `room[]`, `staffs[]`, `courseid`, `weeknr`
+### TP EduCloud Integration (iCal Feed)
+- **iCal URL**: `https://tp.educloud.no/uis/timeplan/ical.php?type=courseact&sem=26v&id[]=DAT520,1&id[]=DAT560,1&id[]=DAT600,1`
+- **Auth**: None required — public iCal feed, no API key needed
+- **Format**: Standard iCalendar with VEVENT entries (DTSTART, DTEND, SUMMARY, LOCATION, DESCRIPTION)
+- **Parser**: Reuse `parseICS()` from `apps/server/src/calendar-import.ts` — already handles line unfolding and timestamp parsing
 - Syncs weekly since semester schedule rarely changes
-- Falls back to manual ICS import if API is unavailable
+- 151 events covering lectures, labs, guidance sessions, and exams for all 3 courses
 
 ### Course GitHub Organizations
 - Course orgs: `dat520-2026` (Distributed Systems, Go), `dat560-2026` (Generative AI, Python)

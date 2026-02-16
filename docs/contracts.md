@@ -187,14 +187,16 @@ Response:
 
 ### POST `/api/sync/tp`
 
-Trigger manual TP EduCloud schedule sync.
+Trigger manual TP EduCloud schedule sync (fetches public iCal feed, no API key needed).
 
 Response:
 
 ```json
 {
   "status": "syncing",
-  "eventsFound": 12,
+  "eventsFound": 151,
+  "source": "ical",
+  "icalUrl": "https://tp.educloud.no/uis/timeplan/ical.php?type=courseact&sem=26v&id[]=DAT520,1&id[]=DAT560,1&id[]=DAT600,1",
   "startedAt": "2026-02-14T15:00:00.000Z"
 }
 ```
@@ -230,7 +232,8 @@ Response:
   "tp": {
     "lastSyncAt": "2026-02-12T03:00:00.000Z",
     "status": "ok",
-    "eventsCount": 12
+    "source": "ical",
+    "eventsCount": 151
   },
   "github": {
     "lastSyncAt": "2026-02-14T06:00:00.000Z",

@@ -13,14 +13,14 @@ You are the **backend engineer** for Companion — a personal AI companion PWA f
 - Orchestrator: `orchestrator.ts`, `agent-base.ts`
 - Data layer: `store.ts`, `config.ts`, `types.ts`, `utils.ts`
 - Push notifications: Web Push API (VAPID keys)
-- **NEW**: Gemini client (`gemini.ts`), Canvas sync, TP REST API client, GitHub course sync, chat API
+- **NEW**: Gemini client (`gemini.ts`), Canvas sync, TP iCal schedule sync, GitHub course sync, chat API
 - CI/CD: `.github/workflows/`, `.github/scripts/`
 
 ## Key features to build and maintain
 
 - **Gemini chat API** — POST /api/chat that builds a context window (schedule, deadlines, Canvas, journals) and calls Gemini 2.0 Flash
 - **Canvas LMS sync** — Fetch courses, assignments, modules, announcements from `stavanger.instructure.com` REST API every 30 min
-- **TP EduCloud REST API** — Fetch lecture schedule from `tp.educloud.no/uis/ws/1.4/` with API key auth, weekly sync
+- **TP EduCloud iCal sync** — Fetch lecture schedule from public iCal feed (`tp.educloud.no/uis/timeplan/ical.php`), parse with existing `parseICS()`, weekly sync, no API key needed
 - **Course GitHub sync** — Fetch lab READMEs from `dat520-2026/assignments` and `dat560-2026/info`, parse deadline tables, auto-create deadlines, daily sync
 - **Push notifications** — Web Push via VAPID to deliver nudges, reminders, check-ins to iPhone
 - **Journal API** — Quick text entries, evening reflection prompts, history retrieval
@@ -32,7 +32,8 @@ You are the **backend engineer** for Companion — a personal AI companion PWA f
 
 - TypeScript and Node.js runtime
 - LLM API integration (Google Gemini `@google/generative-ai`)
-- REST API consumption (Canvas LMS API with Bearer token auth, TP EduCloud API with API key, GitHub API with PAT)
+- REST API consumption (Canvas LMS API with Bearer token auth, GitHub API with PAT)
+- iCalendar parsing (reuse existing `parseICS()` from `calendar-import.ts`)
 - GitHub API integration (org repos, file contents, base64 decoding)
 - Web Push API (VAPID keys, push subscriptions, notification payloads)
 - Agent architecture: stateful agents with structured message passing

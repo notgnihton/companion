@@ -27,7 +27,7 @@ The key difference from a generic chatbot: Companion has **context**. It knows y
 
 ### Data Integrations (NEW — Automated Sync)
 - **Canvas LMS sync** — Pulls courses, assignments, deadlines, announcements, grades, and modules from `stavanger.instructure.com` via Canvas REST API with a personal access token
-- **TP EduCloud sync** — Pulls lecture schedule from UiS TP (DAT520, DAT560, DAT600) via REST API (`tp.educloud.no/uis/ws/`) with API key auth
+- **TP EduCloud sync** — Pulls lecture schedule from UiS TP (DAT520, DAT560, DAT600) via public iCal subscription feed (no auth required)
 - **Course GitHub sync** — Pulls lab assignments, deadlines, and descriptions from course GitHub organizations (`dat520-2026`, `dat560-2026`) via GitHub API
 - **Auto-refresh** — Background jobs sync Canvas every ~30 min, TP weekly, and GitHub daily (schedules rarely change mid-semester)
 
@@ -62,7 +62,7 @@ The key difference from a generic chatbot: Companion has **context**. It knows y
 │              Node.js Server                          │
 │  ┌─────────┐ ┌──────────┐ ┌───────────┐ ┌────────┐ │
 │  │ Gemini  │ │  Canvas  │ │TP EduCloud│ │ GitHub │ │
-│  │ Client  │ │  Sync    │ │ REST API  │ │  Sync  │ │
+│  │ Client  │ │  Sync    │ │ iCal Sync │ │  Sync  │ │
 │  └────┬────┘ └────┬─────┘ └─────┬─────┘ └───┬────┘ │
 │       │           │             │            │       │
 │  ┌────┴───────────┴─────────────┴────────────┴──┐   │
@@ -85,7 +85,7 @@ The key difference from a generic chatbot: Companion has **context**. It knows y
 - **Backend**: Node + TypeScript (`apps/server`) — API server with agent runtime
 - **LLM**: Google Gemini API (free tier) — conversational AI with academic context
 - **Data**: RuntimeStore (SQLite-backed) — schedule, deadlines, journals, canvas data, chat history
-- **Integrations**: Canvas REST API (token auth) + TP EduCloud REST API (API key auth) + Course GitHub orgs (PAT auth)
+- **Integrations**: Canvas REST API (token auth) + TP EduCloud iCal feed (public, no auth) + Course GitHub orgs (PAT auth)
 - **Notifications**: Web Push API (VAPID keys) for proactive nudges
 
 ## Data Sources
@@ -103,15 +103,15 @@ The key difference from a generic chatbot: Companion has **context**. It knows y
 - **Sync interval**: Every 30 minutes (cron job on server)
 
 ### TP EduCloud (UiS Schedule)
-- **Base URL**: `https://tp.educloud.no/uis/ws/1.4/`
-- **Auth**: API key (`TP_API_KEY` env var) — all endpoints require `ApiKeyAuth` header
-- **OpenAPI spec**: `https://tp.educloud.no/uis/ws/openapi.json` (OpenAPI 3.0.1, v1.4)
-- **Key endpoints**:
-  - `GET /ws/1.4/studtime.php?id[]=DAT520-1&id[]=DAT560-1&id[]=DAT600-1&sem=26v` — lecture schedule
-  - `GET /ws/1.4/course.php?id=DAT520&sem=26v` — course info
-- **Event schema**: `id`, `dtstart`, `dtend`, `summary`, `weekday`, `weeknr`, `courseid`, `teaching-title`, `staffs[]`, `room[]`, `title`, `curr` (pensum)
-- **Sync interval**: Weekly (schedule doesn't change often mid-semester)
-- **Fallback**: Manual ICS import if API is unavailable
+- **iCal subscription URL**: `https://tp.educloud.no/uis/timeplan/ical.php?type=courseact&sem=26v&id[]=DAT520,1&id[]=DAT560,1&id[]=DAT600,1`
+- **Auth**: None required — this is a public iCal feed
+- **Format**: Standard iCalendar (`.ics`) with `VEVENT` entries
+- **Event fields**: `DTSTART`, `DTEND`, `SUMMARY` (course + type, e.g. "DAT520 Forelesning \nLecture"), `LOCATION` (room + building), `DESCRIPTION` (course, type, lecturer names, room details)
+- **Event types**: Forelesning/Lecture, Laboratorium/Lab, Undervisning (Teaching), Veiledning (Guidance), Skriftlig eksamen (Written exam)
+- **Coverage**: Full semester (26v) — 151 events across DAT520, DAT560, DAT600, including exam dates
+- **Sync interval**: Weekly (re-fetch iCal URL, diff against stored events)
+- **Parser**: Reuse existing `parseICS()` from `apps/server/src/calendar-import.ts` — already handles VEVENT parsing, line unfolding, and timestamp conversion
+- **Fallback**: Manual ICS file import (same parser)
 
 ### Course GitHub Organizations
 - **Organizations**: `dat520-2026` (Distributed Systems), `dat560-2026` (Generative AI)
@@ -143,7 +143,7 @@ The key difference from a generic chatbot: Companion has **context**. It knows y
 3. **Assignment Tracker Agent** — Tracks deadlines, sends escalating reminders
 4. **Orchestrator Agent** — Coordinates all agents, generates daily summaries, manages notification priority
 5. **Canvas Sync Agent** (NEW) — Periodically fetches courses, assignments, modules, announcements from Canvas API
-6. **TP Sync Agent** (NEW) — Fetches lecture schedule from TP EduCloud REST API
+6. **TP Sync Agent** (NEW) — Fetches lecture schedule from TP EduCloud iCal feed
 7. **Chat Agent** (NEW) — Manages conversation flow, builds context window for Gemini, handles proactive message triggers
 
 ## Success Criteria
@@ -221,8 +221,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ⬜ todo | `chat-ui` | frontend-engineer | Build a full-screen chat interface as the app's primary view. Message bubbles, streaming response display, quick-action chips ("What's next?", "How's my week?"), and input with send button. Mobile-optimized with keyboard handling. |
 | ⬜ todo | `canvas-sync-api` | backend-engineer | Add Canvas LMS integration: config for `CANVAS_API_TOKEN` + `CANVAS_BASE_URL`, sync service that fetches courses, assignments (with due dates, submission status, points), modules, and announcements. Store in RuntimeStore. Sync every 30 min via cron. |
 | ⬜ todo | `canvas-deadlines-bridge` | backend-engineer | Bridge Canvas assignments into the existing deadline system — auto-create/update deadlines from Canvas assignments, detect new assignments, mark completed when submitted. Avoid duplicating manually-created deadlines. |
-| ⬜ todo | `tp-schedule-api` | backend-engineer | Add TP EduCloud REST API client (`apps/server/src/tp-client.ts`): fetch lecture schedule from `tp.educloud.no/uis/ws/1.4/studtime.php` with API key auth, parse event schema (dtstart, dtend, room, staff, courseid), convert to LectureEvent records. Config: `TP_API_KEY` env var. |
-| ⬜ todo | `tp-schedule-sync` | backend-engineer | Add weekly cron job that runs TP API client, diffs against existing schedule, and upserts changes. Include manual trigger via API endpoint POST /api/sync/tp. |
+| ⬜ todo | `tp-schedule-sync` | backend-engineer | Add TP EduCloud schedule sync: fetch iCal feed from `https://tp.educloud.no/uis/timeplan/ical.php?type=courseact&sem=26v&id[]=DAT520,1&id[]=DAT560,1&id[]=DAT600,1` (public, no auth), parse with existing `parseICS()` from `calendar-import.ts`, diff against stored schedule, and upsert changes. Weekly cron + manual trigger via POST /api/sync/tp. No API key needed. |
 | ⬜ todo | `github-course-sync` | backend-engineer | Add GitHub course sync service: fetch lab READMEs from `dat520-2026/assignments` and `dat560-2026/info` repos via GitHub API, parse deadline tables from markdown, auto-create/update deadlines. Config: `COURSE_GITHUB_PAT` env var. Sync daily. |
 | ⬜ todo | `canvas-sync-ui` | frontend-engineer | Add Canvas connection settings in the app: token input, base URL, sync status indicator, last-synced timestamp, manual sync trigger button, and list of synced courses. |
 | ⬜ todo | `chat-context-builder` | backend-engineer | Build intelligent context window for Gemini calls: include today's schedule, upcoming deadlines (next 7 days), recent journal entries (last 3), current energy/stress state, Canvas announcements, and conversation history. Stay within token limits. |
