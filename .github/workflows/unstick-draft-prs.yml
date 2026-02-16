@@ -364,9 +364,10 @@ jobs:
               } else if (rebaseResult.needed && !rebaseResult.success) {
                 core.warning(`  ✗ Rebase failed — unresolvable merge conflicts`);
 
-                // If agent runtime is done, no point waiting — escalate immediately.
-                // Only wait for young PRs when agent might still be pushing commits.
-                if (!runtime.done && !runtimeStalled && ageMinutes < MIN_AGE_MINUTES) {
+                // If agent runtime is done (or no runtime found), no point waiting — escalate immediately.
+                // Only wait for young PRs when agent is actively running.
+                const agentDone = runtime.done || !runtime.seen || runtimeStalled;
+                if (!agentDone && ageMinutes < MIN_AGE_MINUTES) {
                   core.info(`  PR only ${ageMinutes}m old and agent may still be working — will retry next run`);
                   continue;
                 }
