@@ -124,13 +124,20 @@ export class SocialDigestService {
     // Add "Other" category for uncategorized content
     sections.push({ topic: "Other", items: [] });
 
+    // Build a map for O(1) section lookup
+    const sectionMap = new Map<string, DigestSection>();
+    for (const section of sections) {
+      sectionMap.set(section.topic, section);
+    }
+
+    // Categorize items in a single pass
     for (const item of items) {
       const titleLower = item.title.toLowerCase();
       let categorized = false;
 
       for (const [topic, keywords] of Object.entries(this.TOPIC_KEYWORDS)) {
         if (keywords.some((keyword) => titleLower.includes(keyword))) {
-          const section = sections.find((s) => s.topic === topic);
+          const section = sectionMap.get(topic);
           if (section) {
             section.items.push(item);
             categorized = true;
@@ -141,7 +148,7 @@ export class SocialDigestService {
 
       // If not categorized, add to "Other"
       if (!categorized) {
-        const otherSection = sections.find((s) => s.topic === "Other");
+        const otherSection = sectionMap.get("Other");
         if (otherSection) {
           otherSection.items.push(item);
         }

@@ -99,8 +99,9 @@ describe("SocialDigestService", () => {
   });
 
   it("should filter videos by time range", async () => {
+    const HOURS_IN_MS = 60 * 60 * 1000;
     const now = new Date();
-    const yesterday = new Date(now.getTime() - 25 * 60 * 60 * 1000); // 25 hours ago
+    const yesterday = new Date(now.getTime() - 25 * HOURS_IN_MS); // 25 hours ago
     
     const youtubeData: YouTubeData = {
       channels: [],

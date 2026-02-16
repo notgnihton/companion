@@ -1193,6 +1193,8 @@ app.get("/api/gemini/status", (_req, res) => {
 
 app.get("/api/social/digest", async (req, res) => {
   try {
+    const MAX_DIGEST_HOURS = 720; // Maximum 30 days
+    
     const platforms = typeof req.query.platforms === "string" 
       ? req.query.platforms.split(",") 
       : ["youtube"];
@@ -1201,7 +1203,7 @@ app.get("/api/social/digest", async (req, res) => {
     let hours = 24;
     if (typeof req.query.hours === "string") {
       const parsedHours = parseInt(req.query.hours, 10);
-      if (!isNaN(parsedHours) && parsedHours > 0 && parsedHours <= 720) { // Max 30 days
+      if (!isNaN(parsedHours) && parsedHours > 0 && parsedHours <= MAX_DIGEST_HOURS) {
         hours = parsedHours;
       }
     }
