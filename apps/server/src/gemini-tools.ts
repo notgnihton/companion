@@ -55,13 +55,13 @@ export const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "getEmails",
     description:
-      "Get recent email digests from Gmail. Returns email summaries with subjects, timestamps, and snippets. Use this when user asks about emails, inbox, or recent messages.",
+      "Get recent unread emails from Gmail. Returns email messages with subjects, senders, timestamps, snippets, unread count, and actionable items (Canvas notifications, deadline reminders from professors). Use this when user asks about emails, inbox, unread messages, or important emails.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
         limit: {
           type: SchemaType.NUMBER,
-          description: "Maximum number of email digests to return (default: 5)"
+          description: "Maximum number of email messages to return (default: 5)"
         }
       },
       required: []
@@ -152,10 +152,23 @@ export function handleSearchJournal(
 export function handleGetEmails(
   store: RuntimeStore,
   args: Record<string, unknown> = {}
-): EmailDigest[] {
+): { messages: unknown[]; unreadCount: number; actionableItems: unknown[] } {
   const limit = (args.limit as number) ?? 5;
-  const digests = store.getEmailDigests(limit);
-  return digests;
+  const gmailData = store.getGmailData();
+  
+  if (!gmailData) {
+    return {
+      messages: [],
+      unreadCount: 0,
+      actionableItems: []
+    };
+  }
+
+  return {
+    messages: gmailData.messages.slice(0, limit),
+    unreadCount: gmailData.unreadCount,
+    actionableItems: gmailData.actionableItems
+  };
 }
 
 export function handleGetSocialDigest(

@@ -131,6 +131,33 @@ function buildSocialMediaContextSummary(store: RuntimeStore, now: Date = new Dat
   return parts.join("\n");
 }
 
+function buildGmailContextSummary(store: RuntimeStore): string {
+  const gmailData = store.getGmailData();
+  
+  if (!gmailData || gmailData.messages.length === 0) {
+    return "Gmail: Not connected or no unread messages.";
+  }
+
+  const parts: string[] = [];
+  parts.push(`**Gmail Summary:**`);
+  parts.push(`- Unread messages: ${gmailData.unreadCount}`);
+
+  if (gmailData.importantSenders.length > 0) {
+    parts.push(`- Important senders: ${gmailData.importantSenders.slice(0, 3).join(", ")}`);
+  }
+
+  if (gmailData.actionableItems.length > 0) {
+    parts.push(`- Actionable items (${gmailData.actionableItems.length}):`);
+    gmailData.actionableItems.slice(0, 3).forEach((item) => {
+      const reasonLabel = item.reason === "canvas" ? "Canvas" : item.reason === "deadline" ? "Deadline" : "Professor";
+      const subjectPreview = item.subject.length > 60 ? item.subject.slice(0, 60) + "..." : item.subject;
+      parts.push(`  • [${reasonLabel}] ${subjectPreview}`);
+    });
+  }
+
+  return parts.join("\n");
+}
+
 export function buildChatContext(store: RuntimeStore, now: Date = new Date(), historyLimit = 10): ChatContextResult {
   const todaySchedule = store
     .getScheduleEvents()
@@ -152,13 +179,14 @@ export function buildChatContext(store: RuntimeStore, now: Date = new Date(), hi
   const userState: UserContext = store.getUserContext();
   const canvasContext = buildCanvasContextSummary(store, now);
   const socialMediaContext = buildSocialMediaContextSummary(store, now);
+  const gmailContext = buildGmailContextSummary(store);
 
   const contextWindow = buildContextWindow({
     todaySchedule,
     upcomingDeadlines,
     recentJournals,
     userState,
-    customContext: `${canvasContext}\n\n${socialMediaContext}`
+    customContext: `${canvasContext}\n\n${socialMediaContext}\n\n${gmailContext}`
   });
 
   const history = store.getRecentChatMessages(historyLimit);

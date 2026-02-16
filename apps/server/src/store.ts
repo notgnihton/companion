@@ -406,6 +406,17 @@ export class RuntimeStore {
     if (!hasCanvasAssignmentId) {
       this.db.prepare("ALTER TABLE deadlines ADD COLUMN canvasAssignmentId INTEGER").run();
     }
+
+    // Add Gmail message data columns if they don't exist
+    const gmailColumns = this.db.prepare("PRAGMA table_info(gmail_data)").all() as Array<{ name: string }>;
+    const hasMessages = gmailColumns.some((col) => col.name === "messages");
+    if (!hasMessages) {
+      this.db.prepare("ALTER TABLE gmail_data ADD COLUMN unreadCount INTEGER NOT NULL DEFAULT 0").run();
+      this.db.prepare("ALTER TABLE gmail_data ADD COLUMN messages TEXT NOT NULL DEFAULT '[]'").run();
+      this.db.prepare("ALTER TABLE gmail_data ADD COLUMN importantSenders TEXT NOT NULL DEFAULT '[]'").run();
+      this.db.prepare("ALTER TABLE gmail_data ADD COLUMN actionableItems TEXT NOT NULL DEFAULT '[]'").run();
+      this.db.prepare("ALTER TABLE gmail_data ADD COLUMN lastSyncedAt TEXT").run();
+    }
   }
 
   private loadOrInitializeDefaults(): void {
@@ -3763,6 +3774,59 @@ export class RuntimeStore {
       refreshToken: row.refreshToken,
       email: row.email || "unknown",
       connectedAt: row.connectedAt || new Date().toISOString()
+    };
+  }
+
+  /**
+   * Set Gmail message data
+   */
+  setGmailData(data: import("./types.js").GmailData): void {
+    const stmt = this.db.prepare(`
+      UPDATE gmail_data
+      SET unreadCount = ?,
+          messages = ?,
+          importantSenders = ?,
+          actionableItems = ?,
+          lastSyncedAt = ?
+      WHERE id = 1
+    `);
+
+    stmt.run(
+      data.unreadCount,
+      JSON.stringify(data.messages),
+      JSON.stringify(data.importantSenders),
+      JSON.stringify(data.actionableItems),
+      data.lastSyncedAt
+    );
+  }
+
+  /**
+   * Get Gmail message data
+   */
+  getGmailData(): import("./types.js").GmailData | null {
+    const stmt = this.db.prepare(`
+      SELECT unreadCount, messages, importantSenders, actionableItems, lastSyncedAt
+      FROM gmail_data WHERE id = 1
+    `);
+
+    const row = stmt.get() as {
+      unreadCount: number | null;
+      messages: string | null;
+      importantSenders: string | null;
+      actionableItems: string | null;
+      lastSyncedAt: string | null;
+    } | undefined;
+
+    if (!row || row.messages === null) {
+      return null;
+    }
+
+    return {
+      unreadCount: row.unreadCount || 0,
+      messages: JSON.parse(row.messages),
+      importantSenders: JSON.parse(row.importantSenders || "[]"),
+      actionableItems: JSON.parse(row.actionableItems || "[]"),
+      lastSyncedAt: row.lastSyncedAt
     };
   }
 }

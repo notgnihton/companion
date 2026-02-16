@@ -19,6 +19,7 @@ import { YouTubeSyncService } from "./youtube-sync.js";
 import { XSyncService } from "./x-sync.js";
 import { SocialMediaSummarizer } from "./social-media-summarizer.js";
 import { GmailOAuthService } from "./gmail-oauth.js";
+import { GmailSyncService } from "./gmail-sync.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
 
 const app = express();
@@ -32,6 +33,7 @@ const githubCourseSyncService = new GitHubCourseSyncService(store);
 const youtubeSyncService = new YouTubeSyncService(store);
 const xSyncService = new XSyncService(store);
 const gmailOAuthService = new GmailOAuthService(store);
+const gmailSyncService = new GmailSyncService(store, gmailOAuthService);
 
 runtime.start();
 syncService.start();
@@ -41,6 +43,7 @@ canvasSyncService.start();
 githubCourseSyncService.start();
 youtubeSyncService.start();
 xSyncService.start();
+gmailSyncService.start();
 
 app.use(cors());
 app.use(express.json());
