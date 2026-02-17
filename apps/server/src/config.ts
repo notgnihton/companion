@@ -16,8 +16,7 @@ const env = {
   FOOD_PROVIDER: process.env.FOOD_PROVIDER ?? process.env.AXIS_FOOD_PROVIDER,
   SOCIAL_PROVIDER: process.env.SOCIAL_PROVIDER ?? process.env.AXIS_SOCIAL_PROVIDER,
   VIDEO_PROVIDER: process.env.VIDEO_PROVIDER ?? process.env.AXIS_VIDEO_PROVIDER,
-  GITHUB_PAT: process.env.GITHUB_PAT ?? process.env.COURSE_GITHUB_PAT,
-  COURSE_GITHUB_PAT: process.env.COURSE_GITHUB_PAT ?? process.env.GITHUB_PAT
+  GITHUB_PAT: process.env.GITHUB_PAT
 };
 
 const schema = z.object({
@@ -40,7 +39,6 @@ const schema = z.object({
   CANVAS_API_TOKEN: z.string().optional(),
   CANVAS_BASE_URL: z.string().default("https://stavanger.instructure.com"),
   GITHUB_PAT: z.string().optional(),
-  COURSE_GITHUB_PAT: z.string().optional(),
   X_API_KEY: z.string().optional(),
   X_API_KEY_SECRET: z.string().optional(),
   X_ACCESS_TOKEN: z.string().optional(),
