@@ -31,7 +31,7 @@ export function buildDailyDigest(store: RuntimeStore, referenceDate: Date = new 
   const context = store.getUserContext();
 
   const bodyLines: string[] = [
-    `Hi ${config.AXIS_USER_NAME || "friend"},`,
+    `Hi ${config.USER_NAME || "friend"},`,
     "Push notifications were missed recently, so here's your daily digest.",
     `Timeframe: ${start.toISOString()} to ${windowEndIso}`,
     "",
@@ -57,7 +57,7 @@ export function buildWeeklyDigest(store: RuntimeStore, referenceDate: Date = new
   const highlights = summary.journalHighlights.slice(0, 3);
 
   const bodyLines: string[] = [
-    `Hi ${config.AXIS_USER_NAME || "friend"},`,
+    `Hi ${config.USER_NAME || "friend"},`,
     "Push has been quiet, so here's a weekly recap to keep you on track.",
     `Window: ${summary.windowStart} to ${summary.windowEnd}`,
     "",
@@ -116,7 +116,7 @@ export class EmailDigestService {
       this.store.recordEmailDigest({
         type: "daily",
         reason,
-        recipient: config.AXIS_FALLBACK_EMAIL,
+        recipient: config.FALLBACK_EMAIL,
         ...digest
       });
     }
@@ -126,7 +126,7 @@ export class EmailDigestService {
       this.store.recordEmailDigest({
         type: "weekly",
         reason,
-        recipient: config.AXIS_FALLBACK_EMAIL,
+        recipient: config.FALLBACK_EMAIL,
         ...digest
       });
     }

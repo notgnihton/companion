@@ -657,12 +657,12 @@ export async function sendChatMessage(
     : buildChatContext(store, now);
 
   const systemInstruction = useFunctionCalling
-    ? `You are Companion, a personal AI assistant for ${config.AXIS_USER_NAME}, a university student at UiS (University of Stavanger). 
+    ? `You are Companion, a personal AI assistant for ${config.USER_NAME}, a university student at UiS (University of Stavanger). 
 
 When you need information about the user's schedule, deadlines, journal entries, emails, or social media, use the available tools to fetch that data on demand.
 For actions that change data, use queue* action tools and clearly request explicit user confirmation.
 Keep responses concise, encouraging, and conversational.`
-    : buildSystemPrompt(config.AXIS_USER_NAME, contextWindow);
+    : buildSystemPrompt(config.USER_NAME, contextWindow);
 
   const messages = toGeminiMessages(history, userInput);
 

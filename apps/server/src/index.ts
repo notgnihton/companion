@@ -1190,7 +1190,7 @@ app.get("/api/push/vapid-public-key", (_req, res) => {
   return res.json({
     publicKey: getVapidPublicKey(),
     source: hasStaticVapidKeys() ? "configured" : "generated",
-    subject: config.AXIS_VAPID_SUBJECT
+    subject: config.VAPID_SUBJECT
   });
 });
 
