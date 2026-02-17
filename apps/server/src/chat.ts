@@ -706,6 +706,279 @@ function detectChatIntent(userInput: string, history: ChatMessage[] = []): ChatI
   return bestIntent;
 }
 
+interface HabitGoalAutocaptureSuggestion {
+  actionType: "create-habit" | "update-habit" | "create-goal" | "update-goal";
+  summary: string;
+  payload: Record<string, unknown>;
+  rationale: string;
+  prompt: string;
+}
+
+const COMMITMENT_CUE_REGEX =
+  /\b(i (?:keep|always|often|usually)\s+(?:missing|miss|skipping|skip|forgetting|forget)|i (?:want|need|plan|will|should|wish)(?:\s+to)?|i(?:'d| would) like to)\b/i;
+const EXPLICIT_HABIT_GOAL_REQUEST_REGEX =
+  /\b(create|delete|remove|check[\s-]?in|mark|status|progress|list|show|what|how)\b/i;
+const HABIT_FOCUS_REGEX =
+  /\b(habit|routine|daily|nightly|morning|evening|streak|consistent|consistently|keep missing|keep skipping)\b/i;
+const GOAL_FOCUS_REGEX =
+  /\b(goal|finish|complete|submit|deliver|assignment|exam|project|report|deadline|by\b|before\b)\b/i;
+
+function toCommitmentTokens(value: string): string[] {
+  const stopwords = new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "that",
+    "this",
+    "have",
+    "from",
+    "into",
+    "want",
+    "need",
+    "keep",
+    "miss",
+    "missing",
+    "skip",
+    "skipping",
+    "should",
+    "will",
+    "plan",
+    "would",
+    "like",
+    "every",
+    "daily",
+    "nightly"
+  ]);
+
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 && !stopwords.has(token));
+}
+
+function extractCommitmentPhrase(input: string): string | null {
+  const matchers = [
+    /\bi (?:keep|always|often|usually)\s+(?:missing|miss|skipping|skip|forgetting|forget)\s+([^.!?\n]{3,100})/i,
+    /\bi (?:want|need|plan|will|should|wish)(?:\s+to)?\s+([^.!?\n]{3,100})/i,
+    /\bi(?:'d| would) like to\s+([^.!?\n]{3,100})/i
+  ];
+
+  for (const matcher of matchers) {
+    const match = input.match(matcher);
+    if (!match?.[1]) {
+      continue;
+    }
+    return match[1];
+  }
+
+  return null;
+}
+
+function normalizeCommitmentLabel(rawPhrase: string): string | null {
+  const cleaned = rawPhrase
+    .replace(/\b(please|thanks|thank you)\b/gi, " ")
+    .replace(/[.?!]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleaned.length < 3) {
+    return null;
+  }
+
+  const normalized = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  return normalized.slice(0, 80);
+}
+
+function countCommitmentMentions(messages: string[], tokens: string[]): number {
+  if (tokens.length === 0) {
+    return 0;
+  }
+
+  return messages.reduce((count, message) => {
+    const normalized = message.toLowerCase();
+    if (!COMMITMENT_CUE_REGEX.test(normalized)) {
+      return count;
+    }
+    const tokenHits = tokens.filter((token) => normalized.includes(token)).length;
+    return tokenHits > 0 ? count + 1 : count;
+  }, 0);
+}
+
+function findBestNameMatch<T extends { id: string }>(
+  records: T[],
+  textAccessor: (record: T) => string,
+  tokens: string[]
+): T | null {
+  if (records.length === 0 || tokens.length === 0) {
+    return null;
+  }
+
+  const scored = records
+    .map((record) => {
+      const candidate = textAccessor(record).toLowerCase();
+      const score = tokens.filter((token) => candidate.includes(token)).length;
+      return { record, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0].score > 0 ? scored[0].record : null;
+}
+
+function detectHabitGoalAutocaptureSuggestion(
+  store: RuntimeStore,
+  userInput: string,
+  history: ChatMessage[],
+  pendingActions: ChatPendingAction[]
+): HabitGoalAutocaptureSuggestion | null {
+  const input = userInput.trim();
+  if (!input || input.length < 8) {
+    return null;
+  }
+  if (pendingActions.length > 0) {
+    return null;
+  }
+  if (input.includes("?")) {
+    return null;
+  }
+  if (EXPLICIT_HABIT_GOAL_REQUEST_REGEX.test(input)) {
+    return null;
+  }
+  if (!COMMITMENT_CUE_REGEX.test(input)) {
+    return null;
+  }
+
+  const rawPhrase = extractCommitmentPhrase(input);
+  if (!rawPhrase) {
+    return null;
+  }
+  const label = normalizeCommitmentLabel(rawPhrase);
+  if (!label) {
+    return null;
+  }
+
+  const tokens = toCommitmentTokens(label);
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  const recentUserMessages = history
+    .filter((message) => message.role === "user")
+    .slice(-8)
+    .map((message) => message.content);
+  const mentionCount = countCommitmentMentions([...recentUserMessages, input], tokens);
+  if (mentionCount < 2) {
+    return null;
+  }
+
+  const struggleSignal = /\b(keep|always|often|usually).*(missing|miss|skipping|skip|forgetting|forget)|\bstruggl/i.test(
+    input.toLowerCase()
+  );
+  const habitFocused = HABIT_FOCUS_REGEX.test(input);
+  const goalFocused = GOAL_FOCUS_REGEX.test(input);
+  const treatAsGoal = goalFocused && !habitFocused;
+  const rationale = `You expressed this commitment ${mentionCount} times recently, so I can turn it into trackable follow-through.`;
+
+  if (!treatAsGoal) {
+    const existingHabit = findBestNameMatch(
+      store.getHabitsWithStatus(),
+      (habit) => habit.name,
+      tokens
+    );
+
+    if (existingHabit) {
+      const nextTargetPerWeek = struggleSignal
+        ? Math.max(1, existingHabit.targetPerWeek - 1)
+        : existingHabit.targetPerWeek;
+      const shouldAdjustTarget = nextTargetPerWeek !== existingHabit.targetPerWeek;
+      const payload: Record<string, unknown> = {
+        habitId: existingHabit.id,
+        motivation: label
+      };
+      if (shouldAdjustTarget) {
+        payload.targetPerWeek = nextTargetPerWeek;
+      }
+
+      return {
+        actionType: "update-habit",
+        summary: shouldAdjustTarget
+          ? `Adjust habit "${existingHabit.name}" to ${nextTargetPerWeek}/week`
+          : `Update habit "${existingHabit.name}" motivation`,
+        payload,
+        rationale,
+        prompt: shouldAdjustTarget
+          ? `I can adjust **${existingHabit.name}** to ${nextTargetPerWeek}/week so it is easier to stay consistent.`
+          : `I can keep **${existingHabit.name}** and update its motivation from what you just said.`
+      };
+    }
+
+    const cadence = /\b(weekly|week)\b/i.test(input) ? "weekly" : "daily";
+    const targetPerWeek = cadence === "daily" ? 5 : 3;
+    return {
+      actionType: "create-habit",
+      summary: `Create habit "${label}" (${cadence}, ${targetPerWeek}/week)`,
+      payload: {
+        name: label,
+        cadence,
+        targetPerWeek,
+        motivation: label
+      },
+      rationale,
+      prompt: `I can create a new habit **${label}** (${cadence}, ${targetPerWeek}/week) and track it from today.`
+    };
+  }
+
+  const existingGoal = findBestNameMatch(
+    store.getGoalsWithStatus(),
+    (goal) => goal.title,
+    tokens
+  );
+
+  if (existingGoal) {
+    const nextTargetCount = struggleSignal
+      ? Math.max(1, existingGoal.targetCount - 1)
+      : existingGoal.targetCount;
+    const shouldAdjustTarget = nextTargetCount !== existingGoal.targetCount;
+    const payload: Record<string, unknown> = {
+      goalId: existingGoal.id,
+      motivation: label
+    };
+    if (shouldAdjustTarget) {
+      payload.targetCount = nextTargetCount;
+    }
+
+    return {
+      actionType: "update-goal",
+      summary: shouldAdjustTarget
+        ? `Adjust goal "${existingGoal.title}" to ${nextTargetCount} check-ins`
+        : `Update goal "${existingGoal.title}" motivation`,
+      payload,
+      rationale,
+      prompt: shouldAdjustTarget
+        ? `I can adjust **${existingGoal.title}** to ${nextTargetCount} check-ins so it is more realistic right now.`
+        : `I can keep **${existingGoal.title}** and refresh its motivation based on your commitment.`
+    };
+  }
+
+  const cadence = /\b(daily|every day)\b/i.test(input) ? "daily" : "weekly";
+  const targetCount = cadence === "daily" ? 7 : 5;
+  return {
+    actionType: "create-goal",
+    summary: `Create goal "${label}" (${targetCount} check-ins)`,
+    payload: {
+      title: label,
+      cadence,
+      targetCount,
+      motivation: label,
+      dueDate: null
+    },
+    rationale,
+    prompt: `I can create a goal **${label}** (${targetCount} check-ins) so we can track progress clearly.`
+  };
+}
+
 function buildIntentGuidance(intent: ChatIntent): string {
   switch (intent) {
     case "schedule":
@@ -2674,9 +2947,50 @@ export async function sendChatMessage(
     };
   }
 
+  const recentHistoryForIntent = store.getRecentChatMessages(FUNCTION_CALL_HISTORY_LIMIT);
+  const habitGoalAutocapture = detectHabitGoalAutocaptureSuggestion(
+    store,
+    userInput,
+    recentHistoryForIntent,
+    pendingActionsAtStart
+  );
+
+  if (habitGoalAutocapture) {
+    const userMessage = store.recordChatMessage("user", userInput, userMetadata);
+    const pendingAction = store.createPendingChatAction({
+      actionType: habitGoalAutocapture.actionType,
+      summary: habitGoalAutocapture.summary,
+      payload: {
+        ...habitGoalAutocapture.payload,
+        rationale: habitGoalAutocapture.rationale
+      }
+    });
+
+    const assistantReply = [
+      habitGoalAutocapture.prompt,
+      `Why this suggestion: ${habitGoalAutocapture.rationale}`,
+      "Use the Confirm/Cancel buttons below, or type:",
+      `- confirm ${pendingAction.id}`,
+      `- cancel ${pendingAction.id}`
+    ].join("\n");
+    const assistantMessage = store.recordChatMessage("assistant", assistantReply, {
+      contextWindow: "",
+      pendingActions: store.getPendingChatActions(now)
+    });
+    const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
+
+    return {
+      reply: assistantMessage.content,
+      userMessage,
+      assistantMessage,
+      finishReason: "stop",
+      citations: [],
+      history: historyPage
+    };
+  }
+
   const gemini = options.geminiClient ?? getGeminiClient();
   const useFunctionCalling = options.useFunctionCalling ?? true;
-  const recentHistoryForIntent = store.getRecentChatMessages(FUNCTION_CALL_HISTORY_LIMIT);
   const intent = detectChatIntent(userInput, recentHistoryForIntent);
   
   // Build lightweight context for function calling mode (or full context for legacy mode)

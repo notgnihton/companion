@@ -1,6 +1,6 @@
 import { Fragment, ReactNode, useEffect, useRef, useState } from "react";
 import { sendChatMessage, getChatHistory, submitJournalEntry } from "../lib/api";
-import { ChatCitation, ChatImageAttachment, ChatMessage } from "../types";
+import { ChatCitation, ChatImageAttachment, ChatMessage, ChatPendingAction } from "../types";
 import { loadTalkModeEnabled, saveTalkModeEnabled } from "../lib/storage";
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
@@ -435,10 +435,14 @@ export function ChatView(): JSX.Element {
     }
   };
 
-  const handleSend = async (): Promise<void> => {
-    const trimmedText = inputText.trim();
-    const attachmentsToSend = pendingAttachments.slice(0, MAX_ATTACHMENTS);
-    if ((trimmedText.length === 0 && attachmentsToSend.length === 0) || isSending) return;
+  const dispatchMessage = async (
+    messageText: string,
+    attachmentsToSend: ChatImageAttachment[] = []
+  ): Promise<void> => {
+    const trimmedText = messageText.trim();
+    if ((trimmedText.length === 0 && attachmentsToSend.length === 0) || isSending) {
+      return;
+    }
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -454,15 +458,11 @@ export function ChatView(): JSX.Element {
         : {})
     };
 
-    // Add user message immediately
     setMessages((prev) => [...prev, userMessage]);
     pendingTopMessageIdRef.current = userMessage.id;
-    setInputText("");
-    setPendingAttachments([]);
     setIsSending(true);
     setError(null);
 
-    // Add a placeholder for streaming assistant response
     const assistantPlaceholder: ChatMessage = {
       id: crypto.randomUUID(),
       role: "assistant",
@@ -478,7 +478,6 @@ export function ChatView(): JSX.Element {
 
     try {
       const response = await sendChatMessage(trimmedText, attachmentsToSend);
-      // Replace placeholder with actual response
       setMessages((prev) =>
         prev.map((msg) =>
           msg.streaming ? { ...response, streaming: false } : msg
@@ -487,12 +486,27 @@ export function ChatView(): JSX.Element {
     } catch (err) {
       setError("Failed to send message. Please try again.");
       console.error(err);
-      // Remove placeholder on error
       setMessages((prev) => prev.filter((msg) => !msg.streaming));
     } finally {
       pendingTopMessageIdRef.current = null;
       setIsSending(false);
     }
+  };
+
+  const handleSend = async (): Promise<void> => {
+    const trimmedText = inputText.trim();
+    const attachmentsToSend = pendingAttachments.slice(0, MAX_ATTACHMENTS);
+    if ((trimmedText.length === 0 && attachmentsToSend.length === 0) || isSending) return;
+    setInputText("");
+    setPendingAttachments([]);
+    await dispatchMessage(trimmedText, attachmentsToSend);
+  };
+
+  const handlePendingActionCommand = (action: ChatPendingAction, type: "confirm" | "cancel"): void => {
+    if (isSending) {
+      return;
+    }
+    void dispatchMessage(`${type} ${action.id}`);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>): void => {
@@ -645,6 +659,7 @@ export function ChatView(): JSX.Element {
         {messages.map((msg) => {
           const attachments = msg.metadata?.attachments ?? [];
           const hasAttachments = attachments.length > 0;
+          const pendingActions = msg.metadata?.pendingActions ?? [];
 
           return (
             <div key={msg.id} data-message-id={msg.id} className={`chat-bubble chat-bubble-${msg.role}`}>
@@ -679,6 +694,37 @@ export function ChatView(): JSX.Element {
                       {formatCitationChipLabel(citation)}
                     </button>
                   ))}
+                </div>
+              )}
+              {msg.role === "assistant" && !msg.streaming && pendingActions.length > 0 && (
+                <div className="chat-pending-action-list">
+                  {pendingActions.map((action) => {
+                    const rationale = typeof action.payload?.rationale === "string" ? action.payload.rationale : null;
+                    return (
+                      <div key={action.id} className="chat-pending-action-card">
+                        <p className="chat-pending-action-summary">{action.summary}</p>
+                        {rationale ? <p className="chat-pending-action-rationale">{rationale}</p> : null}
+                        <div className="chat-pending-action-buttons">
+                          <button
+                            type="button"
+                            className="chat-pending-action-confirm"
+                            onClick={() => handlePendingActionCommand(action, "confirm")}
+                            disabled={isSending}
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            type="button"
+                            className="chat-pending-action-cancel"
+                            onClick={() => handlePendingActionCommand(action, "cancel")}
+                            disabled={isSending}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <div className="chat-bubble-footer">

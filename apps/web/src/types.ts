@@ -427,7 +427,36 @@ export interface ChatImageAttachment {
   fileName?: string;
 }
 
+export type ChatActionType =
+  | "complete-deadline"
+  | "snooze-deadline"
+  | "create-schedule-block"
+  | "update-schedule-block"
+  | "create-journal-draft"
+  | "create-habit"
+  | "update-habit"
+  | "create-goal"
+  | "update-goal";
+
+export interface ChatPendingAction {
+  id: string;
+  actionType: ChatActionType;
+  summary: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface ChatActionExecution {
+  actionId: string;
+  actionType: ChatActionType;
+  status: "confirmed" | "cancelled" | "failed";
+  message: string;
+}
+
 export interface ChatMessageMetadata {
+  pendingActions?: ChatPendingAction[];
+  actionExecution?: ChatActionExecution;
   citations?: ChatCitation[];
   attachments?: ChatImageAttachment[];
 }
