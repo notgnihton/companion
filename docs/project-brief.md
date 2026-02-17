@@ -380,3 +380,10 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `github-pat-syllabus-sync` | backend-engineer | Support private GitHub course ingestion with `GITHUB_PAT`, expose `/api/sync/github` + `/api/github/course-content`, and persist extracted syllabus/course-info docs for chat context. |
 | ✅ done | `postgres-database-url-persistence` | backend-engineer | Add PostgreSQL snapshot persistence behind `DATABASE_URL`: restore SQLite runtime state on boot, auto-persist snapshots on interval/shutdown, and expose active storage backend diagnostics. |
 | ✅ done | `integration-health-log-api` | backend-engineer | Persist TP/Canvas/Gmail sync attempt history (success/failure, latency, root-cause category) and expose APIs for troubleshooting and reliability analytics (`/api/integrations/health-log`, `/api/integrations/health-log/summary`). |
+| | | | |
+| | **— Phase 9: Reliability UX & Learning Flow —** | | |
+| ⬜ todo | `integration-health-dashboard-ui` | frontend-engineer | Build an Integrations Health screen that visualizes sync-attempt history (success rate, latency trend, failure root-cause chips) and links to recovery actions for TP/Canvas/Gmail. |
+| ⬜ todo | `github-course-citations-in-chat` | backend-engineer | Add tool/citation support so chat responses can reference specific synced GitHub syllabus/course docs (path + snippet) instead of only implicit context injection. |
+| ⬜ todo | `ios-keyboard-safearea-hardening` | frontend-engineer | Harden chat/journal input layouts for iPhone Safari keyboard + safe-area edge cases (rotation, PWA standalone, notch devices) with zero clipped controls. |
+| ⬜ todo | `sync-auto-healing-policies` | backend-engineer | Add per-integration auto-healing rules (backoff windows, temporary circuit-breakers, jittered retries) to reduce repeated failure storms and improve reliability without manual intervention. |
+| ⬜ todo | `schedule-day-timeline-ui` | frontend-engineer | Add a compact day-timeline view (lecture blocks, free gaps, upcoming deadline markers) optimized for one-glance planning on iPhone. |
