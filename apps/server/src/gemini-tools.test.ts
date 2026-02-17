@@ -189,15 +189,66 @@ describe("gemini-tools", () => {
   });
 
   describe("handleGetEmails", () => {
-    it("should return email digests with default limit", () => {
+    it("returns synced Gmail messages (not local digest records)", () => {
+      store.recordEmailDigest({
+        type: "daily",
+        reason: "inactivity",
+        recipient: "lucy@example.com",
+        subject: "Companion daily digest",
+        body: "Digest body",
+        timeframeStart: "2026-02-17T00:00:00.000Z",
+        timeframeEnd: "2026-02-17T23:59:59.000Z"
+      });
+      store.setGmailMessages(
+        [
+          {
+            id: "gmail-1",
+            from: "course@uis.no",
+            subject: "DAT560 Assignment 2 feedback",
+            snippet: "Great progress. Please improve section 3.",
+            receivedAt: "2026-02-17T11:00:00.000Z",
+            labels: ["INBOX", "UNREAD"],
+            isRead: false
+          }
+        ],
+        "2026-02-17T11:05:00.000Z"
+      );
+
       const result = handleGetEmails(store);
       expect(Array.isArray(result)).toBe(true);
+      expect(result).toHaveLength(1);
+      expect(result[0]?.subject).toBe("DAT560 Assignment 2 feedback");
     });
 
-    it("should respect limit parameter", () => {
-      const result = handleGetEmails(store, { limit: 3 });
+    it("respects limit and unreadOnly parameters", () => {
+      store.setGmailMessages(
+        [
+          {
+            id: "gmail-older",
+            from: "a@uis.no",
+            subject: "Older read email",
+            snippet: "Already read",
+            receivedAt: "2026-02-17T08:00:00.000Z",
+            labels: ["INBOX"],
+            isRead: true
+          },
+          {
+            id: "gmail-newer",
+            from: "b@uis.no",
+            subject: "Newest unread email",
+            snippet: "Unread details",
+            receivedAt: "2026-02-17T12:00:00.000Z",
+            labels: ["INBOX", "UNREAD"],
+            isRead: false
+          }
+        ],
+        "2026-02-17T12:05:00.000Z"
+      );
+
+      const result = handleGetEmails(store, { limit: 1, unreadOnly: true });
       expect(Array.isArray(result)).toBe(true);
-      expect(result.length).toBeLessThanOrEqual(3);
+      expect(result).toHaveLength(1);
+      expect(result[0]?.id).toBe("gmail-newer");
     });
   });
 

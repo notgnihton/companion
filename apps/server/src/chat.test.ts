@@ -731,6 +731,88 @@ describe("chat service", () => {
     expect(result.reply).toContain("* **DAT520 Forelesning /Lecture** from 11:15 to 13:00");
   });
 
+  it("routes ambiguous follow-up questions to email intent when recent email context exists", async () => {
+    store.recordChatMessage("assistant", "Recent emails (1): DAT560 Assignment update", {
+      citations: [
+        {
+          id: "gmail-1",
+          type: "email",
+          label: "DAT560 Assignment update"
+        }
+      ]
+    });
+
+    await sendChatMessage(store, "what did it contain?", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    const firstRequest = generateChatResponse.mock.calls[0][0] as { systemInstruction: string };
+    expect(firstRequest.systemInstruction).toContain("Detected intent: emails");
+  });
+
+  it("includes Gmail snippet/from/receivedAt in getEmails functionResponse payload", async () => {
+    store.setGmailMessages(
+      [
+        {
+          id: "gmail-123",
+          from: "course@uis.no",
+          subject: "DAT560 Assignment 2 reminder",
+          snippet: "Please submit by Thursday 13:00 and include your report.",
+          receivedAt: "2026-02-17T12:00:00.000Z",
+          labels: ["INBOX", "UNREAD"],
+          isRead: false
+        }
+      ],
+      "2026-02-17T12:05:00.000Z"
+    );
+
+    generateChatResponse = vi
+      .fn()
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop",
+        functionCalls: [
+          {
+            name: "getEmails",
+            args: { limit: 1 }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        text: "Your latest email is about DAT560 Assignment 2.",
+        finishReason: "stop"
+      });
+    fakeGemini = {
+      generateChatResponse
+    } as unknown as GeminiClient;
+
+    await sendChatMessage(store, "What did my last email contain?", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    expect(generateChatResponse).toHaveBeenCalledTimes(2);
+    const secondRequest = generateChatResponse.mock.calls[1][0] as {
+      messages: Array<{ role: string; parts: Array<Record<string, unknown>> }>;
+    };
+    const lastMessage = secondRequest.messages[secondRequest.messages.length - 1];
+    const fnResponse = lastMessage.parts[0]?.functionResponse as
+      | { name: string; response: Record<string, unknown> }
+      | undefined;
+
+    expect(lastMessage.role).toBe("function");
+    expect(fnResponse?.name).toBe("getEmails");
+    expect(fnResponse?.response?.total).toBe(1);
+
+    const emails = fnResponse?.response?.emails as Array<Record<string, unknown>>;
+    expect(Array.isArray(emails)).toBe(true);
+    expect(emails[0]?.from).toBe("course@uis.no");
+    expect(emails[0]?.receivedAt).toBe("2026-02-17T12:00:00.000Z");
+    expect(emails[0]?.snippet).toContain("submit by Thursday");
+    expect(emails[0]?.isRead).toBe(false);
+  });
+
   it("compacts large tool responses before sending functionResponse payloads to Gemini", async () => {
     const now = Date.now();
     for (let index = 0; index < 12; index += 1) {

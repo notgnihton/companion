@@ -4,7 +4,7 @@ import {
   ChatActionType,
   ChatPendingAction,
   Deadline,
-  EmailDigest,
+  GmailMessage,
   GoalWithStatus,
   GitHubCourseDocument,
   HabitWithStatus,
@@ -65,13 +65,17 @@ export const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "getEmails",
     description:
-      "Get recent email digests from Gmail. Returns email summaries with subjects, timestamps, and snippets. Use this when user asks about emails, inbox, or recent messages.",
+      "Get recent Gmail inbox messages. Returns sender, subject, snippet, read status, and received timestamp. Use this when user asks about emails, inbox, what their latest email said, or message contents.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
         limit: {
           type: SchemaType.NUMBER,
-          description: "Maximum number of email digests to return (default: 5)"
+          description: "Maximum number of emails to return (default: 5, max: 20)"
+        },
+        unreadOnly: {
+          type: SchemaType.BOOLEAN,
+          description: "Set true to return only unread emails"
         }
       },
       required: []
@@ -306,10 +310,21 @@ export function handleSearchJournal(
 export function handleGetEmails(
   store: RuntimeStore,
   args: Record<string, unknown> = {}
-): EmailDigest[] {
-  const limit = (args.limit as number) ?? 5;
-  const digests = store.getEmailDigests(limit);
-  return digests;
+): GmailMessage[] {
+  const limit = clampNumber(args.limit, 5, 1, 20);
+  const unreadOnly = args.unreadOnly === true;
+  const messages = store
+    .getGmailMessages()
+    .filter((message) => (unreadOnly ? !message.isRead : true))
+    .sort((left, right) => {
+      const leftMs = new Date(left.receivedAt).getTime();
+      const rightMs = new Date(right.receivedAt).getTime();
+      const safeLeftMs = Number.isFinite(leftMs) ? leftMs : 0;
+      const safeRightMs = Number.isFinite(rightMs) ? rightMs : 0;
+      return safeRightMs - safeLeftMs;
+    });
+
+  return messages.slice(0, limit);
 }
 
 export function handleGetSocialDigest(

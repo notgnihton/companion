@@ -614,7 +614,32 @@ const INTENT_PATTERNS: Array<{ intent: Exclude<ChatIntent, "general">; patterns:
   }
 ];
 
-function detectChatIntent(userInput: string): ChatIntent {
+function looksLikeEmailFollowUp(userInput: string): boolean {
+  const normalized = userInput.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    /\bwhat did (it|that) (contain|say)\b/i.test(normalized) ||
+    /\bwhat was in (it|that)\b/i.test(normalized) ||
+    /\bwhat did (the|that) email (contain|say)\b/i.test(normalized) ||
+    /\bsummarize (it|that)\b/i.test(normalized)
+  );
+}
+
+function hasRecentEmailContext(history: ChatMessage[]): boolean {
+  const recent = history.slice(-4);
+  return recent.some((message) => {
+    const hasEmailCitation = (message.metadata?.citations ?? []).some((citation) => citation.type === "email");
+    if (hasEmailCitation) {
+      return true;
+    }
+    return /\b(email|gmail|inbox|recent emails|unread)\b/i.test(message.content);
+  });
+}
+
+function detectChatIntent(userInput: string, history: ChatMessage[] = []): ChatIntent {
   let bestIntent: ChatIntent = "general";
   let bestScore = 0;
 
@@ -624,6 +649,10 @@ function detectChatIntent(userInput: string): ChatIntent {
       bestScore = score;
       bestIntent = rule.intent;
     }
+  }
+
+  if (bestIntent === "general" && looksLikeEmailFollowUp(userInput) && hasRecentEmailContext(history)) {
+    return "emails";
   }
 
   return bestIntent;
@@ -700,6 +729,12 @@ const INTENT_FEW_SHOT_EXAMPLES: IntentFewShotExample[] = [
     responseStyle: "Prioritize actionable/urgent messages."
   },
   {
+    user: "What did that email contain?",
+    intent: "emails",
+    toolPlan: "Call getEmails again and summarize the latest sender/subject/snippet.",
+    responseStyle: "Answer with concise email content details and actionable next step."
+  },
+  {
     user: "What did I miss on YouTube and X?",
     intent: "social",
     toolPlan: "Call getSocialDigest with recent window.",
@@ -755,6 +790,7 @@ Core behavior:
 - For factual questions about schedule, deadlines, journal, email, social updates, or GitHub course materials, use tools before answering.
 - For habits and goals questions, call getHabitsGoalsStatus first; use updateHabitCheckIn/updateGoalCheckIn for explicit check-in actions.
 - Do not hallucinate user-specific data. If data is unavailable, say so explicitly and suggest the next sync step.
+- For email follow-ups like "what did it contain?" after inbox discussion, call getEmails again and answer from sender/subject/snippet.
 - For mutating requests that change schedule/deadlines, use queue* action tools and require explicit user confirmation.
 - For journal-save requests, call createJournalEntry directly and do not ask for confirm/cancel commands.
 - Keep replies concise, practical, and conversational.
@@ -876,7 +912,18 @@ function buildEmailsFallbackSection(response: unknown): string | null {
       return;
     }
     const subject = asNonEmptyString(record.subject) ?? "No subject";
-    lines.push(`- ${textSnippet(subject, 100)}`);
+    const from = asNonEmptyString(record.from);
+    const snippet = asNonEmptyString(record.snippet);
+    const receivedAt = asNonEmptyString(record.receivedAt) ?? asNonEmptyString(record.generatedAt);
+    const readSuffix = record.isRead === false ? " [unread]" : "";
+
+    lines.push(`- ${textSnippet(subject, 100)}${from ? ` — ${textSnippet(from, 70)}` : ""}${readSuffix}`);
+    if (snippet) {
+      lines.push(`  ${textSnippet(snippet, 160)}`);
+    }
+    if (receivedAt) {
+      lines.push(`  Received: ${receivedAt}`);
+    }
   });
   if (response.length > 4) {
     lines.push(`- +${response.length - 4} more`);
@@ -1351,8 +1398,9 @@ function compactEmailsForModel(response: unknown): unknown {
         id: asNonEmptyString(record.id) ?? "",
         from: compactTextValue(asNonEmptyString(record.from) ?? "", 70),
         subject: compactTextValue(asNonEmptyString(record.subject) ?? "", 120),
-        generatedAt: asNonEmptyString(record.generatedAt) ?? null,
-        snippet: compactTextValue(asNonEmptyString(record.snippet) ?? "", 180)
+        receivedAt: asNonEmptyString(record.receivedAt) ?? asNonEmptyString(record.generatedAt) ?? null,
+        snippet: compactTextValue(asNonEmptyString(record.snippet) ?? "", 180),
+        isRead: typeof record.isRead === "boolean" ? record.isRead : null
       };
     }),
     truncated: response.length > TOOL_RESULT_ITEM_LIMIT
@@ -1673,7 +1721,7 @@ function collectToolCitations(
       }
       const id = asNonEmptyString(record.id);
       const subject = asNonEmptyString(record.subject);
-      const generatedAt = asNonEmptyString(record.generatedAt);
+      const receivedAt = asNonEmptyString(record.receivedAt) ?? asNonEmptyString(record.generatedAt);
       if (!id || !subject) {
         return;
       }
@@ -1681,7 +1729,7 @@ function collectToolCitations(
         id,
         type: "email",
         label: textSnippet(subject),
-        timestamp: generatedAt ?? undefined
+        timestamp: receivedAt ?? undefined
       });
     });
     return next;
@@ -2019,11 +2067,12 @@ export async function sendChatMessage(
 
   const gemini = options.geminiClient ?? getGeminiClient();
   const useFunctionCalling = options.useFunctionCalling ?? true;
-  const intent = detectChatIntent(userInput);
+  const recentHistoryForIntent = store.getRecentChatMessages(FUNCTION_CALL_HISTORY_LIMIT);
+  const intent = detectChatIntent(userInput, recentHistoryForIntent);
   
   // Build lightweight context for function calling mode (or full context for legacy mode)
   const { contextWindow, history } = useFunctionCalling 
-    ? { contextWindow: "", history: store.getRecentChatMessages(FUNCTION_CALL_HISTORY_LIMIT) }
+    ? { contextWindow: "", history: recentHistoryForIntent }
     : buildChatContext(store, now);
 
   const systemInstruction = useFunctionCalling
