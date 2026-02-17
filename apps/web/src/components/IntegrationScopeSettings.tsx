@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getCanvasStatus, previewIntegrationScope, triggerCanvasSync, triggerTPSync } from "../lib/api";
 import {
-  loadCanvasSettings,
   loadIntegrationScopeSettings,
   saveIntegrationScopeSettings
 } from "../lib/storage";
@@ -112,7 +111,7 @@ export function IntegrationScopeSettings(): JSX.Element {
     setTPCourseInput(normalized.tpCourseIds.join("; "));
 
     const [canvasResult, tpResult] = await Promise.all([
-      triggerCanvasSync(loadCanvasSettings(), {
+      triggerCanvasSync(undefined, {
         courseIds: normalized.canvasCourseIds,
         pastDays: normalized.pastDays,
         futureDays: normalized.futureDays

@@ -4,7 +4,7 @@ import {
   getGeminiStatus,
   triggerCanvasSync
 } from "../lib/api";
-import { loadCanvasSettings, saveCanvasStatus } from "../lib/storage";
+import { saveCanvasStatus } from "../lib/storage";
 import type {
   CanvasStatus,
   GeminiStatus
@@ -56,8 +56,7 @@ export function IntegrationStatusView(): JSX.Element {
     setCanvasSyncing(true);
     setCanvasMessage("");
 
-    const settings = loadCanvasSettings();
-    const result = await triggerCanvasSync(settings);
+    const result = await triggerCanvasSync(undefined);
     setCanvasMessage(result.success ? "Canvas synced successfully." : result.error ?? "Canvas sync failed.");
 
     const nextStatus = await getCanvasStatus();
