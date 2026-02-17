@@ -14,14 +14,14 @@ describe("GitHubCourseSyncService", () => {
   });
 
   describe("parseDeadlines", () => {
-    it("should parse deadline table with Lab and Deadline columns", () => {
+    it("should parse assignment rows from deadline tables", () => {
       const markdown = `
 # Lab Assignments
 
-| Lab | Deadline |
-|-----|----------|
-| Lab 1 | 2026-02-28 |
-| Lab 2 | 2026-03-15 |
+| Task | Deadline |
+|------|----------|
+| Assignment 1 | 2026-02-28 |
+| Assignment 2 | 2026-03-15 |
 `;
 
       const service = new GitHubCourseSyncService(store);
@@ -30,15 +30,35 @@ describe("GitHubCourseSyncService", () => {
       expect(deadlines).toHaveLength(2);
       expect(deadlines[0]).toMatchObject({
         course: "DAT520",
-        task: "Lab 1",
+        task: "Assignment 1",
         dueDate: "2026-02-28",
         priority: "medium",
         completed: false
       });
       expect(deadlines[1]).toMatchObject({
         course: "DAT520",
-        task: "Lab 2",
+        task: "Assignment 2",
         dueDate: "2026-03-15"
+      });
+    });
+
+    it("should parse exam rows from deadline tables", () => {
+      const markdown = `
+# Exams
+
+| Activity | Due Date |
+|----------|----------|
+| Midterm Exam | 2026-04-12 |
+`;
+
+      const service = new GitHubCourseSyncService(store);
+      const deadlines = service.parseDeadlines(markdown, "DAT560");
+
+      expect(deadlines).toHaveLength(1);
+      expect(deadlines[0]).toMatchObject({
+        course: "DAT560",
+        task: "Midterm Exam",
+        dueDate: "2026-04-12"
       });
     });
 
@@ -64,26 +84,26 @@ describe("GitHubCourseSyncService", () => {
 
     it("should skip rows with TBA or empty deadlines", () => {
       const markdown = `
-| Lab | Deadline |
-|-----|----------|
-| Lab 1 | 2026-02-28 |
-| Lab 2 | TBA |
-| Lab 3 | - |
+| Task | Deadline |
+|------|----------|
+| Assignment 1 | 2026-02-28 |
+| Assignment 2 | TBA |
+| Assignment 3 | - |
 `;
 
       const service = new GitHubCourseSyncService(store);
       const deadlines = service.parseDeadlines(markdown, "DAT520");
 
       expect(deadlines).toHaveLength(1);
-      expect(deadlines[0].task).toBe("Lab 1");
+      expect(deadlines[0].task).toBe("Assignment 1");
     });
 
     it("should parse dates in different formats", () => {
       const markdown = `
-| Lab | Deadline |
-|-----|----------|
-| Lab 1 | 2026-02-28 |
-| Lab 2 | Feb 28, 2026 |
+| Task | Deadline |
+|------|----------|
+| Assignment 1 | 2026-02-28 |
+| Midterm Exam | Feb 28, 2026 |
 `;
 
       const service = new GitHubCourseSyncService(store);
@@ -106,6 +126,20 @@ describe("GitHubCourseSyncService", () => {
 
       expect(deadlines).toHaveLength(0);
     });
+
+    it("should ignore non-assignment and non-exam rows", () => {
+      const markdown = `
+| Task | Deadline |
+|------|----------|
+| Lab 1 | 2026-02-28 |
+| Exercise 2 | 2026-03-10 |
+`;
+
+      const service = new GitHubCourseSyncService(store);
+      const deadlines = service.parseDeadlines(markdown, "DAT520");
+
+      expect(deadlines).toHaveLength(0);
+    });
   });
 
   describe("sync", () => {
@@ -114,9 +148,9 @@ describe("GitHubCourseSyncService", () => {
       const freshStore = new RuntimeStore(":memory:");
       
       const mockReadme = `
-| Lab | Deadline |
-|-----|----------|
-| Lab 1: Introduction to Go | 2026-02-28 |
+| Assignment | Deadline |
+|------------|----------|
+| Assignment 1: Introduction to Go | 2026-02-28 |
 `;
 
       let getReadmeCallCount = 0;
@@ -154,9 +188,9 @@ describe("GitHubCourseSyncService", () => {
 
       const deadlines = freshStore.getDeadlines();
       expect(deadlines.length).toBeGreaterThan(0);
-      const labDeadline = deadlines.find(d => d.task.includes("Lab 1"));
-      expect(labDeadline).toBeDefined();
-      expect(labDeadline?.course).toBe("DAT520");
+      const assignmentDeadline = deadlines.find(d => d.task.includes("Assignment 1"));
+      expect(assignmentDeadline).toBeDefined();
+      expect(assignmentDeadline?.course).toBe("DAT520");
 
       const githubData = freshStore.getGitHubCourseData();
       expect(githubData).not.toBeNull();
@@ -168,16 +202,16 @@ describe("GitHubCourseSyncService", () => {
       // Create initial deadline
       const initialDeadline = store.createDeadline({
         course: "DAT520",
-        task: "Lab 1: Introduction to Go",
+        task: "Assignment 1: Introduction to Go",
         dueDate: "2026-02-28",
         priority: "medium",
         completed: false
       });
 
       const mockReadme = `
-| Lab | Deadline |
-|-----|----------|
-| Lab 1: Introduction to Go | 2026-03-05 |
+| Assignment | Deadline |
+|------------|----------|
+| Assignment 1: Introduction to Go | 2026-03-05 |
 `;
 
       mockClient = {
@@ -203,16 +237,16 @@ describe("GitHubCourseSyncService", () => {
       // Create completed deadline
       const completedDeadline = store.createDeadline({
         course: "DAT520",
-        task: "Lab 1: Introduction to Go",
+        task: "Assignment 1: Introduction to Go",
         dueDate: "2026-02-28",
         priority: "medium",
         completed: true
       });
 
       const mockReadme = `
-| Lab | Deadline |
-|-----|----------|
-| Lab 1: Introduction to Go | 2026-03-05 |
+| Assignment | Deadline |
+|------------|----------|
+| Assignment 1: Introduction to Go | 2026-03-05 |
 `;
 
       mockClient = {

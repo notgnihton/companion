@@ -43,6 +43,16 @@ const EXCLUDED_DOC_PATHS = [
   /^\.github\//i
 ];
 
+const DEADLINE_TASK_PATTERNS = [
+  /\bassignment(s)?\b/i,
+  /\bexam(s)?\b/i,
+  /\beksamen\b/i,
+  /\bmidterm\b/i,
+  /\bfinal\b/i,
+  /\boblig\b/i,
+  /\binnlevering\b/i
+];
+
 export class GitHubCourseSyncService {
   private readonly store: RuntimeStore;
   private readonly client: GitHubCourseClient;
@@ -136,9 +146,7 @@ export class GitHubCourseSyncService {
         const hasDeadlineHeader = cells.some(cell =>
           /deadline|due.*date|date/i.test(cell)
         );
-        const hasTaskHeader = cells.some(cell =>
-          /lab|assignment|task|exercise/i.test(cell)
-        );
+        const hasTaskHeader = cells.some((cell) => /assignment|exam|task|deliverable|activity/i.test(cell));
 
         if (hasDeadlineHeader && hasTaskHeader) {
           inTable = true;
@@ -148,7 +156,7 @@ export class GitHubCourseSyncService {
             if (/deadline|due.*date|date/i.test(cell)) {
               headerIndices.deadline = idx;
             }
-            if (/lab|assignment|task|exercise/i.test(cell)) {
+            if (/assignment|exam|task|deliverable|activity/i.test(cell)) {
               headerIndices.task = idx;
             }
           });
@@ -163,8 +171,9 @@ export class GitHubCourseSyncService {
 
         if (!taskCell || !deadlineCell) continue;
 
-        // Skip empty or header-like rows (but allow longer lab names)
-        if (/^(lab|assignment|task|deadline)$/i.test(taskCell)) continue;
+        // Skip empty/header-like rows and rows that are not assignment/exam-like work items.
+        if (/^(assignment|exam|task|deadline)$/i.test(taskCell)) continue;
+        if (!this.isAssignmentOrExamTask(taskCell)) continue;
 
         // Parse the deadline date
         const parsedDate = this.parseDate(deadlineCell);
@@ -211,6 +220,11 @@ export class GitHubCourseSyncService {
     }
 
     return null;
+  }
+
+  private isAssignmentOrExamTask(task: string): boolean {
+    const normalized = task.replace(/\*\*/g, "").trim();
+    return DEADLINE_TASK_PATTERNS.some((pattern) => pattern.test(normalized));
   }
 
   /**

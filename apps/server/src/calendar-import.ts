@@ -23,6 +23,16 @@ export interface CalendarImportPreview {
   deadlines: Array<Omit<Deadline, "id">>;
 }
 
+const ASSIGNMENT_OR_EXAM_PATTERNS = [
+  /\bassignment(s)?\b/i,
+  /\bexam(s)?\b/i,
+  /\beksamen\b/i,
+  /\bmidterm\b/i,
+  /\bfinal\b/i,
+  /\boblig\b/i,
+  /\binnlevering\b/i
+];
+
 export function parseICS(icsContent: string): ImportedCalendarEvent[] {
   const events: ImportedCalendarEvent[] = [];
   const lines = unfoldICSLines(icsContent);
@@ -77,10 +87,8 @@ export function parseICS(icsContent: string): ImportedCalendarEvent[] {
 }
 
 export function classifyEventType(event: ImportedCalendarEvent): "deadline" | "lecture" {
-  const text = `${event.summary} ${event.description ?? ""}`.toLowerCase();
-  const deadlineHints = ["deadline", "due", "exam", "quiz", "assignment", "submit"];
-
-  if (deadlineHints.some((hint) => text.includes(hint))) {
+  const text = `${event.summary} ${event.description ?? ""}`;
+  if (ASSIGNMENT_OR_EXAM_PATTERNS.some((pattern) => pattern.test(text))) {
     return "deadline";
   }
 

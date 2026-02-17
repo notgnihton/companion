@@ -53,7 +53,7 @@ describe("calendar import helpers", () => {
 
   it("classifies deadlines and computes metadata", () => {
     const event = {
-      summary: "Databases Project Deadline",
+      summary: "Databases Assignment 1",
       startTime: "2026-03-03T12:00:00.000Z",
       endTime: "2026-03-03T14:00:00.000Z",
       description: "Final deliverable"
@@ -63,6 +63,16 @@ describe("calendar import helpers", () => {
     expect(inferPriority(event)).toBe("critical");
     expect(toDurationMinutes(event.startTime, event.endTime)).toBe(120);
     expect(toDurationMinutes(event.startTime)).toBe(60);
+  });
+
+  it("treats non-assignment and non-exam events as lectures", () => {
+    const event = {
+      summary: "Language Models - Part 2",
+      startTime: "2026-03-03T12:00:00.000Z",
+      description: "Due before seminar"
+    };
+
+    expect(classifyEventType(event)).toBe("lecture");
   });
 
   it("builds a preview payload for lectures and deadlines", () => {
