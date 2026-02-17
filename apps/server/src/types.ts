@@ -674,6 +674,33 @@ export interface CanvasData {
   lastSyncedAt: string | null;
 }
 
+export interface GitHubCourseRepository {
+  owner: string;
+  repo: string;
+  courseCode: string;
+}
+
+export interface GitHubCourseDocument {
+  id: string;
+  courseCode: string;
+  owner: string;
+  repo: string;
+  path: string;
+  url: string;
+  title: string;
+  summary: string;
+  highlights: string[];
+  snippet: string;
+  syncedAt: string;
+}
+
+export interface GitHubCourseData {
+  repositories: GitHubCourseRepository[];
+  documents: GitHubCourseDocument[];
+  deadlinesSynced: number;
+  lastSyncedAt: string | null;
+}
+
 // Gmail types
 export interface GmailMessage {
   id: string;

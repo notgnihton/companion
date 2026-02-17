@@ -523,6 +523,11 @@ const contentRecommendationsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(25).optional().default(10)
 });
 
+const githubCourseContentQuerySchema = z.object({
+  courseCode: z.string().trim().min(2).max(16).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(12)
+});
+
 const locationCreateSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
@@ -1365,10 +1370,12 @@ app.post("/api/sync/process", async (_req, res) => {
 app.get("/api/sync/status", (_req, res) => {
   // Get data from various integrations
   const canvasData = store.getCanvasData();
+  const githubData = store.getGitHubCourseData();
   const xData = store.getXData();
   const youtubeData = store.getYouTubeData();
   const gmailData = store.getGmailData();
   const geminiClient = getGeminiClient();
+  const githubConfigured = githubCourseSyncService.isConfigured();
   const gmailConnection = gmailOAuthService.getConnectionInfo();
   const gmailConnectionSource = gmailConnection.connected ? gmailConnection.source : null;
   const gmailTokenBootstrap = gmailConnection.connected ? gmailConnection.tokenBootstrap : false;
@@ -1389,9 +1396,11 @@ app.get("/api/sync/status", (_req, res) => {
       eventsCount: store.getScheduleEvents().length
     },
     github: {
-      lastSyncAt: null, // Will be implemented when GitHub sync stores last sync time
-      status: "ok",
-      deadlinesFound: 0 // Count deadlines with GitHub source when implemented
+      lastSyncAt: githubData?.lastSyncedAt ?? null,
+      status: githubConfigured ? (githubData ? "ok" : "not_synced") : "not_configured",
+      reposTracked: githubData?.repositories.length ?? 0,
+      courseDocsSynced: githubData?.documents.length ?? 0,
+      deadlinesFound: githubData?.deadlinesSynced ?? 0
     },
     gemini: {
       status: geminiClient.isConfigured() ? "ok" : "not_configured",
@@ -1559,6 +1568,14 @@ app.post("/api/sync/tp", async (req, res) => {
   }
 });
 
+app.post("/api/sync/github", async (_req, res) => {
+  const result = await githubCourseSyncService.triggerSync();
+  if (result.success) {
+    return res.json(result);
+  }
+  return res.status(500).json(result);
+});
+
 app.get("/api/tp/status", (_req, res) => {
   const events = store.getScheduleEvents();
   return res.json({
@@ -1574,6 +1591,38 @@ app.get("/api/canvas/status", (_req, res) => {
     baseUrl: config.CANVAS_BASE_URL,
     lastSyncedAt: canvasData?.lastSyncedAt ?? null,
     courses: canvasData?.courses ?? []
+  });
+});
+
+app.get("/api/github/status", (_req, res) => {
+  const githubData = store.getGitHubCourseData();
+  return res.json({
+    configured: githubCourseSyncService.isConfigured(),
+    lastSyncedAt: githubData?.lastSyncedAt ?? null,
+    repositories: githubData?.repositories ?? [],
+    courseDocsSynced: githubData?.documents.length ?? 0,
+    deadlinesFound: githubData?.deadlinesSynced ?? 0
+  });
+});
+
+app.get("/api/github/course-content", (req, res) => {
+  const parsed = githubCourseContentQuerySchema.safeParse(req.query ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid GitHub course-content query", issues: parsed.error.issues });
+  }
+
+  const githubData = store.getGitHubCourseData();
+  const requestedCourseCode = parsed.data.courseCode?.toUpperCase();
+  const matchingDocuments = (githubData?.documents ?? [])
+    .filter((doc) => !requestedCourseCode || doc.courseCode.toUpperCase() === requestedCourseCode);
+  const documents = matchingDocuments.slice(0, parsed.data.limit);
+
+  return res.json({
+    configured: githubCourseSyncService.isConfigured(),
+    lastSyncedAt: githubData?.lastSyncedAt ?? null,
+    repositories: githubData?.repositories ?? [],
+    total: matchingDocuments.length,
+    documents
   });
 });
 

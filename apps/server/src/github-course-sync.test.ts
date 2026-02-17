@@ -148,13 +148,20 @@ describe("GitHubCourseSyncService", () => {
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
       expect(getReadmeCallCount).toBe(2); // Should call for both repos
+      expect(result.reposProcessed).toBe(2);
       expect(result.deadlinesCreated).toBe(1);
+      expect(result.courseDocsSynced).toBeGreaterThan(0);
 
       const deadlines = freshStore.getDeadlines();
       expect(deadlines.length).toBeGreaterThan(0);
       const labDeadline = deadlines.find(d => d.task.includes("Lab 1"));
       expect(labDeadline).toBeDefined();
       expect(labDeadline?.course).toBe("DAT520");
+
+      const githubData = freshStore.getGitHubCourseData();
+      expect(githubData).not.toBeNull();
+      expect(githubData?.documents.length).toBeGreaterThan(0);
+      expect(githubData?.repositories).toHaveLength(2);
     });
 
     it("should update existing deadlines if date changes", async () => {
@@ -237,6 +244,47 @@ describe("GitHubCourseSyncService", () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain("GitHub API error");
       expect(result.deadlinesCreated).toBe(0);
+    });
+
+    it("extracts syllabus/course-info markdown into persisted GitHub course data", async () => {
+      const freshStore = new RuntimeStore(":memory:");
+      const mockReadme = `
+# DAT560 Course Information
+
+Project deadlines are published in this repository.
+`;
+      const mockSyllabus = `
+# DAT560 Syllabus
+
+- Project deliverable 1 due March 10
+- Final exam on June 2
+- Attendance policy applies to labs
+`;
+
+      mockClient = {
+        getReadme: async () => mockReadme,
+        listRepositoryFiles: async () => ["README.md", "docs/syllabus.md", "assignments/lab1.md"],
+        getFileContent: async (_owner: string, _repo: string, path: string) => {
+          if (path === "docs/syllabus.md") {
+            return mockSyllabus;
+          }
+          throw new Error("not found");
+        }
+      } as unknown as GitHubCourseClient;
+
+      service = new GitHubCourseSyncService(freshStore, mockClient);
+      const result = await service.sync();
+
+      expect(result.success).toBe(true);
+      expect(result.courseDocsSynced).toBeGreaterThanOrEqual(2);
+
+      const githubData = freshStore.getGitHubCourseData();
+      expect(githubData).not.toBeNull();
+      expect(githubData?.documents.length).toBeGreaterThanOrEqual(2);
+      const syllabusDoc = githubData?.documents.find((doc) => doc.path === "docs/syllabus.md");
+      expect(syllabusDoc).toBeDefined();
+      expect(syllabusDoc?.summary.toLowerCase()).toContain("project");
+      expect(syllabusDoc?.highlights.length).toBeGreaterThan(0);
     });
   });
 });

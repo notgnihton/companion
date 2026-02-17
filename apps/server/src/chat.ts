@@ -247,6 +247,27 @@ function buildContentRecommendationSummary(store: RuntimeStore, now: Date = new 
   return parts.join("\n");
 }
 
+function buildGitHubCourseContextSummary(store: RuntimeStore): string {
+  const githubData = store.getGitHubCourseData();
+
+  if (!githubData || githubData.documents.length === 0) {
+    return "GitHub course materials: no syllabus/course-info docs synced yet.";
+  }
+
+  const parts = ["**GitHub Course Materials:**"];
+  githubData.documents.slice(0, 4).forEach((doc) => {
+    const label = `${doc.courseCode} ${doc.title}`.trim();
+    const summary = doc.summary.length > 140 ? `${doc.summary.slice(0, 140)}...` : doc.summary;
+    parts.push(`- ${label} (${doc.owner}/${doc.repo}/${doc.path}): ${summary}`);
+  });
+
+  if (githubData.documents.length > 4) {
+    parts.push(`- +${githubData.documents.length - 4} more course docs`);
+  }
+
+  return parts.join("\n");
+}
+
 export function buildChatContext(store: RuntimeStore, now: Date = new Date(), historyLimit = 10): ChatContextResult {
   const todaySchedule = store
     .getScheduleEvents()
@@ -270,13 +291,14 @@ export function buildChatContext(store: RuntimeStore, now: Date = new Date(), hi
   const gmailContext = buildGmailContextSummary(store, now);
   const socialMediaContext = buildSocialMediaContextSummary(store, now);
   const recommendationContext = buildContentRecommendationSummary(store, now);
+  const githubCourseContext = buildGitHubCourseContextSummary(store);
 
   const contextWindow = buildContextWindow({
     todaySchedule,
     upcomingDeadlines,
     recentJournals,
     userState,
-    customContext: [canvasContext, gmailContext, socialMediaContext, recommendationContext]
+    customContext: [canvasContext, gmailContext, socialMediaContext, recommendationContext, githubCourseContext]
       .filter((section) => section.length > 0)
       .join("\n\n")
   });
@@ -494,6 +516,9 @@ const INTENT_PATTERNS: Array<{ intent: Exclude<ChatIntent, "general">; patterns:
       /\bcanvas\b/i,
       /\btp\b/i,
       /\beducloud\b/i,
+      /\bgithub\b/i,
+      /\bsyllabus\b/i,
+      /\bcourse info\b/i,
       /\bgmail\b/i,
       /\bsync\b/i
     ]
@@ -640,6 +665,12 @@ const INTENT_FEW_SHOT_EXAMPLES: IntentFewShotExample[] = [
     intent: "study-plan",
     toolPlan: "Use schedule/deadline tools together before recommending blocks.",
     responseStyle: "Give realistic, time-bounded plan suggestions."
+  },
+  {
+    user: "What does DAT560 syllabus say about project deliverables?",
+    intent: "integrations",
+    toolPlan: "Use synced GitHub course-material context; if missing, direct user to run GitHub sync.",
+    responseStyle: "Answer from extracted syllabus highlights and cite uncertainty when data is missing."
   }
 ];
 

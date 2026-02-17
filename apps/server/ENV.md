@@ -42,7 +42,8 @@ This file documents all environment variables required to run the Companion serv
 - `NOTIFICATION_DIGEST_EVENING_HOUR` (default: 18) — Hour (0-23) for evening non-urgent notification digest
 
 ### Course GitHub Integration
-- `COURSE_GITHUB_PAT` (optional) — GitHub personal access token for private course repos
+- `GITHUB_PAT` (optional, recommended) — GitHub personal access token for private course repos
+- `COURSE_GITHUB_PAT` (optional, legacy alias) — Backward-compatible alias for `GITHUB_PAT`
   - Required scopes: `repo` (for private repos)
 
 ### Social Media Integrations
@@ -114,7 +115,8 @@ NOTIFICATION_DIGEST_MORNING_HOUR=8
 NOTIFICATION_DIGEST_EVENING_HOUR=18
 
 # Course GitHub
-COURSE_GITHUB_PAT=your-github-pat
+GITHUB_PAT=your-github-pat
+# COURSE_GITHUB_PAT=your-github-pat  # legacy alias
 
 # YouTube
 YOUTUBE_API_KEY=your-youtube-key

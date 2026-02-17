@@ -277,15 +277,70 @@ Response:
 
 ### POST `/api/sync/github`
 
-Trigger manual GitHub course sync (parse lab deadlines from repos).
+Trigger manual GitHub course sync (deadlines + syllabus/course-info docs).
 
 Response:
 
 ```json
 {
-  "status": "syncing",
-  "repos": ["dat520-2026/assignments", "dat560-2026/info"],
-  "startedAt": "2026-02-14T15:00:00.000Z"
+  "success": true,
+  "reposProcessed": 2,
+  "deadlinesCreated": 1,
+  "deadlinesUpdated": 2,
+  "courseDocsSynced": 5,
+  "lastSyncedAt": "2026-02-17T15:20:00.000Z"
+}
+```
+
+### GET `/api/github/status`
+
+Read current GitHub sync status and repository coverage.
+
+Response:
+
+```json
+{
+  "configured": true,
+  "lastSyncedAt": "2026-02-17T15:20:00.000Z",
+  "repositories": [
+    { "owner": "dat520-2026", "repo": "assignments", "courseCode": "DAT520" },
+    { "owner": "dat560-2026", "repo": "info", "courseCode": "DAT560" }
+  ],
+  "courseDocsSynced": 5,
+  "deadlinesFound": 7
+}
+```
+
+### GET `/api/github/course-content?courseCode=DAT560&limit=12`
+
+Return extracted syllabus/course-information docs from synced GitHub repos.
+
+Response:
+
+```json
+{
+  "configured": true,
+  "lastSyncedAt": "2026-02-17T15:20:00.000Z",
+  "repositories": [
+    { "owner": "dat520-2026", "repo": "assignments", "courseCode": "DAT520" },
+    { "owner": "dat560-2026", "repo": "info", "courseCode": "DAT560" }
+  ],
+  "total": 2,
+  "documents": [
+    {
+      "id": "github-doc-dat560-abc123",
+      "courseCode": "DAT560",
+      "owner": "dat560-2026",
+      "repo": "info",
+      "path": "README.md",
+      "url": "https://github.com/dat560-2026/info/blob/HEAD/README.md",
+      "title": "DAT560 Syllabus",
+      "summary": "Key milestones and assessment details...",
+      "highlights": ["Project deliverable due March 10"],
+      "snippet": "Longer extracted excerpt...",
+      "syncedAt": "2026-02-17T15:20:00.000Z"
+    }
+  ]
 }
 ```
 
@@ -310,9 +365,11 @@ Response:
     "eventsCount": 151
   },
   "github": {
-    "lastSyncAt": "2026-02-14T06:00:00.000Z",
+    "lastSyncAt": "2026-02-17T15:20:00.000Z",
     "status": "ok",
-    "deadlinesFound": 6
+    "reposTracked": 2,
+    "courseDocsSynced": 5,
+    "deadlinesFound": 7
   },
   "gemini": {
     "status": "ok",

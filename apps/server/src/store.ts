@@ -435,6 +435,14 @@ export class RuntimeStore {
         lastSyncedAt TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS github_course_data (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        repositories TEXT NOT NULL DEFAULT '[]',
+        documents TEXT NOT NULL DEFAULT '[]',
+        deadlinesSynced INTEGER NOT NULL DEFAULT 0,
+        lastSyncedAt TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS gmail_data (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         refreshToken TEXT,
@@ -485,6 +493,12 @@ export class RuntimeStore {
     const hasTokenSourceColumn = gmailColumns.some((col) => col.name === "tokenSource");
     if (!hasTokenSourceColumn) {
       this.db.prepare("ALTER TABLE gmail_data ADD COLUMN tokenSource TEXT").run();
+    }
+
+    const githubCourseColumns = this.db.prepare("PRAGMA table_info(github_course_data)").all() as Array<{ name: string }>;
+    const hasDeadlinesSyncedColumn = githubCourseColumns.some((col) => col.name === "deadlinesSynced");
+    if (!hasDeadlinesSyncedColumn) {
+      this.db.prepare("ALTER TABLE github_course_data ADD COLUMN deadlinesSynced INTEGER NOT NULL DEFAULT 0").run();
     }
 
     const studyPlanColumns = this.db.prepare("PRAGMA table_info(study_plan_sessions)").all() as Array<{ name: string }>;
@@ -4337,6 +4351,52 @@ export class RuntimeStore {
       assignments: JSON.parse(row.assignments),
       modules: JSON.parse(row.modules),
       announcements: JSON.parse(row.announcements),
+      lastSyncedAt: row.lastSyncedAt
+    };
+  }
+
+  /**
+   * Set GitHub course data
+   */
+  setGitHubCourseData(data: import("./types.js").GitHubCourseData): void {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO github_course_data (
+        id, repositories, documents, deadlinesSynced, lastSyncedAt
+      ) VALUES (1, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      JSON.stringify(data.repositories),
+      JSON.stringify(data.documents),
+      data.deadlinesSynced,
+      data.lastSyncedAt
+    );
+  }
+
+  /**
+   * Get GitHub course data
+   */
+  getGitHubCourseData(): import("./types.js").GitHubCourseData | null {
+    const stmt = this.db.prepare(`
+      SELECT repositories, documents, deadlinesSynced, lastSyncedAt
+      FROM github_course_data WHERE id = 1
+    `);
+
+    const row = stmt.get() as {
+      repositories: string;
+      documents: string;
+      deadlinesSynced: number;
+      lastSyncedAt: string | null;
+    } | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      repositories: JSON.parse(row.repositories),
+      documents: JSON.parse(row.documents),
+      deadlinesSynced: row.deadlinesSynced ?? 0,
       lastSyncedAt: row.lastSyncedAt
     };
   }

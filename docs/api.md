@@ -1439,3 +1439,72 @@ Response `200`:
 - Failed operations are retried with exponential backoff (1s, 2s, 4s, 8s, 16s)
 - Operations are marked as failed after 5 retry attempts
 - Completed items older than 7 days can be cleaned up via the cleanup endpoint
+
+## GitHub Course Sync
+
+### `POST /api/sync/github`
+
+Trigger manual GitHub sync for course repositories (deadline parsing + syllabus/course-info extraction).
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "reposProcessed": 2,
+  "deadlinesCreated": 1,
+  "deadlinesUpdated": 2,
+  "courseDocsSynced": 5,
+  "lastSyncedAt": "2026-02-17T15:20:00.000Z"
+}
+```
+
+### `GET /api/github/status`
+
+Response `200`:
+
+```json
+{
+  "configured": true,
+  "lastSyncedAt": "2026-02-17T15:20:00.000Z",
+  "repositories": [
+    { "owner": "dat520-2026", "repo": "assignments", "courseCode": "DAT520" },
+    { "owner": "dat560-2026", "repo": "info", "courseCode": "DAT560" }
+  ],
+  "courseDocsSynced": 5,
+  "deadlinesFound": 7
+}
+```
+
+### `GET /api/github/course-content?courseCode=DAT560&limit=12`
+
+Returns extracted course documents suitable for chat/recommendation context.
+
+Response `200`:
+
+```json
+{
+  "configured": true,
+  "lastSyncedAt": "2026-02-17T15:20:00.000Z",
+  "repositories": [
+    { "owner": "dat520-2026", "repo": "assignments", "courseCode": "DAT520" },
+    { "owner": "dat560-2026", "repo": "info", "courseCode": "DAT560" }
+  ],
+  "total": 2,
+  "documents": [
+    {
+      "id": "github-doc-dat560-abc123",
+      "courseCode": "DAT560",
+      "owner": "dat560-2026",
+      "repo": "info",
+      "path": "README.md",
+      "url": "https://github.com/dat560-2026/info/blob/HEAD/README.md",
+      "title": "DAT560 Syllabus",
+      "summary": "Key milestones and assessment details...",
+      "highlights": ["Project deliverable due March 10"],
+      "snippet": "Longer extracted excerpt...",
+      "syncedAt": "2026-02-17T15:20:00.000Z"
+    }
+  ]
+}
+```

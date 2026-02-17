@@ -51,7 +51,7 @@ Then set:
 
 **Optional integrations:**
 - `CANVAS_API_TOKEN=...` (Canvas LMS sync)
-- `COURSE_GITHUB_PAT=...` (Course GitHub sync)
+- `GITHUB_PAT=...` (Course GitHub sync, `COURSE_GITHUB_PAT` legacy alias supported)
 - `YOUTUBE_API_KEY=...` (YouTube digest)
 - `X_API_KEY`, `X_API_KEY_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` (X/Twitter digest)
 
