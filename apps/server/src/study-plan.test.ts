@@ -34,7 +34,7 @@ describe("generateWeeklyStudyPlan", () => {
     const deadlines: Deadline[] = [
       makeDeadline({
         id: "urgent-high",
-        task: "Urgent project",
+        task: "Urgent assignment",
         priority: "high",
         dueDate: "2026-02-18T12:00:00.000Z"
       }),
@@ -58,7 +58,7 @@ describe("generateWeeklyStudyPlan", () => {
       makeDeadline({
         id: "dat520-lab",
         course: "DAT520",
-        task: "Lab",
+        task: "Assignment 1",
         priority: "high",
         dueDate: "2026-02-18T18:00:00.000Z"
       })
@@ -169,6 +169,36 @@ describe("generateWeeklyStudyPlan", () => {
     expect(plan.sessions).toHaveLength(0);
     expect(plan.unallocated).toHaveLength(0);
     expect(plan.summary.deadlinesCovered).toBe(1);
+  });
+
+  it("ignores non-assignment and non-exam deadlines", () => {
+    const now = new Date("2026-02-17T08:00:00.000Z");
+
+    const plan = generateWeeklyStudyPlan(
+      [
+        makeDeadline({
+          id: "non-eligible",
+          task: "LLM foundations - part 1",
+          dueDate: "2026-02-19T20:00:00.000Z",
+          priority: "high"
+        }),
+        makeDeadline({
+          id: "eligible-assignment",
+          task: "Assignment 2",
+          dueDate: "2026-02-19T20:00:00.000Z",
+          priority: "high"
+        })
+      ],
+      [],
+      {
+        now,
+        horizonDays: 7
+      }
+    );
+
+    expect(plan.summary.deadlinesConsidered).toBe(1);
+    expect(plan.sessions.every((session) => session.deadlineId === "eligible-assignment")).toBe(true);
+    expect(plan.unallocated.every((item) => item.deadlineId === "eligible-assignment")).toBe(true);
   });
 
   it("handles no gaps and no deadlines edge cases", () => {

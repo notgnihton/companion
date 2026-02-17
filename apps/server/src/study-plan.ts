@@ -15,6 +15,22 @@ interface DeadlineState {
   remainingMinutes: number;
 }
 
+const STUDY_PLAN_ELIGIBLE_DEADLINE_PATTERNS = [
+  /\bassignment(s)?\b/i,
+  /\bexam(s)?\b/i,
+  /\beksamen\b/i,
+  /\bmidterm\b/i,
+  /\bfinal\b/i,
+  /\boblig\b/i,
+  /\binnlevering\b/i,
+  /\bquiz(zes)?\b/i
+];
+
+function isStudyPlanEligibleDeadline(deadline: Deadline): boolean {
+  const text = `${deadline.course} ${deadline.task}`;
+  return STUDY_PLAN_ELIGIBLE_DEADLINE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 function estimateWorkMinutesFromPriority(priority: Priority): number {
   switch (priority) {
     case "critical":
@@ -122,7 +138,7 @@ export function generateWeeklyStudyPlan(
   const windowEnd = new Date(now.getTime() + opts.horizonDays * 24 * 60 * 60 * 1000);
 
   const states: DeadlineState[] = deadlines
-    .filter((deadline) => !deadline.completed)
+    .filter((deadline) => !deadline.completed && isStudyPlanEligibleDeadline(deadline))
     .map((deadline) => ({
       deadline,
       dueDate: new Date(deadline.dueDate)
