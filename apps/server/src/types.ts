@@ -237,6 +237,50 @@ export interface StudyPlan {
   unallocated: StudyPlanUnallocatedItem[];
 }
 
+export type ContentRecommendationTargetType = "deadline" | "lecture";
+export type ContentRecommendationPlatform = "youtube" | "x";
+
+export interface ContentRecommendationTarget {
+  type: ContentRecommendationTargetType;
+  id: string;
+  course: string;
+  title: string;
+  dueDate?: string;
+  startTime?: string;
+  priority?: Priority;
+}
+
+export interface ContentRecommendationContent {
+  platform: ContentRecommendationPlatform;
+  id: string;
+  title: string;
+  description: string;
+  author: string;
+  url: string;
+  publishedAt: string;
+  engagement: number;
+}
+
+export interface ContentRecommendation {
+  id: string;
+  target: ContentRecommendationTarget;
+  content: ContentRecommendationContent;
+  score: number;
+  matchedKeywords: string[];
+  reason: string;
+}
+
+export interface ContentRecommendationsResult {
+  generatedAt: string;
+  horizonDays: number;
+  summary: {
+    targetsConsidered: number;
+    candidatesConsidered: number;
+    recommendationsReturned: number;
+  };
+  recommendations: ContentRecommendation[];
+}
+
 export type Cadence = "daily" | "weekly";
 
 export interface Habit {

@@ -21,6 +21,7 @@ import { SocialMediaSummarizer } from "./social-media-summarizer.js";
 import { GmailOAuthService } from "./gmail-oauth.js";
 import { GmailSyncService } from "./gmail-sync.js";
 import { generateWeeklyStudyPlan } from "./study-plan.js";
+import { generateContentRecommendations } from "./content-recommendations.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
 
 const app = express();
@@ -393,6 +394,11 @@ const studyPlanGenerateSchema = z
   .refine((value) => value.maxSessionMinutes >= value.minSessionMinutes, {
     message: "maxSessionMinutes must be greater than or equal to minSessionMinutes"
   });
+
+const contentRecommendationsQuerySchema = z.object({
+  horizonDays: z.coerce.number().int().min(1).max(14).optional().default(7),
+  limit: z.coerce.number().int().min(1).max(25).optional().default(10)
+});
 
 const locationCreateSchema = z.object({
   latitude: z.number().min(-90).max(90),
@@ -1292,6 +1298,28 @@ app.get("/api/social-media", (_req, res) => {
       lastSyncedAt: xData?.lastSyncedAt ?? null
     }
   });
+});
+
+app.get("/api/recommendations/content", (req, res) => {
+  const parsed = contentRecommendationsQuerySchema.safeParse(req.query ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid recommendations query", issues: parsed.error.issues });
+  }
+
+  const result = generateContentRecommendations(
+    store.getDeadlines(),
+    store.getScheduleEvents(),
+    store.getYouTubeData(),
+    store.getXData(),
+    {
+      now: new Date(),
+      horizonDays: parsed.data.horizonDays,
+      limit: parsed.data.limit
+    }
+  );
+
+  return res.json(result);
 });
 
 app.post("/api/social-media/sync", async (_req, res) => {

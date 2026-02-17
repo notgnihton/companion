@@ -512,3 +512,47 @@ Response:
   }
 }
 ```
+
+### GET `/api/recommendations/content?horizonDays=7&limit=5`
+
+Rank YouTube videos and X posts against upcoming deadlines and lectures.
+
+Response:
+
+```json
+{
+  "generatedAt": "2026-02-17T11:00:00.000Z",
+  "horizonDays": 7,
+  "summary": {
+    "targetsConsidered": 4,
+    "candidatesConsidered": 28,
+    "recommendationsReturned": 5
+  },
+  "recommendations": [
+    {
+      "id": "recommendation-deadline-deadline-1739700000000-1-youtube-abc123",
+      "target": {
+        "type": "deadline",
+        "id": "deadline-1739700000000-1",
+        "course": "DAT560",
+        "title": "Assignment 3",
+        "dueDate": "2026-02-19T23:59:00.000Z",
+        "priority": "high"
+      },
+      "content": {
+        "platform": "youtube",
+        "id": "abc123",
+        "title": "Transformer and VAE tutorial for machine learning assignments",
+        "description": "Practical deep learning walkthrough for students.",
+        "author": "ML Academy",
+        "url": "https://www.youtube.com/watch?v=abc123",
+        "publishedAt": "2026-02-17T06:00:00.000Z",
+        "engagement": 73400
+      },
+      "score": 166.2,
+      "matchedKeywords": ["dat560", "vae", "machine learning"],
+      "reason": "Matched DAT560 context via dat560, vae, machine learning. Fresh content from the last 24h. Boosted for DAT560 ML relevance."
+    }
+  ]
+}
+```

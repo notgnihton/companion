@@ -203,6 +203,57 @@ describe("chat service", () => {
     expect(contextWindow).toContain("major update to our AI platform");
   });
 
+  it("includes recommendation context for upcoming deadlines when relevant content exists", async () => {
+    const now = new Date("2026-02-16T09:00:00.000Z");
+
+    store.createDeadline({
+      course: "DAT560",
+      task: "VAE assignment",
+      dueDate: "2026-02-18T23:59:00.000Z",
+      priority: "high",
+      completed: false
+    });
+
+    store.setYouTubeData({
+      channels: [
+        {
+          id: "UC2",
+          title: "GenAI Lab",
+          description: "Generative AI tutorials",
+          thumbnailUrl: "https://example.com/thumb2.jpg",
+          subscriberCount: 500000
+        }
+      ],
+      videos: [
+        {
+          id: "vae-vid",
+          channelId: "UC2",
+          channelTitle: "GenAI Lab",
+          title: "VAE and transformer tutorial for DAT560 assignment",
+          description: "A practical ML walkthrough",
+          publishedAt: "2026-02-16T06:00:00.000Z",
+          thumbnailUrl: "https://example.com/vae.jpg",
+          duration: "PT12M",
+          viewCount: 25000,
+          likeCount: 2100,
+          commentCount: 180
+        }
+      ],
+      lastSyncedAt: "2026-02-16T08:00:00.000Z"
+    });
+
+    const result = await sendChatMessage(store, "What should I watch before DAT560?", {
+      geminiClient: fakeGemini,
+      now,
+      useFunctionCalling: false
+    });
+
+    expect(generateChatResponse).toHaveBeenCalled();
+    const contextWindow = result.assistantMessage.metadata?.contextWindow;
+    expect(contextWindow).toContain("Recommended content for upcoming work");
+    expect(contextWindow).toContain("VAE and transformer tutorial");
+  });
+
   it("shows fallback message when no social media data is synced", async () => {
     const now = new Date("2026-02-16T09:00:00.000Z");
 

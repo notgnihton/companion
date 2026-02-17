@@ -10,6 +10,7 @@ import {
 } from "./gemini.js";
 import { Part } from "@google/generative-ai";
 import { functionDeclarations, executeFunctionCall } from "./gemini-tools.js";
+import { generateContentRecommendations } from "./content-recommendations.js";
 import { RuntimeStore } from "./store.js";
 import { ChatHistoryPage, ChatMessage, ChatMessageMetadata, UserContext } from "./types.js";
 
@@ -210,6 +211,35 @@ function buildSocialMediaContextSummary(store: RuntimeStore, now: Date = new Dat
   return parts.join("\n");
 }
 
+function buildContentRecommendationSummary(store: RuntimeStore, now: Date = new Date()): string {
+  const result = generateContentRecommendations(
+    store.getDeadlines(now),
+    store.getScheduleEvents(),
+    store.getYouTubeData(),
+    store.getXData(),
+    {
+      now,
+      horizonDays: 7,
+      limit: 3
+    }
+  );
+
+  if (result.recommendations.length === 0) {
+    return "";
+  }
+
+  const parts = ["**Recommended content for upcoming work:**"];
+  result.recommendations.slice(0, 3).forEach((recommendation) => {
+    const platform = recommendation.content.platform === "youtube" ? "YouTube" : "X";
+    const targetLabel = recommendation.target.type === "deadline"
+      ? `${recommendation.target.course} ${recommendation.target.title}`
+      : recommendation.target.title;
+    parts.push(`- ${platform}: ${recommendation.content.title} -> ${targetLabel}`);
+  });
+
+  return parts.join("\n");
+}
+
 export function buildChatContext(store: RuntimeStore, now: Date = new Date(), historyLimit = 10): ChatContextResult {
   const todaySchedule = store
     .getScheduleEvents()
@@ -232,13 +262,16 @@ export function buildChatContext(store: RuntimeStore, now: Date = new Date(), hi
   const canvasContext = buildCanvasContextSummary(store, now);
   const gmailContext = buildGmailContextSummary(store, now);
   const socialMediaContext = buildSocialMediaContextSummary(store, now);
+  const recommendationContext = buildContentRecommendationSummary(store, now);
 
   const contextWindow = buildContextWindow({
     todaySchedule,
     upcomingDeadlines,
     recentJournals,
     userState,
-    customContext: `${canvasContext}\n\n${gmailContext}\n\n${socialMediaContext}`
+    customContext: [canvasContext, gmailContext, socialMediaContext, recommendationContext]
+      .filter((section) => section.length > 0)
+      .join("\n\n")
   });
 
   const history = store.getRecentChatMessages(historyLimit);
