@@ -471,6 +471,106 @@ describe("chat service", () => {
     );
   });
 
+  it("supports multiple tool-call rounds before returning final text", async () => {
+    const now = new Date();
+    const schedule = store.createLectureEvent({
+      title: "DAT520 Lecture",
+      startTime: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
+      durationMinutes: 90,
+      workload: "medium"
+    });
+    const deadline = store.createDeadline({
+      course: "DAT560",
+      task: "Assignment 2",
+      dueDate: new Date(now.getTime() + 26 * 60 * 60 * 1000).toISOString(),
+      priority: "high",
+      completed: false
+    });
+
+    generateChatResponse = vi
+      .fn()
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop",
+        functionCalls: [
+          {
+            name: "getSchedule",
+            args: {}
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop",
+        functionCalls: [
+          {
+            name: "getDeadlines",
+            args: { daysAhead: 7 }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        text: "You have one lecture today and one high-priority deadline due soon.",
+        finishReason: "stop"
+      });
+    fakeGemini = {
+      generateChatResponse
+    } as unknown as GeminiClient;
+
+    const result = await sendChatMessage(store, "What's up today and what's due?", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    expect(generateChatResponse).toHaveBeenCalledTimes(3);
+    expect(result.reply).toContain("one lecture today");
+    expect(result.citations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: schedule.id, type: "schedule" }),
+        expect.objectContaining({ id: deadline.id, type: "deadline" })
+      ])
+    );
+  });
+
+  it("returns a tool-data fallback instead of generic failure when final text is empty", async () => {
+    const now = new Date();
+    store.createLectureEvent({
+      title: "DAT520 Lecture",
+      startTime: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+      durationMinutes: 90,
+      workload: "medium"
+    });
+
+    generateChatResponse = vi
+      .fn()
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop",
+        functionCalls: [
+          {
+            name: "getSchedule",
+            args: {}
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop"
+      });
+    fakeGemini = {
+      generateChatResponse
+    } as unknown as GeminiClient;
+
+    const result = await sendChatMessage(store, "What is my schedule today?", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    expect(generateChatResponse).toHaveBeenCalledTimes(2);
+    expect(result.reply).toContain("I fetched your data");
+    expect(result.reply).toContain("Schedule today");
+  });
+
   it("compacts large tool responses before sending functionResponse payloads to Gemini", async () => {
     const now = Date.now();
     for (let index = 0; index < 12; index += 1) {

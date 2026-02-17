@@ -514,6 +514,18 @@ function buildToolRateLimitFallbackReply(
   functionResponses: ExecutedFunctionResponse[],
   pendingActions: ChatPendingAction[]
 ): string {
+  return buildToolDataFallbackReply(
+    functionResponses,
+    pendingActions,
+    "Gemini hit a temporary rate limit, but I fetched your data:"
+  );
+}
+
+function buildToolDataFallbackReply(
+  functionResponses: ExecutedFunctionResponse[],
+  pendingActions: ChatPendingAction[],
+  introLine: string
+): string {
   if (pendingActions.length > 0) {
     return buildPendingActionFallbackReply(pendingActions);
   }
@@ -548,11 +560,11 @@ function buildToolRateLimitFallbackReply(
   });
 
   if (sections.length === 0) {
-    return "I hit a temporary Gemini rate limit and couldn't finish the response. Please try again in a moment.";
+    return "I couldn't finish the response from tool data right now. Please try again in a moment.";
   }
 
   return [
-    "Gemini hit a temporary rate limit, but I fetched your data:",
+    introLine,
     "",
     sections.join("\n\n")
   ].join("\n");
@@ -560,6 +572,7 @@ function buildToolRateLimitFallbackReply(
 
 const MAX_CHAT_CITATIONS = 8;
 const FUNCTION_CALL_HISTORY_LIMIT = 6;
+const MAX_FUNCTION_CALL_ROUNDS = 4;
 const TOOL_RESULT_ITEM_LIMIT = 6;
 const TOOL_RESULT_TEXT_MAX_CHARS = 220;
 const TOOL_RESULT_MAX_DEPTH = 3;
@@ -1100,10 +1113,12 @@ Keep responses concise, encouraging, and conversational.`
   let executedFunctionResponses: ExecutedFunctionResponse[] = [];
   const citations = new Map<string, ChatCitation>();
 
-  // Handle function calls if present
-  if (response.functionCalls && response.functionCalls.length > 0) {
-    // Execute all function calls
-    executedFunctionResponses = response.functionCalls.map((fnCall) => {
+  // Handle function calls with iterative tool rounds.
+  let functionCallRounds = 0;
+  while (response.functionCalls && response.functionCalls.length > 0 && functionCallRounds < MAX_FUNCTION_CALL_ROUNDS) {
+    functionCallRounds += 1;
+
+    const roundFunctionResponses = response.functionCalls.map((fnCall) => {
       const result = executeFunctionCall(fnCall.name, fnCall.args as Record<string, unknown>, store);
       const nextCitations = collectToolCitations(store, result.name, result.response);
       nextCitations.forEach((citation) => addCitation(citations, citation));
@@ -1113,10 +1128,14 @@ Keep responses concise, encouraging, and conversational.`
         modelResponse: compactFunctionResponseForModel(result.name, result.response)
       };
     });
-    pendingActionsFromTooling = executedFunctionResponses.flatMap((fnResp) => extractPendingActions(fnResp.rawResponse));
+    executedFunctionResponses = [...executedFunctionResponses, ...roundFunctionResponses];
+    pendingActionsFromTooling = [
+      ...pendingActionsFromTooling,
+      ...roundFunctionResponses.flatMap((fnResp) => extractPendingActions(fnResp.rawResponse))
+    ];
 
     // Build function response messages
-    const functionResponseParts = executedFunctionResponses.map((fnResp) => ({
+    const functionResponseParts = roundFunctionResponses.map((fnResp) => ({
       functionResponse: {
         name: fnResp.name,
         response: fnResp.modelResponse
@@ -1185,9 +1204,44 @@ Keep responses concise, encouraging, and conversational.`
     }
   }
 
+  if (response.functionCalls && response.functionCalls.length > 0 && functionCallRounds >= MAX_FUNCTION_CALL_ROUNDS) {
+    const fallbackReply = buildToolDataFallbackReply(
+      executedFunctionResponses,
+      pendingActionsFromTooling,
+      "I fetched your data, but couldn't finish the final response after several tool steps:"
+    );
+    const assistantMetadata: ChatMessageMetadata = {
+      contextWindow,
+      finishReason: "tool_call_round_limit_fallback",
+      usage: totalUsage,
+      ...(pendingActionsFromTooling.length > 0 ? { pendingActions: store.getPendingChatActions(now) } : {}),
+      ...(citations.size > 0
+        ? { citations: Array.from(citations.values()).slice(0, MAX_CHAT_CITATIONS) }
+        : {})
+    };
+    const assistantMessage = store.recordChatMessage("assistant", fallbackReply, assistantMetadata);
+    const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
+
+    return {
+      reply: assistantMessage.content,
+      userMessage,
+      assistantMessage,
+      finishReason: assistantMetadata.finishReason,
+      usage: assistantMetadata.usage,
+      citations: assistantMetadata.citations ?? [],
+      history: historyPage
+    };
+  }
+
   const finalReply = response.text.trim().length > 0
     ? response.text
-    : buildPendingActionFallbackReply(pendingActionsFromTooling);
+    : executedFunctionResponses.length > 0
+      ? buildToolDataFallbackReply(
+          executedFunctionResponses,
+          pendingActionsFromTooling,
+          "I fetched your data:"
+        )
+      : buildPendingActionFallbackReply(pendingActionsFromTooling);
 
   const assistantMetadata: ChatMessageMetadata = {
     contextWindow,
