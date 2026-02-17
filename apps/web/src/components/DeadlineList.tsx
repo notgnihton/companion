@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { confirmDeadlineStatus, getDeadlines, updateDeadline } from "../lib/api";
 import { hapticNotice, hapticSuccess } from "../lib/haptics";
 import { Deadline } from "../types";
-import { loadDeadlines, saveDeadlines } from "../lib/storage";
+import { loadDeadlines, loadDeadlinesCachedAt, saveDeadlines } from "../lib/storage";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "./PullToRefreshIndicator";
 import { SwipeableListItem } from "./SwipeableListItem";
@@ -16,18 +16,39 @@ interface DeadlineListProps {
   focusDeadlineId?: string;
 }
 
+const DEADLINE_STALE_MS = 12 * 60 * 60 * 1000;
+
+function formatCachedLabel(cachedAt: string | null): string {
+  if (!cachedAt) {
+    return "No cached snapshot yet";
+  }
+
+  const timestamp = new Date(cachedAt);
+  if (Number.isNaN(timestamp.getTime())) {
+    return "Cached snapshot time unavailable";
+  }
+
+  return `Cached ${timestamp.toLocaleString()}`;
+}
+
 export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Element {
   const [deadlines, setDeadlines] = useState<Deadline[]>(() => loadDeadlines());
+  const [cachedAt, setCachedAt] = useState<string | null>(() => loadDeadlinesCachedAt());
+  const [isOnline, setIsOnline] = useState<boolean>(() => navigator.onLine);
   const [syncMessage, setSyncMessage] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [undoToast, setUndoToast] = useState<UndoToast | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const undoTimerRef = useRef<number | null>(null);
 
   const handleRefresh = async (): Promise<void> => {
+    setRefreshing(true);
     const next = await getDeadlines();
     setDeadlines(next);
+    setCachedAt(loadDeadlinesCachedAt());
     setSyncMessage("Deadlines refreshed");
     setTimeout(() => setSyncMessage(""), 2000);
+    setRefreshing(false);
   };
 
   const { containerRef, isPulling, pullDistance, isRefreshing } = usePullToRefresh<HTMLDivElement>({
@@ -42,13 +63,21 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
       const next = await getDeadlines();
       if (!disposed) {
         setDeadlines(next);
+        setCachedAt(loadDeadlinesCachedAt());
       }
     };
+
+    const handleOnline = (): void => setIsOnline(true);
+    const handleOffline = (): void => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
 
     void load();
 
     return () => {
       disposed = true;
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
     };
   }, []);
 
@@ -132,12 +161,14 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
     const optimistic = deadlines.map((deadline) => (deadline.id === id ? { ...deadline, completed } : deadline));
     setDeadlines(optimistic);
     saveDeadlines(optimistic);
+    setCachedAt(loadDeadlinesCachedAt());
 
     const confirmation = await confirmDeadlineStatus(id, completed);
 
     if (!confirmation) {
       setDeadlines(before);
       saveDeadlines(before);
+      setCachedAt(loadDeadlinesCachedAt());
       setSyncMessage("Could not sync deadline status right now.");
       setUpdatingId(null);
       return false;
@@ -148,6 +179,7 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
     );
     setDeadlines(synced);
     saveDeadlines(synced);
+    setCachedAt(loadDeadlinesCachedAt());
     if (completed) {
       hapticSuccess();
     }
@@ -166,6 +198,7 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
     const next = deadlines.map((deadline) => (deadline.id === id ? restored : deadline));
     setDeadlines(next);
     saveDeadlines(next);
+    setCachedAt(loadDeadlinesCachedAt());
     setSyncMessage("Snooze undone.");
   };
 
@@ -180,11 +213,13 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
     ));
     setDeadlines(optimistic);
     saveDeadlines(optimistic);
+    setCachedAt(loadDeadlinesCachedAt());
 
     const updated = await updateDeadline(deadline.id, { dueDate: snoozedDueDate });
     if (!updated) {
       setDeadlines(originalDeadlines);
       saveDeadlines(originalDeadlines);
+      setCachedAt(loadDeadlinesCachedAt());
       setSyncMessage("Could not snooze deadline right now.");
       setUpdatingId(null);
       return false;
@@ -193,6 +228,7 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
     const synced = optimistic.map((item) => (item.id === updated.id ? updated : item));
     setDeadlines(synced);
     saveDeadlines(synced);
+    setCachedAt(loadDeadlinesCachedAt());
     setSyncMessage("Snoozed by 24 hours.");
     hapticNotice();
     setUpdatingId(null);
@@ -223,6 +259,8 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
     if (a.completed !== b.completed) return a.completed ? 1 : -1;
     return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
   });
+  const cacheAgeMs = cachedAt ? Date.now() - new Date(cachedAt).getTime() : Number.POSITIVE_INFINITY;
+  const isStale = Number.isFinite(cacheAgeMs) && cacheAgeMs > DEADLINE_STALE_MS;
 
   const activeCount = deadlines.filter((deadline) => !deadline.completed).length;
 
@@ -230,8 +268,20 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
     <section className="panel deadline-panel">
       <header className="panel-header">
         <h2>Deadlines</h2>
-        <span className="deadline-count">{activeCount} pending</span>
+        <div className="panel-header-actions">
+          <span className="deadline-count">{activeCount} pending</span>
+          <button type="button" onClick={() => void handleRefresh()} disabled={refreshing || !isOnline}>
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
       </header>
+      <div className="cache-status-row" role="status" aria-live="polite">
+        <span className={`cache-status-chip ${isOnline ? "cache-status-chip-online" : "cache-status-chip-offline"}`}>
+          {isOnline ? "Online" : "Offline"}
+        </span>
+        <span className="cache-status-chip">{formatCachedLabel(cachedAt)}</span>
+        {isStale && <span className="cache-status-chip cache-status-chip-stale">Stale snapshot</span>}
+      </div>
       {syncMessage && <p className="deadline-sync-status">{syncMessage}</p>}
 
       <div 

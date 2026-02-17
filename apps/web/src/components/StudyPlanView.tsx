@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { generateStudyPlan } from "../lib/api";
+import { loadStudyPlanCache, loadStudyPlanCachedAt } from "../lib/storage";
 import { StudyPlan, StudyPlanGeneratePayload, StudyPlanSession } from "../types";
 
 interface SessionDayGroup {
@@ -14,6 +15,20 @@ const defaultControls: Required<StudyPlanGeneratePayload> = {
   minSessionMinutes: 45,
   maxSessionMinutes: 120
 };
+const STUDY_PLAN_STALE_MS = 24 * 60 * 60 * 1000;
+
+function formatCachedLabel(cachedAt: string | null): string {
+  if (!cachedAt) {
+    return "No cached snapshot yet";
+  }
+
+  const timestamp = new Date(cachedAt);
+  if (Number.isNaN(timestamp.getTime())) {
+    return "Cached snapshot time unavailable";
+  }
+
+  return `Cached ${timestamp.toLocaleString()}`;
+}
 
 function formatTime(value: string): string {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -32,9 +47,11 @@ function toDayKey(value: string): string {
 }
 
 export function StudyPlanView(): JSX.Element {
-  const [plan, setPlan] = useState<StudyPlan | null>(null);
+  const [plan, setPlan] = useState<StudyPlan | null>(() => loadStudyPlanCache());
+  const [cachedAt, setCachedAt] = useState<string | null>(() => loadStudyPlanCachedAt());
+  const [isOnline, setIsOnline] = useState<boolean>(() => navigator.onLine);
   const [controls, setControls] = useState(defaultControls);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(() => loadStudyPlanCache() === null);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
 
@@ -44,6 +61,7 @@ export function StudyPlanView(): JSX.Element {
     try {
       const nextPlan = await generateStudyPlan(nextControls);
       setPlan(nextPlan);
+      setCachedAt(loadStudyPlanCachedAt());
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Failed to generate study plan.";
       setError(message);
@@ -55,6 +73,19 @@ export function StudyPlanView(): JSX.Element {
 
   useEffect(() => {
     void loadPlan(defaultControls);
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = (): void => setIsOnline(true);
+    const handleOffline = (): void => setIsOnline(false);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }, []);
 
   const groupedSessions = useMemo<SessionDayGroup[]>(() => {
@@ -87,14 +118,24 @@ export function StudyPlanView(): JSX.Element {
     await loadPlan(controls);
   };
 
+  const cacheAgeMs = cachedAt ? Date.now() - new Date(cachedAt).getTime() : Number.POSITIVE_INFINITY;
+  const isStale = Number.isFinite(cacheAgeMs) && cacheAgeMs > STUDY_PLAN_STALE_MS;
+
   return (
     <section className="panel study-plan-panel">
       <header className="panel-header">
         <h2>Study Plan</h2>
-        <button type="submit" form="study-plan-controls" disabled={generating}>
+        <button type="submit" form="study-plan-controls" disabled={generating || !isOnline}>
           {generating ? "Regenerating..." : "Regenerate"}
         </button>
       </header>
+      <div className="cache-status-row" role="status" aria-live="polite">
+        <span className={`cache-status-chip ${isOnline ? "cache-status-chip-online" : "cache-status-chip-offline"}`}>
+          {isOnline ? "Online" : "Offline"}
+        </span>
+        <span className="cache-status-chip">{formatCachedLabel(cachedAt)}</span>
+        {isStale && <span className="cache-status-chip cache-status-chip-stale">Stale snapshot</span>}
+      </div>
 
       <form id="study-plan-controls" className="study-plan-controls" onSubmit={(event) => void handleSubmit(event)}>
         <label>

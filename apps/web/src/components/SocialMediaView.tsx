@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { getSocialMediaFeed, syncSocialMediaFeed } from "../lib/api";
+import { loadSocialMediaCache, loadSocialMediaCachedAt } from "../lib/storage";
 import type { SocialMediaFeed, SocialTweet, SocialVideo } from "../types";
 import { ContentRecommendationsPanel } from "./ContentRecommendationsPanel";
 
 type SocialFilter = "all" | "youtube" | "x";
+const SOCIAL_STALE_MS = 6 * 60 * 60 * 1000;
 
 function formatRelativeTime(iso: string): string {
   const date = new Date(iso);
@@ -38,9 +40,24 @@ function formatDuration(isoDuration: string): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function formatCachedLabel(cachedAt: string | null): string {
+  if (!cachedAt) {
+    return "No cached snapshot yet";
+  }
+
+  const timestamp = new Date(cachedAt);
+  if (Number.isNaN(timestamp.getTime())) {
+    return "Cached snapshot time unavailable";
+  }
+
+  return `Cached ${timestamp.toLocaleString()}`;
+}
+
 export function SocialMediaView(): JSX.Element {
-  const [feed, setFeed] = useState<SocialMediaFeed | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [feed, setFeed] = useState<SocialMediaFeed | null>(() => loadSocialMediaCache());
+  const [loading, setLoading] = useState<boolean>(() => loadSocialMediaCache() === null);
+  const [cachedAt, setCachedAt] = useState<string | null>(() => loadSocialMediaCachedAt());
+  const [isOnline, setIsOnline] = useState<boolean>(() => navigator.onLine);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<SocialFilter>("all");
@@ -50,6 +67,7 @@ export function SocialMediaView(): JSX.Element {
       setError(null);
       const next = await getSocialMediaFeed();
       setFeed(next);
+      setCachedAt(loadSocialMediaCachedAt());
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Failed to load social feed";
       setError(message);
@@ -59,10 +77,25 @@ export function SocialMediaView(): JSX.Element {
   };
 
   useEffect(() => {
+    const handleOnline = (): void => setIsOnline(true);
+    const handleOffline = (): void => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
     void loadFeed();
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }, []);
 
   const handleRefresh = async (): Promise<void> => {
+    if (!isOnline) {
+      setError("You're offline. Reconnect and tap refresh.");
+      return;
+    }
+
     setRefreshing(true);
     setError(null);
 
@@ -77,6 +110,9 @@ export function SocialMediaView(): JSX.Element {
       setRefreshing(false);
     }
   };
+
+  const cacheAgeMs = cachedAt ? Date.now() - new Date(cachedAt).getTime() : Number.POSITIVE_INFINITY;
+  const isStale = Number.isFinite(cacheAgeMs) && cacheAgeMs > SOCIAL_STALE_MS;
 
   const filteredVideos = useMemo<SocialVideo[]>(() => {
     if (!feed || filter === "x") return [];
@@ -103,10 +139,17 @@ export function SocialMediaView(): JSX.Element {
     <section className="panel social-media-panel">
       <header className="panel-header social-media-header">
         <h2>Social Digest</h2>
-        <button type="button" onClick={() => void handleRefresh()} disabled={refreshing}>
+        <button type="button" onClick={() => void handleRefresh()} disabled={refreshing || !isOnline}>
           {refreshing ? "Refreshing..." : "Refresh"}
         </button>
       </header>
+      <div className="cache-status-row" role="status" aria-live="polite">
+        <span className={`cache-status-chip ${isOnline ? "cache-status-chip-online" : "cache-status-chip-offline"}`}>
+          {isOnline ? "Online" : "Offline"}
+        </span>
+        <span className="cache-status-chip">{formatCachedLabel(cachedAt)}</span>
+        {isStale && <span className="cache-status-chip cache-status-chip-stale">Stale snapshot</span>}
+      </div>
 
       <div className="social-media-filter-row" role="tablist" aria-label="Platform filter">
         <button

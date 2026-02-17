@@ -4,6 +4,7 @@ import {
   CalendarImportResult,
   ChatMessage,
   DashboardSnapshot,
+  LectureEvent,
   Deadline,
   StudyPlan,
   StudyPlanGeneratePayload,
@@ -38,6 +39,9 @@ import {
   loadContext,
   loadDashboard,
   loadDeadlines,
+  loadSchedule,
+  loadSocialMediaCache,
+  loadStudyPlanCache,
   loadGoals,
   loadHabits,
   loadJournalEntries,
@@ -50,6 +54,9 @@ import {
   saveContext,
   saveDashboard,
   saveDeadlines,
+  saveSchedule,
+  saveSocialMediaCache,
+  saveStudyPlanCache,
   saveGoals,
   saveHabits,
   saveJournalEntries,
@@ -223,6 +230,16 @@ export async function applyCalendarImport(payload: CalendarImportPayload): Promi
   });
 }
 
+export async function getSchedule(): Promise<LectureEvent[]> {
+  try {
+    const response = await jsonOrThrow<{ schedule: LectureEvent[] }>("/api/schedule");
+    saveSchedule(response.schedule);
+    return response.schedule;
+  } catch {
+    return loadSchedule();
+  }
+}
+
 export async function getDeadlines(): Promise<Deadline[]> {
   try {
     const response = await jsonOrThrow<{ deadlines: Deadline[] }>("/api/deadlines");
@@ -234,11 +251,20 @@ export async function getDeadlines(): Promise<Deadline[]> {
 }
 
 export async function generateStudyPlan(payload: StudyPlanGeneratePayload): Promise<StudyPlan> {
-  const response = await jsonOrThrow<{ plan: StudyPlan }>("/api/study-plan/generate", {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
-  return response.plan;
+  try {
+    const response = await jsonOrThrow<{ plan: StudyPlan }>("/api/study-plan/generate", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    saveStudyPlanCache(response.plan);
+    return response.plan;
+  } catch (error) {
+    const cachedPlan = loadStudyPlanCache();
+    if (cachedPlan) {
+      return cachedPlan;
+    }
+    throw error;
+  }
 }
 
 export async function confirmDeadlineStatus(
@@ -673,7 +699,17 @@ export async function previewIntegrationScope(payload: IntegrationScopePreviewPa
 }
 
 export async function getSocialMediaFeed(): Promise<SocialMediaFeed> {
-  return await jsonOrThrow<SocialMediaFeed>("/api/social-media");
+  try {
+    const feed = await jsonOrThrow<SocialMediaFeed>("/api/social-media");
+    saveSocialMediaCache(feed);
+    return feed;
+  } catch (error) {
+    const cachedFeed = loadSocialMediaCache();
+    if (cachedFeed) {
+      return cachedFeed;
+    }
+    throw error;
+  }
 }
 
 export async function syncSocialMediaFeed(): Promise<SocialMediaSyncResult> {

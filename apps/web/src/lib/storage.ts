@@ -8,6 +8,8 @@ import {
   JournalEntry,
   JournalPhoto,
   LectureEvent,
+  SocialMediaFeed,
+  StudyPlan,
   NotificationPreferences,
   OnboardingProfile,
   IntegrationScopeSettings,
@@ -35,7 +37,13 @@ const STORAGE_KEYS = {
   journalQueue: "companion:journal-queue",
   syncQueue: "companion:sync-queue",
   schedule: "companion:schedule",
+  scheduleCachedAt: "companion:schedule-cached-at",
   deadlines: "companion:deadlines",
+  deadlinesCachedAt: "companion:deadlines-cached-at",
+  studyPlan: "companion:study-plan",
+  studyPlanCachedAt: "companion:study-plan-cached-at",
+  socialMediaCache: "companion:social-media-cache",
+  socialMediaCachedAt: "companion:social-media-cached-at",
   habits: "companion:habits",
   goals: "companion:goals",
   onboarding: "companion:onboarding",
@@ -410,6 +418,15 @@ export function loadSchedule(): LectureEvent[] {
 
 export function saveSchedule(schedule: LectureEvent[]): void {
   localStorage.setItem(STORAGE_KEYS.schedule, JSON.stringify(schedule));
+  localStorage.setItem(STORAGE_KEYS.scheduleCachedAt, new Date().toISOString());
+}
+
+export function loadScheduleCachedAt(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.scheduleCachedAt);
+  } catch {
+    return null;
+  }
 }
 
 function getDefaultDeadlines(): Deadline[] {
@@ -457,6 +474,61 @@ export function loadDeadlines(): Deadline[] {
 
 export function saveDeadlines(deadlines: Deadline[]): void {
   localStorage.setItem(STORAGE_KEYS.deadlines, JSON.stringify(deadlines));
+  localStorage.setItem(STORAGE_KEYS.deadlinesCachedAt, new Date().toISOString());
+}
+
+export function loadDeadlinesCachedAt(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.deadlinesCachedAt);
+  } catch {
+    return null;
+  }
+}
+
+export function loadStudyPlanCache(): StudyPlan | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.studyPlan);
+    if (!raw) return null;
+    return JSON.parse(raw) as StudyPlan;
+  } catch {
+    return null;
+  }
+}
+
+export function saveStudyPlanCache(plan: StudyPlan): void {
+  localStorage.setItem(STORAGE_KEYS.studyPlan, JSON.stringify(plan));
+  localStorage.setItem(STORAGE_KEYS.studyPlanCachedAt, new Date().toISOString());
+}
+
+export function loadStudyPlanCachedAt(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.studyPlanCachedAt);
+  } catch {
+    return null;
+  }
+}
+
+export function loadSocialMediaCache(): SocialMediaFeed | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.socialMediaCache);
+    if (!raw) return null;
+    return JSON.parse(raw) as SocialMediaFeed;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSocialMediaCache(feed: SocialMediaFeed): void {
+  localStorage.setItem(STORAGE_KEYS.socialMediaCache, JSON.stringify(feed));
+  localStorage.setItem(STORAGE_KEYS.socialMediaCachedAt, new Date().toISOString());
+}
+
+export function loadSocialMediaCachedAt(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.socialMediaCachedAt);
+  } catch {
+    return null;
+  }
 }
 
 function buildRecentCheckIns(offsets: number[]): Array<{ date: string; completed: boolean }> {

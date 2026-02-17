@@ -1,23 +1,68 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getSchedule } from "../lib/api";
 import { LectureEvent } from "../types";
-import { loadSchedule } from "../lib/storage";
+import { loadSchedule, loadScheduleCachedAt } from "../lib/storage";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "./PullToRefreshIndicator";
 
+const SCHEDULE_STALE_MS = 12 * 60 * 60 * 1000;
+
+function formatCachedLabel(cachedAt: string | null): string {
+  if (!cachedAt) {
+    return "No cached snapshot yet";
+  }
+
+  const timestamp = new Date(cachedAt);
+  if (Number.isNaN(timestamp.getTime())) {
+    return "Cached snapshot time unavailable";
+  }
+
+  return `Cached ${timestamp.toLocaleString()}`;
+}
+
 export function ScheduleView(): JSX.Element {
   const [schedule, setSchedule] = useState<LectureEvent[]>(() => loadSchedule());
+  const [cachedAt, setCachedAt] = useState<string | null>(() => loadScheduleCachedAt());
+  const [isOnline, setIsOnline] = useState<boolean>(() => navigator.onLine);
+  const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async (): Promise<void> => {
-    // Reload schedule from storage
-    const refreshedSchedule = loadSchedule();
+    setRefreshing(true);
+    const refreshedSchedule = await getSchedule();
     setSchedule(refreshedSchedule);
-    await new Promise(resolve => setTimeout(resolve, 500)); // Smooth visual feedback
+    setCachedAt(loadScheduleCachedAt());
+    setRefreshing(false);
   };
 
   const { containerRef, isPulling, pullDistance, isRefreshing } = usePullToRefresh<HTMLDivElement>({
     onRefresh: handleRefresh,
     threshold: 80
   });
+
+  useEffect(() => {
+    let disposed = false;
+
+    const load = async (): Promise<void> => {
+      const next = await getSchedule();
+      if (!disposed) {
+        setSchedule(next);
+        setCachedAt(loadScheduleCachedAt());
+      }
+    };
+
+    const handleOnline = (): void => setIsOnline(true);
+    const handleOffline = (): void => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    void load();
+
+    return () => {
+      disposed = true;
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   const formatTime = (isoString: string): string => {
     const date = new Date(isoString);
@@ -67,13 +112,27 @@ export function ScheduleView(): JSX.Element {
   const sortedSchedule = [...schedule].sort((a, b) => 
     new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
   );
+  const cacheAgeMs = cachedAt ? Date.now() - new Date(cachedAt).getTime() : Number.POSITIVE_INFINITY;
+  const isStale = Number.isFinite(cacheAgeMs) && cacheAgeMs > SCHEDULE_STALE_MS;
 
   return (
     <section className="panel schedule-panel">
       <header className="panel-header">
         <h2>Lecture Schedule</h2>
-        <span className="schedule-count">{schedule.length} classes</span>
+        <div className="panel-header-actions">
+          <span className="schedule-count">{schedule.length} classes</span>
+          <button type="button" onClick={() => void handleRefresh()} disabled={refreshing || !isOnline}>
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
       </header>
+      <div className="cache-status-row" role="status" aria-live="polite">
+        <span className={`cache-status-chip ${isOnline ? "cache-status-chip-online" : "cache-status-chip-offline"}`}>
+          {isOnline ? "Online" : "Offline"}
+        </span>
+        <span className="cache-status-chip">{formatCachedLabel(cachedAt)}</span>
+        {isStale && <span className="cache-status-chip cache-status-chip-stale">Stale snapshot</span>}
+      </div>
 
       <div 
         ref={containerRef}

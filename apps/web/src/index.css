@@ -161,6 +161,55 @@ body {
   margin-bottom: 8px;
 }
 
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-header-actions button {
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.cache-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.cache-status-chip {
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.cache-status-chip-online {
+  color: var(--ok);
+  border-color: var(--ok-border);
+}
+
+.cache-status-chip-offline {
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.cache-status-chip-stale {
+  color: var(--warn);
+  border-color: var(--warn-border);
+}
+
 .list,
 .feed {
   list-style: none;
