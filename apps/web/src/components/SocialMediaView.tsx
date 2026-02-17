@@ -58,10 +58,14 @@ function buildSyncErrorMessage(result: SocialMediaSyncResult): string | null {
   if (!result.youtube.success) {
     const code = result.youtube.errorCode ? ` [${result.youtube.errorCode}]` : "";
     parts.push(`YouTube sync failed${code}: ${result.youtube.error ?? "unknown error"}`);
+  } else if ((result.youtube.videosCount ?? 0) === 0) {
+    parts.push("YouTube sync succeeded but returned 0 videos.");
   }
   if (!result.x.success) {
     const code = result.x.errorCode ? ` [${result.x.errorCode}]` : "";
     parts.push(`X sync failed${code}: ${result.x.error ?? "unknown error"}`);
+  } else if ((result.x.tweetsCount ?? 0) === 0) {
+    parts.push("X sync succeeded but returned 0 tweets.");
   }
   return parts.length > 0 ? parts.join(" | ") : null;
 }

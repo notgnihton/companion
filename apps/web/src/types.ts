@@ -587,10 +587,12 @@ export interface SocialMediaFeed {
 
 export interface SocialMediaSyncStatus {
   success: boolean;
+  channelsCount?: number;
   videosCount?: number;
   tweetsCount?: number;
   error?: string;
   errorCode?: string;
+  lastSyncedAt?: string | null;
 }
 
 export interface SocialMediaSyncResult {

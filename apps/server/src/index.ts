@@ -2097,18 +2097,23 @@ app.post("/api/social-media/sync", async (_req, res) => {
     youtubeSyncService.sync({ maxChannels: 20, maxVideosPerChannel: 5 }),
     xSyncService.sync({ maxTweets: 40 })
   ]);
+  const youtubeData = store.getYouTubeData();
+  const xData = store.getXData();
 
   return res.json({
     youtube: {
       success: youtubeResult.success,
+      channelsCount: youtubeResult.channelsCount,
       videosCount: youtubeResult.videosCount,
-      error: youtubeResult.error
+      error: youtubeResult.error,
+      lastSyncedAt: youtubeData?.lastSyncedAt ?? null
     },
     x: {
       success: xResult.success,
       tweetsCount: xResult.tweetsCount,
       error: xResult.error,
-      errorCode: xResult.errorCode
+      errorCode: xResult.errorCode,
+      lastSyncedAt: xData?.lastSyncedAt ?? null
     },
     syncedAt: new Date().toISOString()
   });

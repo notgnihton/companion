@@ -400,6 +400,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `onboarding-one-tap-defaults` | frontend-engineer | Trim onboarding to one-tap start with fixed defaults (`Europe/Oslo`, balanced tone) and no manual profile fields (name/baseline/timezone prompts removed). |
 | ✅ done | `schedule-workload-badge-removal` | frontend-engineer | Remove low/medium/high difficulty badge from lecture/lab cards in Schedule tab to keep the view focused on timing and context. |
 | ✅ done | `habits-analytics-tab-merge` | frontend-engineer | Merge Habits and Analytics into a single Growth tab in bottom navigation, preserve deep-link compatibility (`tab=analytics` -> `tab=habits`), and stack both surfaces in one scrollable view. |
+| ✅ done | `social-sync-strict-diagnostics` | fullstack-engineer | Keep social sync strict (no hidden provider fallback behavior), return explicit sync diagnostics (`channelsCount`/`videosCount`/`tweetsCount` + `lastSyncedAt`) from `/api/social-media/sync`, and surface “synced but 0 items” debug messaging in Social tab. Tracked in issue #334. |
 | | | | |
 | | **— Phase 10: Wellness & Nutrition —** | | |
 | 🟡 todo | `food-module-integration` | fullstack-engineer | Integrate `lucyscript/food` into Companion as a native nutrition module (meal logging, calories/macros, meal plans), expose Gemini nutrition tools, and persist data in the primary app storage. Tracked in issue #300. |
