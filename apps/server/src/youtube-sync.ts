@@ -1,5 +1,5 @@
 import { RuntimeStore } from "./store.js";
-import { YouTubeClient, YouTubeChannel } from "./youtube-client.js";
+import { YouTubeAPIError, YouTubeClient, YouTubeChannel } from "./youtube-client.js";
 import { config } from "./config.js";
 import { YouTubeData } from "./types.js";
 import { SyncAutoHealingPolicy, SyncAutoHealingState } from "./sync-auto-healing.js";
@@ -28,8 +28,13 @@ function dedupeVideoIds(videoIds: string[]): string[] {
 }
 
 function looksLikeSubscriptionAuthError(error: unknown): boolean {
+  if (error instanceof YouTubeAPIError && error.statusCode === 401) {
+    return true;
+  }
+
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
   return (
+    message.includes("unauthorized") ||
     message.includes("mine") ||
     message.includes("insufficient authentication scopes") ||
     message.includes("login required") ||

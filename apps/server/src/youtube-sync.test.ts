@@ -199,6 +199,39 @@ describe("YouTube Integration", () => {
       expect(store.getYouTubeData()?.videos[0]?.title).toContain("DAT560");
     });
 
+    it("falls back to keyword search when subscriptions endpoint returns generic Unauthorized", async () => {
+      const mockClient = {
+        isConfigured: () => true,
+        fetchSubscriptions: async () => {
+          throw new Error("YouTube API error: Unauthorized");
+        },
+        searchVideosByQuery: async () => ["vid-auth-fallback"],
+        fetchVideoMetadata: async () => [
+          {
+            id: "vid-auth-fallback",
+            channelId: "UC-fallback",
+            channelTitle: "Fallback Channel",
+            title: "Fallback via search",
+            description: "Recovered from subscriptions auth error",
+            publishedAt: "2026-02-17T00:00:00Z",
+            thumbnailUrl: "https://example.com/vid-auth-fallback.jpg",
+            duration: "PT8M",
+            viewCount: 42,
+            likeCount: 4,
+            commentCount: 1
+          }
+        ],
+        getQuotaStatus: () => ({ used: 101, limit: 10000, remaining: 9899, resetAt: "2026-02-18T00:00:00Z" })
+      } as unknown as YouTubeClient;
+
+      const service = new YouTubeSyncService(store, mockClient);
+      const result = await service.sync({ maxVideosPerChannel: 2 });
+
+      expect(result.success).toBe(true);
+      expect(result.videosCount).toBe(1);
+      expect(store.getYouTubeData()?.videos[0]?.title).toContain("Fallback");
+    });
+
     it("should respect maxChannels and maxVideosPerChannel options", async () => {
       let subscriptionsCalled = false;
 

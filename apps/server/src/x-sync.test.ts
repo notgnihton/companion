@@ -129,7 +129,7 @@ describe("X Integration", () => {
       expect(result.tweetsCount).toBe(25);
     });
 
-    it("should return actionable empty-feed diagnostics when X returns no tweets", async () => {
+    it("treats empty X responses as a successful sync with zero tweets", async () => {
       const mockClient = {
         isConfigured: () => true,
         fetchHomeTimeline: async () => []
@@ -138,10 +138,10 @@ describe("X Integration", () => {
       const service = new XSyncService(store, mockClient);
       const result = await service.sync();
 
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
       expect(result.tweetsCount).toBe(0);
       expect(result.errorCode).toBe("empty");
-      expect(result.error).toContain("returned no tweets");
+      expect(result.error).toBeUndefined();
     });
 
     it("should start and stop sync intervals", () => {
@@ -171,6 +171,11 @@ describe("X Integration", () => {
 
     it("should detect bearer-token-only configuration", () => {
       const client = new XClient("", "", "", "", "bearer-token-only");
+      expect(client.isConfigured()).toBe(true);
+    });
+
+    it("normalizes bearer token values that include the Bearer prefix", () => {
+      const client = new XClient("", "", "", "", "Bearer bearer-token-only");
       expect(client.isConfigured()).toBe(true);
     });
 

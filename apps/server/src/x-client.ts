@@ -52,7 +52,7 @@ export class XClient {
   private readonly accessTokenSecret: string | null;
   private readonly bearerToken: string | null;
   private readonly fallbackQuery: string;
-  private readonly baseUrl = "https://api.twitter.com/2";
+  private readonly baseUrl = "https://api.x.com/2";
 
   constructor(
     apiKey?: string,
@@ -62,12 +62,21 @@ export class XClient {
     bearerToken?: string,
     fallbackQuery?: string
   ) {
-    this.apiKey = apiKey ?? config.X_API_KEY ?? null;
-    this.apiKeySecret = apiKeySecret ?? config.X_API_KEY_SECRET ?? null;
-    this.accessToken = accessToken ?? config.X_ACCESS_TOKEN ?? null;
-    this.accessTokenSecret = accessTokenSecret ?? config.X_ACCESS_TOKEN_SECRET ?? null;
-    this.bearerToken = bearerToken ?? config.X_BEARER_TOKEN ?? null;
+    this.apiKey = this.sanitizeCredential(apiKey ?? config.X_API_KEY ?? null);
+    this.apiKeySecret = this.sanitizeCredential(apiKeySecret ?? config.X_API_KEY_SECRET ?? null);
+    this.accessToken = this.sanitizeCredential(accessToken ?? config.X_ACCESS_TOKEN ?? null);
+    this.accessTokenSecret = this.sanitizeCredential(accessTokenSecret ?? config.X_ACCESS_TOKEN_SECRET ?? null);
+    const resolvedBearer = this.sanitizeCredential(bearerToken ?? config.X_BEARER_TOKEN ?? null);
+    this.bearerToken = resolvedBearer ? resolvedBearer.replace(/^Bearer\s+/i, "") : null;
     this.fallbackQuery = fallbackQuery ?? config.X_FALLBACK_QUERY ?? "(machine learning OR distributed systems OR software engineering) -is:retweet lang:en";
+  }
+
+  private sanitizeCredential(value: string | null): string | null {
+    if (typeof value !== "string") {
+      return null;
+    }
+    const trimmed = value.trim().replace(/^['"]|['"]$/g, "");
+    return trimmed.length > 0 ? trimmed : null;
   }
 
   private isOAuthConfigured(): boolean {

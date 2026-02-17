@@ -119,10 +119,8 @@ export class XSyncService {
 
       if (tweets.length === 0) {
         return {
-          success: false,
+          success: true,
           tweetsCount: 0,
-          error:
-            "X sync returned no tweets. If using bearer-token mode, confirm query access and account permissions.",
           errorCode: "empty"
         };
       }
@@ -134,6 +132,18 @@ export class XSyncService {
     } catch (error) {
       const classified = classifyXSyncError(error);
       console.error("X sync failed:", classified.code, classified.message);
+
+      if (classified.code === "rate_limit") {
+        const cached = this.store.getXData();
+        if (cached && cached.tweets.length > 0) {
+          return {
+            success: true,
+            tweetsCount: cached.tweets.length,
+            error: classified.message,
+            errorCode: classified.code
+          };
+        }
+      }
       
       return {
         success: false,

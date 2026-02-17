@@ -132,12 +132,14 @@ export class YouTubeClient {
   private quotaTracker: QuotaTracker;
 
   constructor(apiKey?: string) {
-    this.apiKey = apiKey ?? config.YOUTUBE_API_KEY ?? null;
+    const resolved = apiKey ?? config.YOUTUBE_API_KEY ?? null;
+    const sanitized = typeof resolved === "string" ? resolved.trim().replace(/^['"]|['"]$/g, "") : resolved;
+    this.apiKey = sanitized && sanitized.length > 0 ? sanitized : null;
     this.quotaTracker = new QuotaTracker();
   }
 
   isConfigured(): boolean {
-    return this.apiKey !== null;
+    return this.apiKey !== null && this.apiKey !== "";
   }
 
   /**
