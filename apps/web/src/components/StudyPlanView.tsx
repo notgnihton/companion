@@ -26,12 +26,21 @@ interface SessionDayGroup {
   completionRate: number;
 }
 
+interface SessionCheckInDraft {
+  sessionId: string;
+  status: Exclude<StudyPlanSessionStatus, "pending">;
+  energyLevel?: number;
+  focusLevel?: number;
+  checkInNote: string;
+}
+
 const defaultControls: Required<StudyPlanGeneratePayload> = {
   horizonDays: 7,
   minSessionMinutes: 45,
   maxSessionMinutes: 120
 };
 const STUDY_PLAN_STALE_MS = 24 * 60 * 60 * 1000;
+const CHECK_IN_SCALE_VALUES = [1, 2, 3, 4, 5] as const;
 
 function formatCachedLabel(cachedAt: string | null): string {
   if (!cachedAt) {
@@ -91,6 +100,7 @@ export function StudyPlanView(): JSX.Element {
   const [loading, setLoading] = useState<boolean>(() => loadStudyPlanCache() === null);
   const [generating, setGenerating] = useState(false);
   const [updatingSessionId, setUpdatingSessionId] = useState<string | null>(null);
+  const [activeCheckIn, setActiveCheckIn] = useState<SessionCheckInDraft | null>(null);
   const [sessionMessage, setSessionMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -212,20 +222,28 @@ export function StudyPlanView(): JSX.Element {
   const updateSessionStatus = async (
     session: StudyPlanSession,
     status: Exclude<StudyPlanSessionStatus, "pending">,
-    options?: { silent?: boolean }
-  ): Promise<boolean> => {
+    options?: {
+      silent?: boolean;
+      successMessage?: string;
+      payload?: {
+        energyLevel?: number;
+        focusLevel?: number;
+        checkInNote?: string;
+      };
+    }
+  ): Promise<StudyPlanSessionRecord | null> => {
     if (!isOnline || !plan) {
       setSessionMessage("Reconnect to update session status.");
-      return false;
+      return null;
     }
 
     setUpdatingSessionId(session.id);
-    const updated = await checkInStudyPlanSession(session.id, status);
+    const updated = await checkInStudyPlanSession(session.id, status, options?.payload);
 
     if (!updated) {
       setSessionMessage("Could not save session status right now.");
       setUpdatingSessionId(null);
-      return false;
+      return null;
     }
 
     setSessionLookup((prev) => ({
@@ -242,11 +260,65 @@ export function StudyPlanView(): JSX.Element {
     }
 
     if (!options?.silent) {
-      setSessionMessage(status === "done" ? "Session marked done." : "Session skipped.");
+      setSessionMessage(options?.successMessage ?? (status === "done" ? "Session marked done." : "Session skipped."));
     }
 
     setUpdatingSessionId(null);
-    return true;
+    return updated;
+  };
+
+  const openCheckInPanel = (
+    session: StudyPlanSession,
+    status: Exclude<StudyPlanSessionStatus, "pending">,
+    record?: StudyPlanSessionRecord
+  ): void => {
+    const source = record ?? sessionLookup[session.id];
+    setActiveCheckIn({
+      sessionId: session.id,
+      status,
+      energyLevel: source?.energyLevel ?? undefined,
+      focusLevel: source?.focusLevel ?? undefined,
+      checkInNote: source?.checkInNote ?? ""
+    });
+  };
+
+  const handleStatusWithQuickCheckIn = async (
+    session: StudyPlanSession,
+    status: Exclude<StudyPlanSessionStatus, "pending">
+  ): Promise<void> => {
+    const updated = await updateSessionStatus(session, status, { silent: true });
+    if (!updated) {
+      return;
+    }
+
+    openCheckInPanel(session, status, updated);
+    setSessionMessage(status === "done" ? "Session marked done. Optional check-in below." : "Session skipped. Optional check-in below.");
+  };
+
+  const saveActiveCheckIn = async (): Promise<void> => {
+    if (!activeCheckIn || !plan) {
+      return;
+    }
+
+    const session = plan.sessions.find((candidate) => candidate.id === activeCheckIn.sessionId);
+    if (!session) {
+      setActiveCheckIn(null);
+      return;
+    }
+
+    const trimmedNote = activeCheckIn.checkInNote.trim();
+    const updated = await updateSessionStatus(session, activeCheckIn.status, {
+      payload: {
+        energyLevel: activeCheckIn.energyLevel,
+        focusLevel: activeCheckIn.focusLevel,
+        checkInNote: trimmedNote.length > 0 ? trimmedNote : undefined
+      },
+      successMessage: "Session check-in saved."
+    });
+
+    if (updated) {
+      setActiveCheckIn(null);
+    }
   };
 
   const handleReschedule = async (session: StudyPlanSession): Promise<void> => {
@@ -392,8 +464,12 @@ export function StudyPlanView(): JSX.Element {
               <ul className="study-plan-session-list">
                 {group.sessions.map((session) => {
                   const status = resolveSessionStatus(session);
-                  const checkedAt = sessionLookup[session.id]?.checkedAt;
+                  const sessionRecord = sessionLookup[session.id];
+                  const checkedAt = sessionRecord?.checkedAt;
                   const isUpdating = updatingSessionId === session.id;
+                  const hasCheckInStats =
+                    typeof sessionRecord?.energyLevel === "number" || typeof sessionRecord?.focusLevel === "number";
+                  const showCheckInPanel = activeCheckIn?.sessionId === session.id;
 
                   return (
                     <li
@@ -415,11 +491,18 @@ export function StudyPlanView(): JSX.Element {
                           Updated {new Date(checkedAt).toLocaleString()}
                         </p>
                       )}
+                      {hasCheckInStats && (
+                        <p className="study-plan-session-checkin-summary">
+                          {sessionRecord?.energyLevel !== null ? `Energy ${sessionRecord?.energyLevel}/5` : "Energy -"} •{" "}
+                          {sessionRecord?.focusLevel !== null ? `Focus ${sessionRecord?.focusLevel}/5` : "Focus -"}
+                        </p>
+                      )}
+                      {sessionRecord?.checkInNote && <p className="study-plan-session-checkin-note">"{sessionRecord.checkInNote}"</p>}
                       <div className="study-plan-session-actions">
                         <button
                           type="button"
                           className="study-plan-action-done"
-                          onClick={() => void updateSessionStatus(session, "done")}
+                          onClick={() => void handleStatusWithQuickCheckIn(session, "done")}
                           disabled={!isOnline || isUpdating || status === "done"}
                         >
                           Done
@@ -427,10 +510,18 @@ export function StudyPlanView(): JSX.Element {
                         <button
                           type="button"
                           className="study-plan-action-skip"
-                          onClick={() => void updateSessionStatus(session, "skipped")}
+                          onClick={() => void handleStatusWithQuickCheckIn(session, "skipped")}
                           disabled={!isOnline || isUpdating || status === "skipped"}
                         >
                           Skip
+                        </button>
+                        <button
+                          type="button"
+                          className="study-plan-action-checkin"
+                          onClick={() => openCheckInPanel(session, status === "pending" ? "done" : status)}
+                          disabled={!isOnline || isUpdating}
+                        >
+                          Check-in
                         </button>
                         <button
                           type="button"
@@ -441,6 +532,106 @@ export function StudyPlanView(): JSX.Element {
                           Reschedule
                         </button>
                       </div>
+                      {showCheckInPanel && activeCheckIn && (
+                        <div className="study-plan-checkin-panel">
+                          <div className="study-plan-checkin-header">
+                            <strong>Post-session check-in</strong>
+                            <button type="button" onClick={() => setActiveCheckIn(null)}>
+                              Not now
+                            </button>
+                          </div>
+                          <div className="study-plan-checkin-status-toggle">
+                            <button
+                              type="button"
+                              className={activeCheckIn.status === "done" ? "is-active" : ""}
+                              onClick={() =>
+                                setActiveCheckIn((prev) => (prev ? { ...prev, status: "done" } : prev))
+                              }
+                            >
+                              Done
+                            </button>
+                            <button
+                              type="button"
+                              className={activeCheckIn.status === "skipped" ? "is-active" : ""}
+                              onClick={() =>
+                                setActiveCheckIn((prev) => (prev ? { ...prev, status: "skipped" } : prev))
+                              }
+                            >
+                              Skipped
+                            </button>
+                          </div>
+                          <div className="study-plan-checkin-scale">
+                            <p>Energy</p>
+                            <div className="study-plan-checkin-scale-buttons">
+                              {CHECK_IN_SCALE_VALUES.map((value) => (
+                                <button
+                                  key={`energy-${session.id}-${value}`}
+                                  type="button"
+                                  className={activeCheckIn.energyLevel === value ? "is-active" : ""}
+                                  onClick={() =>
+                                    setActiveCheckIn((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            energyLevel: prev.energyLevel === value ? undefined : value
+                                          }
+                                        : prev
+                                    )
+                                  }
+                                >
+                                  {value}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="study-plan-checkin-scale">
+                            <p>Focus</p>
+                            <div className="study-plan-checkin-scale-buttons">
+                              {CHECK_IN_SCALE_VALUES.map((value) => (
+                                <button
+                                  key={`focus-${session.id}-${value}`}
+                                  type="button"
+                                  className={activeCheckIn.focusLevel === value ? "is-active" : ""}
+                                  onClick={() =>
+                                    setActiveCheckIn((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            focusLevel: prev.focusLevel === value ? undefined : value
+                                          }
+                                        : prev
+                                    )
+                                  }
+                                >
+                                  {value}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <label className="study-plan-checkin-note-field">
+                            <span>Note (optional)</span>
+                            <textarea
+                              value={activeCheckIn.checkInNote}
+                              onChange={(event) =>
+                                setActiveCheckIn((prev) =>
+                                  prev ? { ...prev, checkInNote: event.target.value } : prev
+                                )
+                              }
+                              rows={2}
+                              maxLength={500}
+                              placeholder="What helped? What got in the way?"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="study-plan-checkin-save"
+                            onClick={() => void saveActiveCheckIn()}
+                            disabled={!isOnline || isUpdating}
+                          >
+                            Save check-in
+                          </button>
+                        </div>
+                      )}
                     </li>
                   );
                 })}

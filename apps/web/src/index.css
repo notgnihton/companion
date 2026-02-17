@@ -2932,9 +2932,26 @@ button:disabled {
   color: var(--muted);
 }
 
+.study-plan-session-checkin-summary {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.study-plan-session-checkin-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 6px 8px;
+  line-height: 1.35;
+}
+
 .study-plan-session-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -2961,6 +2978,123 @@ button:disabled {
   border: 1px solid var(--accent-border);
   background: var(--accent-surface);
   color: var(--text);
+}
+
+.study-plan-action-checkin {
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.study-plan-checkin-panel {
+  border: 1px solid var(--accent-border);
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.study-plan-checkin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.study-plan-checkin-header strong {
+  font-size: 0.82rem;
+}
+
+.study-plan-checkin-header button {
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 0.72rem;
+}
+
+.study-plan-checkin-status-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.study-plan-checkin-status-toggle button {
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 7px 8px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.study-plan-checkin-status-toggle button.is-active {
+  color: var(--text);
+  border-color: var(--accent-border);
+  background: var(--accent-surface);
+}
+
+.study-plan-checkin-scale {
+  display: grid;
+  gap: 6px;
+}
+
+.study-plan-checkin-scale p {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.study-plan-checkin-scale-buttons {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.study-plan-checkin-scale-buttons button {
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.study-plan-checkin-scale-buttons button.is-active {
+  border-color: var(--ok-border);
+  background: rgba(125, 211, 168, 0.18);
+}
+
+.study-plan-checkin-note-field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.study-plan-checkin-note-field textarea {
+  min-height: 66px;
+  resize: vertical;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  background: var(--surface-soft);
+  color: var(--text);
+  padding: 8px 9px;
+  font: inherit;
+}
+
+.study-plan-checkin-save {
+  border: 1px solid var(--ok-border);
+  background: rgba(125, 211, 168, 0.12);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 9px 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .study-plan-session-done {
