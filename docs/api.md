@@ -153,6 +153,53 @@ Deletes a meal log. Response `204` or `404`.
 
 Returns meal-plan blocks for the selected date/time filter.
 
+### `GET /api/nutrition/custom-foods?query=...&limit=200`
+
+Returns saved custom foods (macro-only templates) for quick reuse in meal logging.
+
+### `POST /api/nutrition/custom-foods`
+
+Creates a custom food.
+
+Request:
+
+```json
+{
+  "name": "Whey isolate",
+  "unitLabel": "scoop",
+  "caloriesPerUnit": 110,
+  "proteinGramsPerUnit": 25,
+  "carbsGramsPerUnit": 2,
+  "fatGramsPerUnit": 1
+}
+```
+
+Response `201`:
+
+```json
+{
+  "food": {
+    "id": "custom-food-1739570000000-1",
+    "name": "Whey isolate",
+    "unitLabel": "scoop",
+    "caloriesPerUnit": 110,
+    "proteinGramsPerUnit": 25,
+    "carbsGramsPerUnit": 2,
+    "fatGramsPerUnit": 1,
+    "createdAt": "2026-02-17T08:00:00.000Z",
+    "updatedAt": "2026-02-17T08:00:00.000Z"
+  }
+}
+```
+
+### `PATCH /api/nutrition/custom-foods/:id`
+
+Updates one or more custom-food fields. Response `200` with `{ "food": ... }`.
+
+### `DELETE /api/nutrition/custom-foods/:id`
+
+Deletes a custom food. Response `204` or `404`.
+
 ### `POST /api/nutrition/plan`
 
 Creates a meal-plan block. Response `201` with `{ "block": ... }`.

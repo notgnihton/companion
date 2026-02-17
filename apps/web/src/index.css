@@ -79,6 +79,10 @@ body {
   min-height: 100vh;
 }
 
+html {
+  background: #091019;
+}
+
 body.chat-tab-active {
   overflow: hidden;
 }
@@ -2225,6 +2229,7 @@ button:disabled {
   background: var(--surface-soft);
   border-radius: 16px;
   overflow: hidden;
+  position: relative;
 }
 
 .app-shell-chat-active .chat-view {
@@ -2766,7 +2771,7 @@ button:disabled {
 
   .chat-input {
     padding: 10px 12px;
-    font-size: 0.95rem;
+    font-size: 16px;
   }
 }
 
@@ -3107,6 +3112,9 @@ body.keyboard-open .tab-bar {
 }
 
 body.keyboard-open .app-shell {
+  max-width: none;
+  width: 100%;
+  margin: 0;
   padding-bottom: max(4px, env(safe-area-inset-bottom));
 }
 
@@ -3114,9 +3122,74 @@ body.keyboard-open .tab-content-area {
   padding-bottom: max(4px, env(safe-area-inset-bottom));
 }
 
+body.keyboard-open .app-shell-chat-active {
+  padding:
+    max(2px, calc(2px + env(safe-area-inset-top)))
+    0
+    0
+    0;
+}
+
+body.keyboard-open .app-shell-chat-active .tab-content-area {
+  padding-bottom: 0;
+}
+
+body.keyboard-open .app-shell-chat-active .chat-tab {
+  width: 100%;
+  margin: 0;
+}
+
 body.keyboard-open .chat-view {
+  position: fixed;
+  inset: 0;
   height: var(--app-viewport-height);
   max-height: var(--app-viewport-height);
+  border-radius: 0;
+  background: #091019;
+  z-index: 90;
+}
+
+body.keyboard-open .chat-toolbar {
+  position: absolute;
+  top: max(6px, calc(6px + env(safe-area-inset-top)));
+  right: 8px;
+  left: auto;
+  padding: 0;
+  border-bottom: none;
+  background: transparent;
+  justify-content: flex-end;
+  z-index: 3;
+}
+
+body.keyboard-open .chat-talk-wave {
+  display: none;
+}
+
+body.keyboard-open .chat-talk-mode-btn {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(7, 14, 20, 0.72);
+  border-color: var(--border-soft);
+  font-size: 0.78rem;
+  padding: 5px 10px;
+}
+
+body.keyboard-open .chat-input-container {
+  padding: 6px 6px max(6px, calc(6px + env(safe-area-inset-bottom)));
+  background: rgba(7, 14, 20, 0.96);
+}
+
+body.keyboard-open .chat-messages {
+  padding: max(34px, calc(34px + env(safe-area-inset-top))) 0 6px;
+  background: #091019;
+}
+
+body.keyboard-open .chat-bubble {
+  max-width: calc(100% - 12px);
+}
+
+body.keyboard-open .chat-input {
+  font-size: 16px !important;
 }
 
 body.keyboard-open .pull-to-refresh-container {
@@ -3233,6 +3306,22 @@ body.keyboard-open .pull-to-refresh-container {
   margin: 0;
 }
 
+.nutrition-custom-food-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.nutrition-custom-food-header button {
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  padding: 6px 10px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 0.76rem;
+}
+
 .nutrition-form {
   display: grid;
   gap: 10px;
@@ -3298,6 +3387,18 @@ body.keyboard-open .pull-to-refresh-container {
   padding: 7px 10px;
   background: var(--surface);
   color: var(--text);
+}
+
+.nutrition-list-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.nutrition-list-item-actions button {
+  min-width: 58px;
 }
 
 .nutrition-item-title {

@@ -217,6 +217,87 @@ Response:
 }
 ```
 
+### GET `/api/nutrition/custom-foods?query=...&limit=200`
+
+Response:
+
+```json
+{
+  "foods": [
+    {
+      "id": "custom-food-1",
+      "name": "Whey isolate",
+      "unitLabel": "scoop",
+      "caloriesPerUnit": 110,
+      "proteinGramsPerUnit": 25,
+      "carbsGramsPerUnit": 2,
+      "fatGramsPerUnit": 1,
+      "createdAt": "2026-02-17T08:00:00.000Z",
+      "updatedAt": "2026-02-17T08:00:00.000Z"
+    }
+  ]
+}
+```
+
+### POST `/api/nutrition/custom-foods`
+
+Request:
+
+```json
+{
+  "name": "Whey isolate",
+  "unitLabel": "scoop",
+  "caloriesPerUnit": 110,
+  "proteinGramsPerUnit": 25,
+  "carbsGramsPerUnit": 2,
+  "fatGramsPerUnit": 1
+}
+```
+
+Response:
+
+```json
+{
+  "food": {
+    "id": "custom-food-1",
+    "name": "Whey isolate",
+    "unitLabel": "scoop",
+    "caloriesPerUnit": 110,
+    "proteinGramsPerUnit": 25,
+    "carbsGramsPerUnit": 2,
+    "fatGramsPerUnit": 1,
+    "createdAt": "2026-02-17T08:00:00.000Z",
+    "updatedAt": "2026-02-17T08:00:00.000Z"
+  }
+}
+```
+
+### PATCH `/api/nutrition/custom-foods/:id`
+
+Request: same fields as POST, all optional.
+
+Response:
+
+```json
+{
+  "food": {
+    "id": "custom-food-1",
+    "name": "Whey isolate",
+    "unitLabel": "scoop",
+    "caloriesPerUnit": 115,
+    "proteinGramsPerUnit": 25,
+    "carbsGramsPerUnit": 2,
+    "fatGramsPerUnit": 1,
+    "createdAt": "2026-02-17T08:00:00.000Z",
+    "updatedAt": "2026-02-17T08:10:00.000Z"
+  }
+}
+```
+
+### DELETE `/api/nutrition/custom-foods/:id`
+
+Response: `204 No Content`
+
 ---
 
 ## Phase 2: Conversational AI & Data Integrations

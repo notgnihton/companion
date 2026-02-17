@@ -63,6 +63,7 @@ export type ChatCitationType =
   | "goal"
   | "nutrition-meal"
   | "nutrition-meal-plan"
+  | "nutrition-custom-food"
   | "email"
   | "social-youtube"
   | "social-x"
@@ -492,6 +493,18 @@ export interface NutritionMealPlanBlock {
   targetCarbsGrams?: number;
   targetFatGrams?: number;
   notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NutritionCustomFood {
+  id: string;
+  name: string;
+  unitLabel: string;
+  caloriesPerUnit: number;
+  proteinGramsPerUnit: number;
+  carbsGramsPerUnit: number;
+  fatGramsPerUnit: number;
   createdAt: string;
   updatedAt: string;
 }
