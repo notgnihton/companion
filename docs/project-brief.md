@@ -386,6 +386,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `chat-image-attachments` | fullstack-engineer | Support image attachments in chat messages end-to-end (composer upload/previews, `/api/chat` attachment payloads, Gemini inline image parts, and message history rendering). |
 | ✅ done | `habits-goals-daily-summary-tab` | fullstack-engineer | Replace Journal tab surface with a Habits tab that combines habits/goals controls and a Gemini-powered daily reflection summary (`/api/journal/daily-summary`). |
 | ✅ done | `gemini-habit-goal-tools` | backend-engineer | Extend Gemini tool-calling with habit/goal read+update actions (`getHabitsGoalsStatus`, `updateHabitCheckIn`, `updateGoalCheckIn`) and habit/goal citations in chat responses. |
+| ✅ done | `gemini-habit-goal-crud-tools` | backend-engineer | Add Gemini tool-calling support for creating/deleting habits and goals (`createHabit`, `deleteHabit`, `createGoal`, `deleteGoal`) with empty-state-safe delete behavior and chat citations. Tracked in issue #330. |
 | | | | |
 | | **— Phase 9: Reliability UX & Learning Flow —** | | |
 | ✅ done | `integration-health-dashboard-ui` | frontend-engineer | Build an Integrations Health screen that visualizes sync-attempt history (success rate, latency trend, failure root-cause chips) and links to recovery actions for TP/Canvas/Gmail. |

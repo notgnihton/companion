@@ -673,7 +673,7 @@ function buildIntentGuidance(intent: ChatIntent): string {
     case "social":
       return "Intent hint: social. Prefer getSocialDigest for YouTube/X requests.";
     case "habits-goals":
-      return "Intent hint: habits/goals. Prefer getHabitsGoalsStatus first. For explicit check-in requests, use updateHabitCheckIn or updateGoalCheckIn.";
+      return "Intent hint: habits/goals. Prefer getHabitsGoalsStatus first. For explicit create/delete requests, use createHabit/deleteHabit/createGoal/deleteGoal. For explicit check-in requests, use updateHabitCheckIn or updateGoalCheckIn.";
     case "notifications":
       return "Intent hint: notifications. Explain reminders/nudges and suggest direct follow-up actions.";
     case "integrations":
@@ -747,6 +747,18 @@ const INTENT_FEW_SHOT_EXAMPLES: IntentFewShotExample[] = [
     responseStyle: "Confirm the check-in and report the updated streak briefly."
   },
   {
+    user: "Create a new habit called deep work for weekdays.",
+    intent: "habits-goals",
+    toolPlan: "Call createHabit with name, cadence, and a reasonable targetPerWeek.",
+    responseStyle: "Confirm creation with the exact habit name."
+  },
+  {
+    user: "Delete my wind-down reading habit.",
+    intent: "habits-goals",
+    toolPlan: "Call deleteHabit with habitName.",
+    responseStyle: "Confirm deletion or explain clearly if no match exists."
+  },
+  {
     user: "Mark DAT520 Lab 5 as complete.",
     intent: "actions",
     toolPlan: "Use queueDeadlineAction, then require explicit confirm/cancel.",
@@ -788,7 +800,7 @@ function buildFunctionCallingSystemInstruction(userName: string, intent: ChatInt
 
 Core behavior:
 - For factual questions about schedule, deadlines, journal, email, social updates, or GitHub course materials, use tools before answering.
-- For habits and goals questions, call getHabitsGoalsStatus first; use updateHabitCheckIn/updateGoalCheckIn for explicit check-in actions.
+- For habits and goals questions, call getHabitsGoalsStatus first. For create/delete requests, use createHabit/deleteHabit/createGoal/deleteGoal. For check-ins, use updateHabitCheckIn/updateGoalCheckIn.
 - Do not hallucinate user-specific data. If data is unavailable, say so explicitly and suggest the next sync step.
 - For email follow-ups like "what did it contain?" after inbox discussion, call getEmails again and answer from sender/subject/snippet.
 - For mutating requests that change schedule/deadlines, use queue* action tools and require explicit user confirmation.
@@ -1180,6 +1192,14 @@ function buildToolDataFallbackReply(
       case "updateGoalCheckIn":
         section = buildGoalUpdateFallbackSection(result.rawResponse);
         break;
+      case "createHabit":
+      case "deleteHabit":
+        section = buildHabitUpdateFallbackSection(result.rawResponse);
+        break;
+      case "createGoal":
+      case "deleteGoal":
+        section = buildGoalUpdateFallbackSection(result.rawResponse);
+        break;
       case "getGitHubCourseContent":
         section = buildGitHubCourseFallbackSection(result.rawResponse);
         break;
@@ -1518,6 +1538,8 @@ function compactHabitUpdateForModel(response: unknown): unknown {
   const habit = asRecord(payload.habit);
   return {
     success: Boolean(payload.success),
+    created: typeof payload.created === "boolean" ? payload.created : undefined,
+    deleted: typeof payload.deleted === "boolean" ? payload.deleted : undefined,
     message: asNonEmptyString(payload.message) ?? null,
     habit: habit
       ? {
@@ -1547,6 +1569,8 @@ function compactGoalUpdateForModel(response: unknown): unknown {
   const goal = asRecord(payload.goal);
   return {
     success: Boolean(payload.success),
+    created: typeof payload.created === "boolean" ? payload.created : undefined,
+    deleted: typeof payload.deleted === "boolean" ? payload.deleted : undefined,
     message: asNonEmptyString(payload.message) ?? null,
     goal: goal
       ? {
@@ -1609,6 +1633,12 @@ function compactFunctionResponseForModel(functionName: string, response: unknown
     case "updateHabitCheckIn":
       return compactHabitUpdateForModel(response);
     case "updateGoalCheckIn":
+      return compactGoalUpdateForModel(response);
+    case "createHabit":
+    case "deleteHabit":
+      return compactHabitUpdateForModel(response);
+    case "createGoal":
+    case "deleteGoal":
       return compactGoalUpdateForModel(response);
     case "getGitHubCourseContent":
       return compactGitHubCourseContentForModel(response);
@@ -1848,7 +1878,7 @@ function collectToolCitations(
     return next;
   }
 
-  if (functionName === "updateHabitCheckIn") {
+  if (functionName === "updateHabitCheckIn" || functionName === "createHabit") {
     const payload = asRecord(response);
     const habit = asRecord(payload?.habit);
     const id = asNonEmptyString(habit?.id);
@@ -1866,11 +1896,45 @@ function collectToolCitations(
     ];
   }
 
-  if (functionName === "updateGoalCheckIn") {
+  if (functionName === "deleteHabit") {
+    const payload = asRecord(response);
+    const id = asNonEmptyString(payload?.habitId);
+    const name = asNonEmptyString(payload?.habitName);
+    if (!id || !name) {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        type: "habit",
+        label: name
+      }
+    ];
+  }
+
+  if (functionName === "updateGoalCheckIn" || functionName === "createGoal") {
     const payload = asRecord(response);
     const goal = asRecord(payload?.goal);
     const id = asNonEmptyString(goal?.id);
     const title = asNonEmptyString(goal?.title);
+    if (!id || !title) {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        type: "goal",
+        label: title
+      }
+    ];
+  }
+
+  if (functionName === "deleteGoal") {
+    const payload = asRecord(response);
+    const id = asNonEmptyString(payload?.goalId);
+    const title = asNonEmptyString(payload?.goalTitle);
     if (!id || !title) {
       return [];
     }

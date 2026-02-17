@@ -9,6 +9,10 @@ import {
   handleGetHabitsGoalsStatus,
   handleUpdateHabitCheckIn,
   handleUpdateGoalCheckIn,
+  handleCreateHabit,
+  handleDeleteHabit,
+  handleCreateGoal,
+  handleDeleteGoal,
   handleGetGitHubCourseContent,
   handleQueueDeadlineAction,
   handleQueueScheduleBlock,
@@ -27,8 +31,8 @@ describe("gemini-tools", () => {
   });
 
   describe("functionDeclarations", () => {
-    it("should define 12 function declarations", () => {
-      expect(functionDeclarations).toHaveLength(12);
+    it("should define 16 function declarations", () => {
+      expect(functionDeclarations).toHaveLength(16);
     });
 
     it("should include getSchedule function", () => {
@@ -65,6 +69,10 @@ describe("gemini-tools", () => {
       expect(functionDeclarations.find((f) => f.name === "getHabitsGoalsStatus")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "updateHabitCheckIn")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "updateGoalCheckIn")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "createHabit")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "deleteHabit")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "createGoal")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "deleteGoal")).toBeDefined();
     });
 
     it("should include getGitHubCourseContent function", () => {
@@ -335,6 +343,64 @@ describe("gemini-tools", () => {
       expect(result.goal.todayCompleted).toBe(true);
       expect(result.message).toContain("Logged progress");
     });
+
+    it("creates a habit from empty state", () => {
+      const result = handleCreateHabit(store, {
+        name: "Deep work",
+        cadence: "daily",
+        targetPerWeek: 5
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      expect(result.success).toBe(true);
+      expect(result.created).toBe(true);
+      expect(result.habit.name).toBe("Deep work");
+      expect(store.getHabitsWithStatus().length).toBe(1);
+    });
+
+    it("returns non-deleted success when deleting habit with empty state", () => {
+      const result = handleDeleteHabit(store, {
+        habitName: "study sprint"
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      expect(result.success).toBe(true);
+      expect(result.deleted).toBe(false);
+      expect(result.message).toContain("No habits");
+    });
+
+    it("creates and deletes a goal", () => {
+      const created = handleCreateGoal(store, {
+        title: "Finish DAT560 lab",
+        cadence: "weekly",
+        targetCount: 2
+      });
+
+      if ("error" in created) {
+        throw new Error(created.error);
+      }
+
+      expect(created.success).toBe(true);
+      expect(created.created).toBe(true);
+
+      const deleted = handleDeleteGoal(store, {
+        goalTitle: "dat560 lab"
+      });
+
+      if ("error" in deleted) {
+        throw new Error(deleted.error);
+      }
+
+      expect(deleted.success).toBe(true);
+      expect(deleted.deleted).toBe(true);
+      expect(store.getGoalsWithStatus()).toHaveLength(0);
+    });
   });
 
   describe("handleGetGitHubCourseContent", () => {
@@ -558,6 +624,47 @@ describe("gemini-tools", () => {
 
       expect(result.name).toBe("updateGoalCheckIn");
       expect(result.response).toHaveProperty("success", true);
+    });
+
+    it("should execute createHabit function", () => {
+      const result = executeFunctionCall("createHabit", { name: "Read papers" }, store);
+
+      expect(result.name).toBe("createHabit");
+      expect(result.response).toHaveProperty("success", true);
+    });
+
+    it("should execute deleteHabit function", () => {
+      const habit = store.createHabit({
+        name: "Morning planning",
+        cadence: "daily",
+        targetPerWeek: 5
+      });
+      const result = executeFunctionCall("deleteHabit", { habitId: habit.id }, store);
+
+      expect(result.name).toBe("deleteHabit");
+      expect(result.response).toHaveProperty("success", true);
+      expect(result.response).toHaveProperty("deleted", true);
+    });
+
+    it("should execute createGoal function", () => {
+      const result = executeFunctionCall("createGoal", { title: "Finish report" }, store);
+
+      expect(result.name).toBe("createGoal");
+      expect(result.response).toHaveProperty("success", true);
+    });
+
+    it("should execute deleteGoal function", () => {
+      const goal = store.createGoal({
+        title: "Submit assignment",
+        cadence: "weekly",
+        targetCount: 1,
+        dueDate: null
+      });
+      const result = executeFunctionCall("deleteGoal", { goalId: goal.id }, store);
+
+      expect(result.name).toBe("deleteGoal");
+      expect(result.response).toHaveProperty("success", true);
+      expect(result.response).toHaveProperty("deleted", true);
     });
 
     it("should execute getGitHubCourseContent function", () => {

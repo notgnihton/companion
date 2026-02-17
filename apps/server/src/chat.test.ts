@@ -666,6 +666,10 @@ describe("chat service", () => {
     expect(firstRequest.systemInstruction).toContain("Detected intent: habits-goals");
     expect(firstRequest.systemInstruction).toContain("getHabitsGoalsStatus");
     expect(firstRequest.systemInstruction).toContain("updateHabitCheckIn");
+    expect(firstRequest.systemInstruction).toContain("createHabit");
+    expect(firstRequest.systemInstruction).toContain("deleteHabit");
+    expect(firstRequest.systemInstruction).toContain("createGoal");
+    expect(firstRequest.systemInstruction).toContain("deleteGoal");
   });
 
   it("falls back to general intent when no specific domain keywords are present", async () => {
@@ -1079,6 +1083,47 @@ describe("chat service", () => {
       expect.arrayContaining([
         expect.objectContaining({ id: habit.id, type: "habit" }),
         expect.objectContaining({ id: goal.id, type: "goal" })
+      ])
+    );
+  });
+
+  it("creates habit from empty state when Gemini calls createHabit", async () => {
+    expect(store.getHabitsWithStatus()).toHaveLength(0);
+
+    generateChatResponse = vi
+      .fn()
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop",
+        functionCalls: [
+          {
+            name: "createHabit",
+            args: {
+              name: "Study sprint",
+              cadence: "daily",
+              targetPerWeek: 6
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        text: "Created a new habit: Study sprint.",
+        finishReason: "stop"
+      });
+    fakeGemini = {
+      generateChatResponse
+    } as unknown as GeminiClient;
+
+    const result = await sendChatMessage(store, "Create a habit called Study sprint", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    expect(result.reply).toContain("Created a new habit");
+    expect(store.getHabitsWithStatus()).toHaveLength(1);
+    expect(result.citations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "habit", label: "Study sprint" })
       ])
     );
   });

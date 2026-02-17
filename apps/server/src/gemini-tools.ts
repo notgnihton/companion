@@ -153,6 +153,102 @@ export const functionDeclarations: FunctionDeclaration[] = [
     }
   },
   {
+    name: "createHabit",
+    description:
+      "Create a new habit. Use this when the user asks to add/start tracking a habit.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        name: {
+          type: SchemaType.STRING,
+          description: "Habit name."
+        },
+        cadence: {
+          type: SchemaType.STRING,
+          description: "Cadence: daily or weekly. Defaults to daily."
+        },
+        targetPerWeek: {
+          type: SchemaType.NUMBER,
+          description: "Target check-ins per week. Defaults based on cadence."
+        },
+        motivation: {
+          type: SchemaType.STRING,
+          description: "Optional reason/motivation for the habit."
+        }
+      },
+      required: ["name"]
+    }
+  },
+  {
+    name: "deleteHabit",
+    description:
+      "Delete an existing habit. Prefer habitId; habitName may be used for matching when id is unknown.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        habitId: {
+          type: SchemaType.STRING,
+          description: "Habit ID (preferred)."
+        },
+        habitName: {
+          type: SchemaType.STRING,
+          description: "Habit name hint when ID is unknown."
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "createGoal",
+    description:
+      "Create a new goal. Use this when the user asks to add/start tracking a goal.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        title: {
+          type: SchemaType.STRING,
+          description: "Goal title."
+        },
+        cadence: {
+          type: SchemaType.STRING,
+          description: "Cadence: daily or weekly. Defaults to weekly."
+        },
+        targetCount: {
+          type: SchemaType.NUMBER,
+          description: "Target number of check-ins. Defaults to 1."
+        },
+        dueDate: {
+          type: SchemaType.STRING,
+          description: "Optional due date as ISO datetime."
+        },
+        motivation: {
+          type: SchemaType.STRING,
+          description: "Optional reason/motivation for the goal."
+        }
+      },
+      required: ["title"]
+    }
+  },
+  {
+    name: "deleteGoal",
+    description:
+      "Delete an existing goal. Prefer goalId; goalTitle may be used for matching when id is unknown.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        goalId: {
+          type: SchemaType.STRING,
+          description: "Goal ID (preferred)."
+        },
+        goalTitle: {
+          type: SchemaType.STRING,
+          description: "Goal title hint when ID is unknown."
+        }
+      },
+      required: []
+    }
+  },
+  {
     name: "getGitHubCourseContent",
     description:
       "Get synced GitHub syllabus/course-info documents. Use this for questions about course policies, deliverables, grading, exams, lab expectations, and repository-based course material.",
@@ -527,6 +623,251 @@ export function handleUpdateGoalCheckIn(
     message: next.todayCompleted
       ? `Logged progress for goal "${next.title}" today.`
       : `Removed today's goal progress for "${next.title}".`
+  };
+}
+
+function parseCadence(value: unknown, fallback: "daily" | "weekly"): "daily" | "weekly" {
+  const raw = asTrimmedString(value)?.toLowerCase();
+  if (raw === "daily" || raw === "weekly") {
+    return raw;
+  }
+  return fallback;
+}
+
+export function handleCreateHabit(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): { success: true; habit: HabitWithStatus; created: boolean; message: string } | { error: string } {
+  const name = asTrimmedString(args.name);
+  if (!name) {
+    return { error: "name is required." };
+  }
+
+  const existing = store
+    .getHabitsWithStatus()
+    .find((habit) => normalizeSearchText(habit.name) === normalizeSearchText(name));
+  if (existing) {
+    return {
+      success: true,
+      habit: existing,
+      created: false,
+      message: `Habit "${existing.name}" already exists.`
+    };
+  }
+
+  const cadence = parseCadence(args.cadence, "daily");
+  const targetPerWeek = clampNumber(args.targetPerWeek, cadence === "daily" ? 5 : 3, 1, 14);
+  const motivation = asTrimmedString(args.motivation) ?? undefined;
+
+  const habit = store.createHabit({
+    name,
+    cadence,
+    targetPerWeek,
+    ...(motivation ? { motivation } : {})
+  });
+
+  return {
+    success: true,
+    habit,
+    created: true,
+    message: `Created habit "${habit.name}".`
+  };
+}
+
+export function handleDeleteHabit(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): {
+  success: true;
+  deleted: boolean;
+  habitId?: string;
+  habitName?: string;
+  message: string;
+} | { error: string } {
+  const habits = store.getHabitsWithStatus();
+  if (habits.length === 0) {
+    return {
+      success: true,
+      deleted: false,
+      message: "No habits exist yet."
+    };
+  }
+
+  const habitId = asTrimmedString(args.habitId);
+  const habitName = asTrimmedString(args.habitName);
+  let target: HabitWithStatus | null = null;
+
+  if (habitId) {
+    target = habits.find((habit) => habit.id === habitId) ?? null;
+    if (!target) {
+      return {
+        success: true,
+        deleted: false,
+        message: `Habit not found: ${habitId}`
+      };
+    }
+  } else if (habitName) {
+    const needle = normalizeSearchText(habitName);
+    const matches = habits.filter((habit) => normalizeSearchText(habit.name).includes(needle));
+    if (matches.length === 0) {
+      return {
+        success: true,
+        deleted: false,
+        message: `No habit matched "${habitName}".`
+      };
+    }
+    if (matches.length > 1) {
+      return {
+        error: `Habit name is ambiguous. Matches: ${matches
+          .slice(0, 4)
+          .map((habit) => habit.name)
+          .join(", ")}`
+      };
+    }
+    target = matches[0]!;
+  } else if (habits.length === 1) {
+    target = habits[0]!;
+  } else {
+    return {
+      error: "Provide habitId or habitName when multiple habits exist."
+    };
+  }
+
+  const deleted = store.deleteHabit(target.id);
+  if (!deleted) {
+    return { error: "Unable to delete habit." };
+  }
+
+  return {
+    success: true,
+    deleted: true,
+    habitId: target.id,
+    habitName: target.name,
+    message: `Deleted habit "${target.name}".`
+  };
+}
+
+export function handleCreateGoal(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): { success: true; goal: GoalWithStatus; created: boolean; message: string } | { error: string } {
+  const title = asTrimmedString(args.title);
+  if (!title) {
+    return { error: "title is required." };
+  }
+
+  const existing = store
+    .getGoalsWithStatus()
+    .find((goal) => normalizeSearchText(goal.title) === normalizeSearchText(title));
+  if (existing) {
+    return {
+      success: true,
+      goal: existing,
+      created: false,
+      message: `Goal "${existing.title}" already exists.`
+    };
+  }
+
+  const cadence = parseCadence(args.cadence, "weekly");
+  const targetCount = clampNumber(args.targetCount, 1, 1, 365);
+  const dueDateRaw = asTrimmedString(args.dueDate);
+  const dueDate = dueDateRaw
+    ? (() => {
+        const parsed = new Date(dueDateRaw);
+        return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+      })()
+    : null;
+  if (dueDateRaw && dueDate === null) {
+    return { error: "dueDate must be a valid ISO datetime when provided." };
+  }
+  const motivation = asTrimmedString(args.motivation) ?? undefined;
+
+  const goal = store.createGoal({
+    title,
+    cadence,
+    targetCount,
+    dueDate,
+    ...(motivation ? { motivation } : {})
+  });
+
+  return {
+    success: true,
+    goal,
+    created: true,
+    message: `Created goal "${goal.title}".`
+  };
+}
+
+export function handleDeleteGoal(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): {
+  success: true;
+  deleted: boolean;
+  goalId?: string;
+  goalTitle?: string;
+  message: string;
+} | { error: string } {
+  const goals = store.getGoalsWithStatus();
+  if (goals.length === 0) {
+    return {
+      success: true,
+      deleted: false,
+      message: "No goals exist yet."
+    };
+  }
+
+  const goalId = asTrimmedString(args.goalId);
+  const goalTitle = asTrimmedString(args.goalTitle);
+  let target: GoalWithStatus | null = null;
+
+  if (goalId) {
+    target = goals.find((goal) => goal.id === goalId) ?? null;
+    if (!target) {
+      return {
+        success: true,
+        deleted: false,
+        message: `Goal not found: ${goalId}`
+      };
+    }
+  } else if (goalTitle) {
+    const needle = normalizeSearchText(goalTitle);
+    const matches = goals.filter((goal) => normalizeSearchText(goal.title).includes(needle));
+    if (matches.length === 0) {
+      return {
+        success: true,
+        deleted: false,
+        message: `No goal matched "${goalTitle}".`
+      };
+    }
+    if (matches.length > 1) {
+      return {
+        error: `Goal title is ambiguous. Matches: ${matches
+          .slice(0, 4)
+          .map((goal) => goal.title)
+          .join(", ")}`
+      };
+    }
+    target = matches[0]!;
+  } else if (goals.length === 1) {
+    target = goals[0]!;
+  } else {
+    return {
+      error: "Provide goalId or goalTitle when multiple goals exist."
+    };
+  }
+
+  const deleted = store.deleteGoal(target.id);
+  if (!deleted) {
+    return { error: "Unable to delete goal." };
+  }
+
+  return {
+    success: true,
+    deleted: true,
+    goalId: target.id,
+    goalTitle: target.title,
+    message: `Deleted goal "${target.title}".`
   };
 }
 
@@ -936,6 +1277,18 @@ export function executeFunctionCall(
       break;
     case "updateGoalCheckIn":
       response = handleUpdateGoalCheckIn(store, args);
+      break;
+    case "createHabit":
+      response = handleCreateHabit(store, args);
+      break;
+    case "deleteHabit":
+      response = handleDeleteHabit(store, args);
+      break;
+    case "createGoal":
+      response = handleCreateGoal(store, args);
+      break;
+    case "deleteGoal":
+      response = handleDeleteGoal(store, args);
       break;
     case "getGitHubCourseContent":
       response = handleGetGitHubCourseContent(store, args);
