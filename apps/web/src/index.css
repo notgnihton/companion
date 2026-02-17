@@ -4205,6 +4205,24 @@ body.keyboard-open .pull-to-refresh-container {
     flex-direction: column;
     align-items: flex-start;
   }
+
+  body.keyboard-open .app-shell-chat-active {
+    padding: 0;
+  }
+
+  body.keyboard-open .app-shell-chat-active .tab-content-area {
+    padding-bottom: 0;
+    min-height: 0;
+  }
+
+  body.keyboard-open .app-shell-chat-active .chat-tab {
+    height: 100%;
+  }
+
+  body.keyboard-open .chat-input-container {
+    bottom: 0;
+    padding-bottom: 2px;
+  }
 }
 
 .settings-container {
