@@ -197,9 +197,15 @@ export async function getDailyJournalSummary(options: { date?: string; forceRefr
   }
 }
 
-export async function getAnalyticsCoachInsight(periodDays: 7 | 14 | 30): Promise<AnalyticsCoachInsight | null> {
+export async function getAnalyticsCoachInsight(
+  periodDays: 7 | 14 | 30,
+  options: { forceRefresh?: boolean } = {}
+): Promise<AnalyticsCoachInsight | null> {
   const params = new URLSearchParams();
   params.set("periodDays", String(periodDays));
+  if (options.forceRefresh) {
+    params.set("force", "1");
+  }
   const endpoint = `/api/analytics/coach?${params.toString()}`;
 
   try {

@@ -25,11 +25,11 @@ export function AnalyticsDashboard(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadInsight = useCallback(async (days: PeriodDays): Promise<void> => {
+  const loadInsight = useCallback(async (days: PeriodDays, options: { forceRefresh?: boolean } = {}): Promise<void> => {
     setLoading(true);
     setError(null);
 
-    const next = await getAnalyticsCoachInsight(days);
+    const next = await getAnalyticsCoachInsight(days, options);
     if (!next) {
       setError("Could not load narrative analytics right now.");
       setLoading(false);
@@ -83,7 +83,12 @@ export function AnalyticsDashboard(): JSX.Element {
             ))}
           </div>
 
-          <button type="button" className="analytics-refresh" onClick={() => void loadInsight(periodDays)} disabled={loading}>
+          <button
+            type="button"
+            className="analytics-refresh"
+            onClick={() => void loadInsight(periodDays, { forceRefresh: true })}
+            disabled={loading}
+          >
             {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>

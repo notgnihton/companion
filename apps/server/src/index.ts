@@ -37,7 +37,14 @@ import { generateAnalyticsCoachInsight } from "./analytics-coach.js";
 import { PostgresRuntimeSnapshotStore } from "./postgres-persistence.js";
 import type { PostgresPersistenceDiagnostics } from "./postgres-persistence.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
-import type { DailyJournalSummary, Goal, Habit, IntegrationSyncName, IntegrationSyncRootCause } from "./types.js";
+import type {
+  AnalyticsCoachInsight,
+  DailyJournalSummary,
+  Goal,
+  Habit,
+  IntegrationSyncName,
+  IntegrationSyncRootCause
+} from "./types.js";
 import { SyncFailureRecoveryTracker, SyncRecoveryPrompt } from "./sync-failure-recovery.js";
 import { nowIso } from "./utils.js";
 
@@ -123,13 +130,20 @@ const GITHUB_ON_DEMAND_SYNC_STALE_MS = 6 * 60 * 60 * 1000;
 let githubOnDemandSyncInFlight: Promise<void> | null = null;
 let lastGithubOnDemandSyncAt = 0;
 const MAX_DAILY_SUMMARY_CACHE_DAYS = 45;
+const MAX_ANALYTICS_CACHE_ITEMS = 15;
 
 interface DailySummaryCacheEntry {
   signature: string;
   summary: DailyJournalSummary;
 }
 
+interface AnalyticsCoachCacheEntry {
+  signature: string;
+  insight: AnalyticsCoachInsight;
+}
+
 const dailySummaryCache = new Map<string, DailySummaryCacheEntry>();
+const analyticsCoachCache = new Map<string, AnalyticsCoachCacheEntry>();
 
 function toDateKey(value: Date): string {
   return value.toISOString().slice(0, 10);
@@ -141,6 +155,16 @@ function startsWithDateKey(value: string, dateKey: string): boolean {
 
 function latestIso(values: string[]): string {
   return values.reduce((latest, value) => (value > latest ? value : latest), "");
+}
+
+function toDateMs(value: string): number | null {
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function isWithinWindow(value: string, startMs: number, endMs: number): boolean {
+  const valueMs = toDateMs(value);
+  return valueMs !== null && valueMs >= startMs && valueMs <= endMs;
 }
 
 function buildDailySummarySignature(dateKey: string): string {
@@ -173,6 +197,96 @@ function setCachedDailySummary(dateKey: string, entry: DailySummaryCacheEntry): 
       break;
     }
     dailySummaryCache.delete(oldestKey);
+  }
+}
+
+function toAnalyticsPeriodDays(value: number | undefined): AnalyticsCoachInsight["periodDays"] {
+  if (value === 14 || value === 30) {
+    return value;
+  }
+  return 7;
+}
+
+function buildAnalyticsCoachSignature(
+  periodDays: AnalyticsCoachInsight["periodDays"],
+  now: Date
+): { cacheKey: string; signature: string } {
+  const nowMs = now.getTime();
+  const windowStartMs = nowMs - periodDays * 24 * 60 * 60 * 1000;
+  const windowStartIso = new Date(windowStartMs).toISOString();
+  const windowEndIso = now.toISOString();
+  const cacheKey = `${periodDays}:${toDateKey(now)}`;
+
+  const deadlines = store
+    .getAcademicDeadlines(now, false)
+    .filter((deadline) => isWithinWindow(deadline.dueDate, windowStartMs, nowMs))
+    .map((deadline) => `${deadline.id}:${deadline.dueDate}:${deadline.completed ? 1 : 0}:${deadline.priority}`)
+    .sort()
+    .join(",");
+
+  const habits = store
+    .getHabitsWithStatus()
+    .map((habit) => {
+      const recent = habit.recentCheckIns.map((day) => `${day.date}:${day.completed ? 1 : 0}`).join(";");
+      return `${habit.id}:${habit.createdAt}:${habit.streak}:${habit.completionRate7d}:${habit.todayCompleted ? 1 : 0}:${recent}`;
+    })
+    .sort()
+    .join(",");
+
+  const goals = store
+    .getGoalsWithStatus()
+    .map((goal) => {
+      const recent = goal.recentCheckIns.map((day) => `${day.date}:${day.completed ? 1 : 0}`).join(";");
+      return `${goal.id}:${goal.createdAt}:${goal.progressCount}:${goal.targetCount}:${goal.todayCompleted ? 1 : 0}:${goal.dueDate ?? ""}:${recent}`;
+    })
+    .sort()
+    .join(",");
+
+  const journals = store
+    .getJournalEntries(360)
+    .filter((entry) => isWithinWindow(entry.timestamp, windowStartMs, nowMs));
+  const journalSig = `${journals.length}:${latestIso(journals.map((entry) => entry.updatedAt))}`;
+
+  const reflections = store
+    .getRecentChatMessages(420)
+    .filter(
+      (message) =>
+        message.role === "user" &&
+        message.content.trim().length > 0 &&
+        isWithinWindow(message.timestamp, windowStartMs, nowMs)
+    );
+  const reflectionSig = `${reflections.length}:${latestIso(reflections.map((message) => message.timestamp))}`;
+
+  const adherence = store.getStudyPlanAdherenceMetrics({
+    windowStart: windowStartIso,
+    windowEnd: windowEndIso
+  });
+  const trends = store.getContextTrends().latestContext;
+
+  const signature = [
+    `p:${periodDays}`,
+    `d:${deadlines}`,
+    `h:${habits}`,
+    `g:${goals}`,
+    `j:${journalSig}`,
+    `r:${reflectionSig}`,
+    `a:${adherence.sessionsPlanned}:${adherence.sessionsDone}:${adherence.sessionsSkipped}:${adherence.completionRate}`,
+    `ctx:${trends.energyLevel}:${trends.stressLevel}:${trends.mode}`
+  ].join("|");
+
+  return { cacheKey, signature };
+}
+
+function setCachedAnalyticsCoachInsight(cacheKey: string, entry: AnalyticsCoachCacheEntry): void {
+  analyticsCoachCache.delete(cacheKey);
+  analyticsCoachCache.set(cacheKey, entry);
+
+  while (analyticsCoachCache.size > MAX_ANALYTICS_CACHE_ITEMS) {
+    const oldestKey = analyticsCoachCache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    analyticsCoachCache.delete(oldestKey);
   }
 }
 
@@ -317,8 +431,24 @@ app.get("/api/analytics/coach", async (req, res) => {
     return res.status(400).json({ error: "Invalid analytics coach query", issues: parsed.error.issues });
   }
 
+  const forceRefreshRaw = typeof req.query.force === "string" ? req.query.force.trim().toLowerCase() : "";
+  const forceRefresh = forceRefreshRaw === "1" || forceRefreshRaw === "true" || forceRefreshRaw === "yes";
+  const periodDays = toAnalyticsPeriodDays(parsed.data.periodDays);
+  const now = new Date();
+  const { cacheKey, signature } = buildAnalyticsCoachSignature(periodDays, now);
+  const cached = analyticsCoachCache.get(cacheKey);
+
+  if (!forceRefresh && cached && cached.signature === signature) {
+    return res.json({ insight: cached.insight });
+  }
+
   const insight = await generateAnalyticsCoachInsight(store, {
-    periodDays: parsed.data.periodDays
+    periodDays,
+    now
+  });
+  setCachedAnalyticsCoachInsight(cacheKey, {
+    signature,
+    insight
   });
 
   return res.json({ insight });
