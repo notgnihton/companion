@@ -6,6 +6,7 @@ export interface CanvasDeadlineBridgeResult {
   created: number;
   updated: number;
   completed: number;
+  removed: number;
   skipped: number;
 }
 
@@ -33,6 +34,7 @@ export class CanvasDeadlineBridge {
       created: 0,
       updated: 0,
       completed: 0,
+      removed: 0,
       skipped: 0
     };
 
@@ -53,7 +55,10 @@ export class CanvasDeadlineBridge {
     }
 
     // Process each Canvas assignment
+    const seenAssignmentIds = new Set<number>();
     for (const assignment of assignments) {
+      seenAssignmentIds.add(assignment.id);
+
       // Skip assignments without due dates
       if (!assignment.due_at) {
         result.skipped++;
@@ -107,6 +112,17 @@ export class CanvasDeadlineBridge {
         if (isSubmitted) {
           result.completed++;
         }
+      }
+    }
+
+    // Remove stale Canvas-linked deadlines not present in latest filtered assignment set
+    for (const [assignmentId, deadline] of canvasDeadlineMap.entries()) {
+      if (seenAssignmentIds.has(assignmentId)) {
+        continue;
+      }
+
+      if (this.store.deleteDeadline(deadline.id)) {
+        result.removed++;
       }
     }
 

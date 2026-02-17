@@ -34,6 +34,8 @@ This file documents all environment variables required to run the Companion serv
 ### Canvas LMS Integration
 - `CANVAS_API_TOKEN` (optional) — Canvas personal access token
 - `CANVAS_BASE_URL` (default: "https://stavanger.instructure.com") — Canvas instance URL
+- `INTEGRATION_WINDOW_PAST_DAYS` (default: 30) — Keep synced TP/Canvas items this many days in the past
+- `INTEGRATION_WINDOW_FUTURE_DAYS` (default: 180) — Keep synced TP/Canvas items this many days in the future
 
 ### Course GitHub Integration
 - `COURSE_GITHUB_PAT` (optional) — GitHub personal access token for private course repos

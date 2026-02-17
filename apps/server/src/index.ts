@@ -6,6 +6,7 @@ import { buildCalendarImportPreview, parseICS } from "./calendar-import.js";
 import { config } from "./config.js";
 import { generateDeadlineSuggestions } from "./deadline-suggestions.js";
 import { executePendingChatAction } from "./gemini-tools.js";
+import { filterTPEventsByDateWindow } from "./integration-date-window.js";
 import { OrchestratorRuntime } from "./orchestrator.js";
 import { EmailDigestService } from "./email-digest.js";
 import { getVapidPublicKey, hasStaticVapidKeys, sendPushNotification } from "./push.js";
@@ -777,7 +778,7 @@ app.post("/api/calendar/import", async (req, res) => {
     return res.status(400).json({ error: "Unable to load ICS content" });
   }
 
-  const preview = buildCalendarImportPreview(parseICS(icsContent));
+  const preview = buildCalendarImportPreview(filterTPEventsByDateWindow(parseICS(icsContent)));
   const lectures = preview.lectures.map((lecture) => store.createLectureEvent(lecture));
   const deadlines = preview.deadlines.map((deadline) => store.createDeadline(deadline));
 
@@ -803,7 +804,7 @@ app.post("/api/calendar/import/preview", async (req, res) => {
     return res.status(400).json({ error: "Unable to load ICS content" });
   }
 
-  const preview = buildCalendarImportPreview(parseICS(icsContent));
+  const preview = buildCalendarImportPreview(filterTPEventsByDateWindow(parseICS(icsContent)));
 
   return res.status(200).json(preview);
 });

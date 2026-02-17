@@ -22,7 +22,9 @@ const schema = z.object({
   X_ACCESS_TOKEN_SECRET: z.string().optional(),
   X_BEARER_TOKEN: z.string().optional(),
   GMAIL_CLIENT_ID: z.string().optional(),
-  GMAIL_CLIENT_SECRET: z.string().optional()
+  GMAIL_CLIENT_SECRET: z.string().optional(),
+  INTEGRATION_WINDOW_PAST_DAYS: z.coerce.number().int().min(0).default(30),
+  INTEGRATION_WINDOW_FUTURE_DAYS: z.coerce.number().int().min(1).default(180)
 });
 
 export const config = schema.parse(process.env);

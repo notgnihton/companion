@@ -42,6 +42,14 @@ describe("config", () => {
       const { config } = await import("./config.js");
       expect(config.AXIS_VAPID_SUBJECT).toBe("mailto:companion@example.com");
     });
+
+    it("should use default integration date window values", async () => {
+      delete process.env.INTEGRATION_WINDOW_PAST_DAYS;
+      delete process.env.INTEGRATION_WINDOW_FUTURE_DAYS;
+      const { config } = await import("./config.js");
+      expect(config.INTEGRATION_WINDOW_PAST_DAYS).toBe(30);
+      expect(config.INTEGRATION_WINDOW_FUTURE_DAYS).toBe(180);
+    });
   });
 
   describe("custom values", () => {
@@ -71,6 +79,8 @@ describe("config", () => {
       process.env.AXIS_VAPID_PRIVATE_KEY = "private-key";
       process.env.AXIS_VAPID_SUBJECT = "mailto:bob@example.com";
       process.env.AXIS_FALLBACK_EMAIL = "bob@example.com";
+      process.env.INTEGRATION_WINDOW_PAST_DAYS = "14";
+      process.env.INTEGRATION_WINDOW_FUTURE_DAYS = "120";
 
       const { config } = await import("./config.js");
 
@@ -81,6 +91,8 @@ describe("config", () => {
       expect(config.AXIS_VAPID_PRIVATE_KEY).toBe("private-key");
       expect(config.AXIS_VAPID_SUBJECT).toBe("mailto:bob@example.com");
       expect(config.AXIS_FALLBACK_EMAIL).toBe("bob@example.com");
+      expect(config.INTEGRATION_WINDOW_PAST_DAYS).toBe(14);
+      expect(config.INTEGRATION_WINDOW_FUTURE_DAYS).toBe(120);
     });
   });
 

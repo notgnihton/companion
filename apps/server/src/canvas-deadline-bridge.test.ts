@@ -315,5 +315,36 @@ describe("CanvasDeadlineBridge", () => {
       const lowPriorityDeadline = deadlines.find((d) => d.canvasAssignmentId === 3);
       expect(lowPriorityDeadline?.priority).toBe("low");
     });
+
+    it("removes stale Canvas-linked deadlines that are no longer in the latest sync window", () => {
+      const courses: CanvasCourse[] = [
+        {
+          id: 17649,
+          name: "DAT520-1",
+          course_code: "DAT520-1",
+          workflow_state: "available"
+        }
+      ];
+
+      const assignments: CanvasAssignment[] = [
+        {
+          id: 12345,
+          name: "Active assignment",
+          description: null,
+          due_at: "2026-03-15T22:59:00.000Z",
+          points_possible: 100,
+          course_id: 17649,
+          submission_types: ["online_upload"],
+          has_submitted_submissions: false
+        }
+      ];
+
+      bridge.syncAssignments(courses, assignments);
+      expect(store.getDeadlines(new Date(), false)).toHaveLength(1);
+
+      const result = bridge.syncAssignments(courses, []);
+      expect(result.removed).toBe(1);
+      expect(store.getDeadlines(new Date(), false)).toHaveLength(0);
+    });
   });
 });

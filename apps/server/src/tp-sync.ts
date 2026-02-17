@@ -1,4 +1,5 @@
 import { parseICS, ImportedCalendarEvent } from "./calendar-import.js";
+import { filterTPEventsByDateWindow } from "./integration-date-window.js";
 import { LectureEvent } from "./types.js";
 import { makeId } from "./utils.js";
 
@@ -21,7 +22,8 @@ export async function fetchTPSchedule(): Promise<ImportedCalendarEvent[]> {
   }
 
   const icsContent = await response.text();
-  return parseICS(icsContent);
+  const parsed = parseICS(icsContent);
+  return filterTPEventsByDateWindow(parsed);
 }
 
 export function convertTPEventToLecture(event: ImportedCalendarEvent): Omit<LectureEvent, "id"> {

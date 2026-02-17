@@ -56,6 +56,48 @@ describe("Canvas Integration", () => {
       expect(result.announcementsCount).toBe(0);
     });
 
+    it("filters assignments to integration date window before storing and bridging", async () => {
+      const mockClient = {
+        getCourses: async () => [
+          { id: 7, name: "DAT560", course_code: "DAT560", workflow_state: "available" }
+        ],
+        getAllAssignments: async () => [
+          {
+            id: 1,
+            name: "Near assignment",
+            description: null,
+            due_at: "2026-03-01T23:59:00.000Z",
+            points_possible: 100,
+            course_id: 7,
+            submission_types: ["online_upload"],
+            has_submitted_submissions: false
+          },
+          {
+            id: 2,
+            name: "Far assignment",
+            description: null,
+            due_at: "2027-01-01T23:59:00.000Z",
+            points_possible: 100,
+            course_id: 7,
+            submission_types: ["online_upload"],
+            has_submitted_submissions: false
+          }
+        ],
+        getAllModules: async () => [],
+        getAnnouncements: async () => []
+      } as unknown as CanvasClient;
+
+      const service = new CanvasSyncService(store, mockClient);
+      const result = await service.triggerSync();
+
+      expect(result.success).toBe(true);
+      expect(result.assignmentsCount).toBe(1);
+      expect(result.deadlineBridge?.created).toBe(1);
+      const canvasData = store.getCanvasData();
+      expect(canvasData?.assignments).toHaveLength(1);
+      expect(canvasData?.assignments[0]?.id).toBe(1);
+    });
+
     it("should use override token and baseUrl when provided", async () => {
       const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = input.toString();

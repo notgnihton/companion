@@ -1,5 +1,6 @@
 import { RuntimeStore } from "./store.js";
 import { CanvasClient } from "./canvas-client.js";
+import { filterCanvasAssignmentsByDateWindow } from "./integration-date-window.js";
 import { CanvasData } from "./types.js";
 import { CanvasDeadlineBridge, CanvasDeadlineBridgeResult } from "./canvas-deadline-bridge.js";
 
@@ -66,12 +67,13 @@ export class CanvasSyncService {
     try {
       const courses = await client.getCourses();
       const assignments = await client.getAllAssignments(courses);
+      const filteredAssignments = filterCanvasAssignmentsByDateWindow(assignments);
       const modules = await client.getAllModules(courses);
       const announcements = await client.getAnnouncements();
 
       const canvasData: CanvasData = {
         courses,
-        assignments,
+        assignments: filteredAssignments,
         modules,
         announcements,
         lastSyncedAt: new Date().toISOString()
@@ -80,12 +82,12 @@ export class CanvasSyncService {
       this.store.setCanvasData(canvasData);
 
       // Bridge Canvas assignments to deadlines
-      const deadlineBridge = this.deadlineBridge.syncAssignments(courses, assignments);
+      const deadlineBridge = this.deadlineBridge.syncAssignments(courses, filteredAssignments);
 
       return {
         success: true,
         coursesCount: courses.length,
-        assignmentsCount: assignments.length,
+        assignmentsCount: filteredAssignments.length,
         modulesCount: modules.length,
         announcementsCount: announcements.length,
         deadlineBridge
