@@ -76,12 +76,36 @@ body {
   min-height: 100vh;
 }
 
+body.chat-tab-active {
+  overflow: hidden;
+}
+
 .app-shell {
   max-width: 980px;
   margin: 0 auto;
   padding: 20px;
   padding-bottom: max(100px, calc(100px + env(safe-area-inset-bottom)));
   min-height: 100vh;
+}
+
+.app-shell-chat-active {
+  min-height: 100dvh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell-chat-active .tab-content-area {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-shell-chat-active .chat-tab {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .hero {
@@ -2043,11 +2067,18 @@ button:disabled {
 .chat-view {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - max(80px, calc(80px + env(safe-area-inset-bottom))));
-  max-height: calc(100vh - max(80px, calc(80px + env(safe-area-inset-bottom))));
+  height: calc(100dvh - max(80px, calc(80px + env(safe-area-inset-bottom))));
+  max-height: calc(100dvh - max(80px, calc(80px + env(safe-area-inset-bottom))));
   background: var(--surface-soft);
   border-radius: 16px;
   overflow: hidden;
+}
+
+.app-shell-chat-active .chat-view {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  max-height: none;
 }
 
 .chat-toolbar {
@@ -2123,6 +2154,7 @@ button:disabled {
   gap: 16px;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .chat-welcome {
@@ -3230,6 +3262,15 @@ button:disabled {
 }
 
 @media (max-width: 640px) {
+  .app-shell-chat-active .chat-context-cards,
+  .app-shell-chat-active .recommendations-panel-chat {
+    display: none;
+  }
+
+  .app-shell-chat-active .chat-tab {
+    gap: 0;
+  }
+
   .study-plan-controls {
     grid-template-columns: 1fr;
   }

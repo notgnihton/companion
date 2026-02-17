@@ -122,6 +122,20 @@ export default function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (!profile) {
+      document.body.classList.remove("chat-tab-active");
+      return;
+    }
+
+    const isChatActive = activeTab === "chat";
+    document.body.classList.toggle("chat-tab-active", isChatActive);
+
+    return () => {
+      document.body.classList.remove("chat-tab-active");
+    };
+  }, [activeTab, profile]);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -224,7 +238,7 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${activeTab === "chat" ? "app-shell-chat-active" : ""}`}>
       <InstallPrompt />
       <FloatingQuickCapture onUpdated={refresh} />
       <SyncStatusBadge />
