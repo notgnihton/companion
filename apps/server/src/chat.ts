@@ -358,6 +358,7 @@ function buildPendingActionFallbackReply(actions: ChatPendingAction[]): string {
 }
 
 const MAX_CHAT_CITATIONS = 8;
+const FUNCTION_CALL_HISTORY_LIMIT = 6;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
@@ -653,7 +654,7 @@ export async function sendChatMessage(
   
   // Build lightweight context for function calling mode (or full context for legacy mode)
   const { contextWindow, history } = useFunctionCalling 
-    ? { contextWindow: "", history: store.getRecentChatMessages(10) }
+    ? { contextWindow: "", history: store.getRecentChatMessages(FUNCTION_CALL_HISTORY_LIMIT) }
     : buildChatContext(store, now);
 
   const systemInstruction = useFunctionCalling

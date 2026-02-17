@@ -126,7 +126,32 @@ export class GeminiClient {
         throw new GeminiError("Last message must be from user");
       }
 
-      const result: GenerateContentResult = await chat.sendMessage(lastMessage.parts[0]?.text ?? "");
+      const prompt = lastMessage.parts[0]?.text ?? "";
+      const maxAttempts = 3;
+      let result: GenerateContentResult | null = null;
+
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+          result = await chat.sendMessage(prompt);
+          break;
+        } catch (error) {
+          const statusCode = this.extractStatusCode(error);
+          const isRetryable429 = statusCode === 429;
+          const isLastAttempt = attempt === maxAttempts - 1;
+
+          if (!isRetryable429 || isLastAttempt) {
+            throw error;
+          }
+
+          const backoffMs = 200 * 2 ** attempt + Math.floor(Math.random() * 120);
+          await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        }
+      }
+
+      if (!result) {
+        throw new GeminiError("Gemini API error: no response generated");
+      }
+
       const response = result.response;
       
       // Extract function calls if present

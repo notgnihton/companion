@@ -83,6 +83,53 @@ describe("GeminiClient", () => {
       expect(startChatMock).toHaveBeenCalledWith(expect.objectContaining({ history: [] }));
       expect(startChatMock.mock.calls[0]?.[0]).not.toHaveProperty("systemInstruction");
     });
+
+    it("should retry transient 429 responses and return the recovered result", async () => {
+      const client = new GeminiClient("test-api-key");
+
+      const retryableError = Object.assign(new Error("429 Too Many Requests"), { status: 429 });
+      const sendMessageMock = vi
+        .fn()
+        .mockRejectedValueOnce(retryableError)
+        .mockResolvedValue({
+          response: {
+            functionCalls: () => [],
+            text: () => "Recovered",
+            candidates: [{ finishReason: "STOP" }]
+          }
+        });
+
+      const startChatMock = vi.fn().mockReturnValue({
+        sendMessage: sendMessageMock
+      });
+
+      const getGenerativeModelMock = vi.fn().mockReturnValue({
+        startChat: startChatMock
+      });
+
+      const timeoutSpy = vi
+        .spyOn(globalThis, "setTimeout")
+        .mockImplementation(
+          ((handler: TimerHandler) => {
+            if (typeof handler === "function") {
+              handler();
+            }
+            return 0 as unknown as ReturnType<typeof setTimeout>;
+          }) as unknown as typeof setTimeout
+        );
+
+      (client as unknown as { client: { getGenerativeModel: typeof getGenerativeModelMock } }).client = {
+        getGenerativeModel: getGenerativeModelMock
+      };
+
+      const response = await client.generateChatResponse({
+        messages: [{ role: "user", parts: [{ text: "Retry test" }] }]
+      });
+
+      expect(response.text).toBe("Recovered");
+      expect(sendMessageMock).toHaveBeenCalledTimes(2);
+      timeoutSpy.mockRestore();
+    });
   });
 
   describe("error handling", () => {
