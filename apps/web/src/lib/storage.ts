@@ -14,6 +14,18 @@ import {
   UserContext
 } from "../types";
 
+// Storage version - increment when data structures change to auto-clear cache
+const STORAGE_VERSION = "1.0.0";
+const VERSION_KEY = "companion:version";
+
+// Auto-clear storage if version changed (prevents cached data bugs)
+const storedVersion = localStorage.getItem(VERSION_KEY);
+if (storedVersion !== STORAGE_VERSION) {
+  console.log(`Storage version changed (${storedVersion} → ${STORAGE_VERSION}), clearing cache`);
+  localStorage.clear();
+  localStorage.setItem(VERSION_KEY, STORAGE_VERSION);
+}
+
 const STORAGE_KEYS = {
   dashboard: "companion:dashboard",
   context: "companion:context",
