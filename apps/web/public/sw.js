@@ -34,7 +34,12 @@ self.addEventListener("push", (event) => {
     icon: "/companion/icon.svg",
     badge: "/companion/icon.svg",
     data: {
-      url: payload.url,
+      url: resolveNotificationTargetUrl({
+        url: payload.url,
+        deadlineId: payload.deadlineId,
+        source: payload.source,
+        notificationTitle: payload.title
+      }),
       deadlineId: payload.deadlineId,
       source: payload.source,
       priority: payload.priority,
@@ -79,6 +84,63 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(payload.title, notificationOptions)
   );
 });
+
+function resolveNotificationTargetUrl(data, action) {
+  const rawUrl = data && typeof data.url === "string" ? data.url : "";
+  const deadlineId = data && typeof data.deadlineId === "string" ? data.deadlineId : "";
+  const source = data && typeof data.source === "string" ? data.source : "";
+  const title =
+    data && typeof data.notificationTitle === "string" ? data.notificationTitle.toLowerCase() : "";
+
+  if (typeof rawUrl === "string" && rawUrl.includes("tab=")) {
+    return rawUrl;
+  }
+
+  if (deadlineId) {
+    return `/companion/?tab=schedule&deadlineId=${encodeURIComponent(deadlineId)}`;
+  }
+
+  if (title.includes("weekly") || title.includes("review") || title.includes("evening check-in")) {
+    return "/companion/?tab=settings&section=weekly-review";
+  }
+
+  if (source === "assignment-tracker" || source === "lecture-plan") {
+    return "/companion/?tab=schedule";
+  }
+
+  if (source === "notes") {
+    return "/companion/?tab=journal";
+  }
+
+  if (source === "orchestrator") {
+    return "/companion/?tab=chat";
+  }
+
+  if (action === "view") {
+    return "/companion/?tab=chat";
+  }
+
+  if (typeof rawUrl === "string" && rawUrl.length > 0) {
+    return rawUrl;
+  }
+
+  return "/companion/?tab=chat";
+}
+
+function navigateToTargetUrl(targetUrl) {
+  return clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+    for (const client of windowClients) {
+      if ("focus" in client) {
+        client.navigate(targetUrl);
+        return client.focus();
+      }
+    }
+    if (clients.openWindow) {
+      return clients.openWindow(targetUrl);
+    }
+    return undefined;
+  });
+}
 
 // Background Sync API - sync when connectivity is restored
 self.addEventListener("sync", (event) => {
@@ -204,25 +266,8 @@ self.addEventListener("notificationclick", (event) => {
     );
   }
 
-  const targetUrl =
-    event.notification.data && typeof event.notification.data.url === "string"
-      ? event.notification.data.url
-      : "/companion/";
-
-  event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
-      for (const client of windowClients) {
-        if ("focus" in client) {
-          client.navigate(targetUrl);
-          return client.focus();
-        }
-      }
-      if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
-      }
-      return undefined;
-    })
-  );
+  const targetUrl = resolveNotificationTargetUrl(data, "tap");
+  event.waitUntil(navigateToTargetUrl(targetUrl));
 });
 
 self.addEventListener("notificationclose", (event) => {
@@ -325,22 +370,8 @@ self.addEventListener("notificationactionclick", (event) => {
   }
 
   if (event.action === "view") {
-    // Navigate to the specified URL or default page
-    const targetUrl = data.url || "/companion/";
-    event.waitUntil(
-      clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
-        for (const client of windowClients) {
-          if ("focus" in client) {
-            client.navigate(targetUrl);
-            return client.focus();
-          }
-        }
-        if (clients.openWindow) {
-          return clients.openWindow(targetUrl);
-        }
-        return undefined;
-      })
-    );
+    const targetUrl = resolveNotificationTargetUrl(data, event.action);
+    event.waitUntil(navigateToTargetUrl(targetUrl));
     return;
   }
 
@@ -353,37 +384,41 @@ self.addEventListener("notificationactionclick", (event) => {
 
   const completed = event.action === "complete";
   const actionText = completed ? "completed" : "in progress";
+  const targetUrl = resolveNotificationTargetUrl(data, event.action);
 
   event.waitUntil(
-    fetch(`/companion/api/deadlines/${deadlineId}/confirm-status`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ completed })
-    })
-      .then((response) => {
-        if (response.ok) {
-          return self.registration.showNotification("Status updated", {
-            body: `Deadline marked as ${actionText}`,
-            icon: "/companion/icon.svg",
-            badge: "/companion/icon.svg"
-          });
-        } else {
+    Promise.all([
+      fetch(`/companion/api/deadlines/${deadlineId}/confirm-status`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ completed })
+      })
+        .then((response) => {
+          if (response.ok) {
+            return self.registration.showNotification("Status updated", {
+              body: `Deadline marked as ${actionText}`,
+              icon: "/companion/icon.svg",
+              badge: "/companion/icon.svg"
+            });
+          } else {
+            return self.registration.showNotification("Update failed", {
+              body: "Could not update deadline status. Please try again.",
+              icon: "/companion/icon.svg",
+              badge: "/companion/icon.svg"
+            });
+          }
+        })
+        .catch(() => {
           return self.registration.showNotification("Update failed", {
             body: "Could not update deadline status. Please try again.",
             icon: "/companion/icon.svg",
             badge: "/companion/icon.svg"
           });
-        }
-      })
-      .catch(() => {
-        return self.registration.showNotification("Update failed", {
-          body: "Could not update deadline status. Please try again.",
-          icon: "/companion/icon.svg",
-          badge: "/companion/icon.svg"
-        });
-      })
+        }),
+      navigateToTargetUrl(targetUrl)
+    ])
   );
 });
 

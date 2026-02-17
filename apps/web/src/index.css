@@ -914,6 +914,11 @@ button:disabled {
   background: var(--surface);
 }
 
+.deadline-item-focused {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 2px var(--accent-surface), 0 8px 18px rgba(0, 0, 0, 0.14);
+}
+
 .deadline-critical {
   border-color: var(--danger-border-strong);
   background: var(--danger-surface);
@@ -1060,6 +1065,7 @@ button:disabled {
 
 .weekly-review-panel {
   margin-bottom: 12px;
+  scroll-margin-top: 24px;
 }
 
 .weekly-review-window {

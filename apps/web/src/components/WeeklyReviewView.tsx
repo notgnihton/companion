@@ -62,7 +62,7 @@ export function WeeklyReviewView(): JSX.Element {
     });
 
   return (
-    <section className="panel weekly-review-panel">
+    <section className="panel weekly-review-panel" id="weekly-review-panel">
       <header className="panel-header">
         <h2>Weekly Reflection</h2>
         <button type="button" onClick={() => void refresh()} disabled={busy}>

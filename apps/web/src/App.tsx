@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatTab } from "./components/ChatTab";
 import { ScheduleTab } from "./components/ScheduleTab";
 import { FocusTimer } from "./components/FocusTimer";
@@ -18,18 +18,22 @@ import { setupSyncListeners } from "./lib/sync";
 import { applyTheme } from "./lib/theme";
 import { loadOnboardingProfile, loadThemePreference, saveOnboardingProfile, saveThemePreference, loadCanvasSettings, saveCanvasSettings } from "./lib/storage";
 import { hapticCriticalAlert } from "./lib/haptics";
+import { parseDeepLink } from "./lib/deepLink";
 import { OnboardingProfile, ThemePreference } from "./types";
 
 type PushState = "checking" | "ready" | "enabled" | "unsupported" | "denied" | "error";
 
 export default function App(): JSX.Element {
+  const initialDeepLink = parseDeepLink(typeof window === "undefined" ? "" : window.location.search);
   const { data, loading, error, refresh } = useDashboard();
   const [pushState, setPushState] = useState<PushState>("checking");
   const [pushMessage, setPushMessage] = useState("");
   const [profile, setProfile] = useState<OnboardingProfile | null>(loadOnboardingProfile());
   const [scheduleRevision, setScheduleRevision] = useState(0);
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => loadThemePreference());
-  const [activeTab, setActiveTab] = useState<TabId>("chat");
+  const [activeTab, setActiveTab] = useState<TabId>(initialDeepLink.tab ?? "chat");
+  const [focusDeadlineId, setFocusDeadlineId] = useState<string | null>(initialDeepLink.deadlineId);
+  const [settingsSection, setSettingsSection] = useState<string | null>(initialDeepLink.section);
   const seenCriticalNotifications = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -104,6 +108,49 @@ export default function App(): JSX.Element {
     }
   }, [data?.notifications]);
 
+  const applyDeepLinkFromUrl = useCallback((): void => {
+    const next = parseDeepLink(window.location.search);
+    if (next.tab) {
+      setActiveTab(next.tab);
+    }
+    setFocusDeadlineId(next.deadlineId);
+    setSettingsSection(next.section);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleNavigation = (): void => {
+      applyDeepLinkFromUrl();
+    };
+
+    window.addEventListener("popstate", handleNavigation);
+    window.addEventListener("hashchange", handleNavigation);
+    applyDeepLinkFromUrl();
+
+    return () => {
+      window.removeEventListener("popstate", handleNavigation);
+      window.removeEventListener("hashchange", handleNavigation);
+    };
+  }, [applyDeepLinkFromUrl]);
+
+  useEffect(() => {
+    if (activeTab !== "settings" || settingsSection !== "weekly-review") {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById("weekly-review-panel");
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [activeTab, settingsSection]);
+
   const handleEnablePush = async (): Promise<void> => {
     setPushState("checking");
     const result = await enablePushNotifications();
@@ -128,6 +175,17 @@ export default function App(): JSX.Element {
 
   const handleThemeChange = (next: ThemePreference): void => {
     setThemePreference(next);
+  };
+
+  const handleTabChange = (tab: TabId): void => {
+    setActiveTab(tab);
+
+    if (tab !== "schedule") {
+      setFocusDeadlineId(null);
+    }
+    if (tab !== "settings") {
+      setSettingsSection(null);
+    }
   };
 
   const pushButtonLabel =
@@ -182,7 +240,7 @@ export default function App(): JSX.Element {
               />
             )}
             {activeTab === "schedule" && (
-              <ScheduleTab scheduleKey={`schedule-${scheduleRevision}`} />
+              <ScheduleTab scheduleKey={`schedule-${scheduleRevision}`} focusDeadlineId={focusDeadlineId ?? undefined} />
             )}
             {activeTab === "social" && (
               <SocialMediaView />
@@ -208,7 +266,7 @@ export default function App(): JSX.Element {
           </div>
 
           {/* Bottom tab bar */}
-          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+          <TabBar activeTab={activeTab} onTabChange={handleTabChange} />
         </>
       )}
     </main>

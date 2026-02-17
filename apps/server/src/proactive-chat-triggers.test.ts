@@ -36,7 +36,7 @@ describe("Proactive Chat Triggers", () => {
       expect(morningBriefing).toBeDefined();
       expect(morningBriefing?.title).toBe("Good morning!");
       expect(morningBriefing?.priority).toBe("medium");
-      expect(morningBriefing?.url).toBe("/companion/");
+      expect(morningBriefing?.url).toBe("/companion/?tab=chat");
     });
 
     it("should not fire at other hours", async () => {
@@ -266,7 +266,12 @@ describe("Proactive Chat Triggers", () => {
         expect(notification.timestamp).toBeDefined();
         expect(notification.metadata?.isProactive).toBe(true);
         expect(notification.actions).toContain("view");
-        expect(notification.url).toBe("/companion/");
+        const triggerType = notification.metadata?.triggerType;
+        if (triggerType === "evening-reflection") {
+          expect(notification.url).toBe("/companion/?tab=settings&section=weekly-review");
+        } else {
+          expect(notification.url).toBe("/companion/?tab=chat");
+        }
       }
     });
   });

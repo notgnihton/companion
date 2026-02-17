@@ -12,7 +12,11 @@ interface UndoToast {
   onUndo: () => void;
 }
 
-export function DeadlineList(): JSX.Element {
+interface DeadlineListProps {
+  focusDeadlineId?: string;
+}
+
+export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Element {
   const [deadlines, setDeadlines] = useState<Deadline[]>(() => loadDeadlines());
   const [syncMessage, setSyncMessage] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -55,6 +59,21 @@ export function DeadlineList(): JSX.Element {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!focusDeadlineId) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const target = document.getElementById(`deadline-${focusDeadlineId}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [focusDeadlineId, deadlines]);
 
   const showUndoToast = (message: string, onUndo: () => void): void => {
     if (undoTimerRef.current) {
@@ -231,14 +250,14 @@ export function DeadlineList(): JSX.Element {
             {sortedDeadlines.map((deadline) => (
               <SwipeableListItem
                 key={deadline.id}
-                className={`deadline-item ${getUrgencyClass(deadline.dueDate)} ${deadline.completed ? "deadline-completed" : ""}`}
+                className={`deadline-item ${getUrgencyClass(deadline.dueDate)} ${deadline.completed ? "deadline-completed" : ""} ${focusDeadlineId === deadline.id ? "deadline-item-focused" : ""}`}
                 onSwipeRight={() => { void handleSwipeComplete(deadline); }}
                 onSwipeLeft={() => { void handleSwipeSnooze(deadline); }}
                 rightActionLabel="Complete"
                 leftActionLabel="Snooze +24h"
                 disabled={updatingId === deadline.id || deadline.completed}
               >
-                <div className="deadline-checkbox-wrapper">
+                <div className="deadline-checkbox-wrapper" id={`deadline-${deadline.id}`}>
                   <input
                     type="checkbox"
                     checked={deadline.completed}

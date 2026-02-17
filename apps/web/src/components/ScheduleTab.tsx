@@ -1,14 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ScheduleView } from "./ScheduleView";
 import { DeadlineList } from "./DeadlineList";
 import { StudyPlanView } from "./StudyPlanView";
 
 interface ScheduleTabProps {
   scheduleKey: string;
+  focusDeadlineId?: string;
 }
 
-export function ScheduleTab({ scheduleKey }: ScheduleTabProps): JSX.Element {
+export function ScheduleTab({ scheduleKey, focusDeadlineId }: ScheduleTabProps): JSX.Element {
   const [activeView, setActiveView] = useState<"schedule" | "study-plan">("schedule");
+
+  useEffect(() => {
+    if (focusDeadlineId) {
+      setActiveView("schedule");
+    }
+  }, [focusDeadlineId]);
 
   return (
     <div className="schedule-tab-container">
@@ -39,7 +46,7 @@ export function ScheduleTab({ scheduleKey }: ScheduleTabProps): JSX.Element {
       {activeView === "schedule" ? (
         <div className="schedule-grid">
           <ScheduleView key={scheduleKey} />
-          <DeadlineList key={`deadline-${scheduleKey}`} />
+          <DeadlineList key={`deadline-${scheduleKey}`} focusDeadlineId={focusDeadlineId} />
         </div>
       ) : (
         <StudyPlanView />

@@ -4,15 +4,19 @@ type NudgeNotification = Omit<Notification, "id" | "timestamp">;
 
 export function buildContextAwareNudge(event: AgentEvent, context: UserContext): NudgeNotification | null {
   switch (event.eventType) {
-    case "assignment.deadline":
+    case "assignment.deadline": {
+      const deadlineId = asOptionalText(event.payload, "deadlineId");
       return {
         source: "assignment-tracker",
         title: "Deadline alert",
         message: assignmentMessage(event, context),
         priority: assignmentPriority(event.priority, context),
         actions: ["snooze", "view"],
-        url: "/companion/"
+        url: deadlineId
+          ? `/companion/?tab=schedule&deadlineId=${encodeURIComponent(deadlineId)}`
+          : "/companion/?tab=schedule"
       };
+    }
     case "lecture.reminder":
       return {
         source: "lecture-plan",
@@ -20,7 +24,7 @@ export function buildContextAwareNudge(event: AgentEvent, context: UserContext):
         message: lectureMessage(event, context),
         priority: lecturePriority(event.priority, context),
         actions: ["snooze", "view"],
-        url: "/companion/"
+        url: "/companion/?tab=schedule"
       };
     case "note.prompt":
       return {
@@ -29,7 +33,7 @@ export function buildContextAwareNudge(event: AgentEvent, context: UserContext):
         message: noteMessage(event, context),
         priority: notePriority(context),
         actions: ["view"],
-        url: "/companion/"
+        url: "/companion/?tab=journal"
       };
     case "location.arrival":
       return {
@@ -38,7 +42,7 @@ export function buildContextAwareNudge(event: AgentEvent, context: UserContext):
         message: locationArrivalMessage(event, context),
         priority: locationPriority(event.priority, context),
         actions: ["view"],
-        url: "/companion/"
+        url: "/companion/?tab=chat"
       };
     case "location.context":
       return {
@@ -47,7 +51,7 @@ export function buildContextAwareNudge(event: AgentEvent, context: UserContext):
         message: locationContextMessage(event, context),
         priority: locationPriority(event.priority, context),
         actions: ["view"],
-        url: "/companion/"
+        url: "/companion/?tab=chat"
       };
     default:
       return null;
@@ -197,4 +201,15 @@ function asText(value: unknown, key: string): string {
   }
 
   return "n/a";
+}
+
+function asOptionalText(value: unknown, key: string): string | null {
+  if (value && typeof value === "object" && key in value) {
+    const parsed = (value as Record<string, unknown>)[key];
+    if (typeof parsed === "string" && parsed.trim().length > 0) {
+      return parsed.trim();
+    }
+  }
+
+  return null;
 }

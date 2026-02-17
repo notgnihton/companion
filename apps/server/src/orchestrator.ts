@@ -154,7 +154,7 @@ export class OrchestratorRuntime {
           deadlineId: deadline.id
         },
         actions: ["complete", "working", "view"],
-        url: "/companion/"
+        url: `/companion/?tab=schedule&deadlineId=${encodeURIComponent(deadline.id)}`
       });
     }
   }

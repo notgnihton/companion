@@ -332,7 +332,7 @@ export async function checkProactiveTriggers(store: RuntimeStore, now: Date = ne
             isProactive: true
           },
           actions: ["view"],
-          url: "/companion/" // Tap to chat
+          url: getTriggerDeepLink(trigger.type)
         });
       } catch (error) {
         // Log error but continue with other triggers
@@ -357,6 +357,14 @@ function getTriggerTitle(type: ProactiveTriggerType): string {
   };
 
   return titles[type];
+}
+
+function getTriggerDeepLink(type: ProactiveTriggerType): string {
+  if (type === "evening-reflection") {
+    return "/companion/?tab=settings&section=weekly-review";
+  }
+
+  return "/companion/?tab=chat";
 }
 
 /**
