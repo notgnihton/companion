@@ -51,6 +51,7 @@ export class XClient {
   private readonly accessToken: string | null;
   private readonly accessTokenSecret: string | null;
   private readonly bearerToken: string | null;
+  private readonly fallbackQuery: string;
   private readonly baseUrl = "https://api.twitter.com/2";
 
   constructor(
@@ -58,17 +59,18 @@ export class XClient {
     apiKeySecret?: string,
     accessToken?: string,
     accessTokenSecret?: string,
-    bearerToken?: string
+    bearerToken?: string,
+    fallbackQuery?: string
   ) {
     this.apiKey = apiKey ?? config.X_API_KEY ?? null;
     this.apiKeySecret = apiKeySecret ?? config.X_API_KEY_SECRET ?? null;
     this.accessToken = accessToken ?? config.X_ACCESS_TOKEN ?? null;
     this.accessTokenSecret = accessTokenSecret ?? config.X_ACCESS_TOKEN_SECRET ?? null;
     this.bearerToken = bearerToken ?? config.X_BEARER_TOKEN ?? null;
+    this.fallbackQuery = fallbackQuery ?? config.X_FALLBACK_QUERY ?? "(machine learning OR distributed systems OR software engineering) -is:retweet lang:en";
   }
 
-  isConfigured(): boolean {
-    // For OAuth 1.0a, we need all 4 credentials
+  private isOAuthConfigured(): boolean {
     return (
       this.apiKey !== null &&
       this.apiKey !== "" &&
@@ -79,6 +81,14 @@ export class XClient {
       this.accessTokenSecret !== null &&
       this.accessTokenSecret !== ""
     );
+  }
+
+  private isBearerConfigured(): boolean {
+    return this.bearerToken !== null && this.bearerToken !== "";
+  }
+
+  isConfigured(): boolean {
+    return this.isOAuthConfigured() || this.isBearerConfigured();
   }
 
   /**
@@ -154,14 +164,19 @@ export class XClient {
       : "";
     const fullUrl = url + queryString;
 
-    const authHeader = this.generateOAuthHeader("GET", url, queryParams);
+    const headers: Record<string, string> = {
+      "User-Agent": "Companion-App"
+    };
+
+    if (this.isOAuthConfigured()) {
+      headers.Authorization = this.generateOAuthHeader("GET", url, queryParams);
+    } else if (this.isBearerConfigured()) {
+      headers.Authorization = `Bearer ${this.bearerToken}`;
+    }
 
     try {
       const response = await fetch(fullUrl, {
-        headers: {
-          Authorization: authHeader,
-          "User-Agent": "Companion-App"
-        }
+        headers
       });
 
       if (!response.ok) {
@@ -191,58 +206,64 @@ export class XClient {
    * Returns up to 100 tweets from the last 7 days
    */
   async fetchHomeTimeline(maxResults: number = 50): Promise<XTweet[]> {
-    if (!this.isConfigured()) {
-      throw new XAPIError("X API credentials not configured. Set X_API_KEY, X_API_KEY_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET environment variables.");
-    }
+    if (this.isOAuthConfigured()) {
+      try {
+        const params: Record<string, string> = {
+          "tweet.fields": "created_at,public_metrics,conversation_id,author_id",
+          "user.fields": "username,name",
+          expansions: "author_id",
+          max_results: String(Math.min(maxResults, 100))
+        };
 
-    try {
-      const params: Record<string, string> = {
-        "tweet.fields": "created_at,public_metrics,conversation_id,author_id",
-        "user.fields": "username,name",
-        expansions: "author_id",
-        max_results: String(Math.min(maxResults, 100))
-      };
+        const data = await this.fetch<any>("/users/me/timelines/reverse_chronological", params);
+        
+        const tweets: XTweet[] = [];
+        const users = new Map<string, { username: string; name: string }>();
 
-      const data = await this.fetch<any>("/users/me/timelines/reverse_chronological", params);
-      
-      const tweets: XTweet[] = [];
-      const users = new Map<string, { username: string; name: string }>();
-
-      // Build user lookup map
-      if (data.includes?.users) {
-        for (const user of data.includes.users) {
-          users.set(user.id, { username: user.username, name: user.name });
+        // Build user lookup map
+        if (data.includes?.users) {
+          for (const user of data.includes.users) {
+            users.set(user.id, { username: user.username, name: user.name });
+          }
         }
-      }
 
-      // Parse tweets
-      for (const tweet of data.data || []) {
-        const author = users.get(tweet.author_id) ?? { username: "unknown", name: "Unknown" };
-        tweets.push({
-          id: tweet.id,
-          text: tweet.text,
-          authorId: tweet.author_id,
-          authorUsername: author.username,
-          authorName: author.name,
-          createdAt: tweet.created_at,
-          likeCount: tweet.public_metrics?.like_count ?? 0,
-          retweetCount: tweet.public_metrics?.retweet_count ?? 0,
-          replyCount: tweet.public_metrics?.reply_count ?? 0,
-          conversationId: tweet.conversation_id
-        });
-      }
+        // Parse tweets
+        for (const tweet of data.data || []) {
+          const author = users.get(tweet.author_id) ?? { username: "unknown", name: "Unknown" };
+          tweets.push({
+            id: tweet.id,
+            text: tweet.text,
+            authorId: tweet.author_id,
+            authorUsername: author.username,
+            authorName: author.name,
+            createdAt: tweet.created_at,
+            likeCount: tweet.public_metrics?.like_count ?? 0,
+            retweetCount: tweet.public_metrics?.retweet_count ?? 0,
+            replyCount: tweet.public_metrics?.reply_count ?? 0,
+            conversationId: tweet.conversation_id
+          });
+        }
 
-      return tweets;
-    } catch (error) {
-      if (error instanceof XAPIError) {
-        throw error;
+        return tweets;
+      } catch (error) {
+        if (error instanceof XAPIError) {
+          throw error;
+        }
+        throw new XAPIError(
+          `Failed to fetch home timeline: ${error instanceof Error ? error.message : "Unknown error"}`,
+          undefined,
+          error
+        );
       }
-      throw new XAPIError(
-        `Failed to fetch home timeline: ${error instanceof Error ? error.message : "Unknown error"}`,
-        undefined,
-        error
-      );
     }
+
+    if (this.isBearerConfigured()) {
+      return this.fetchRecentSearch(maxResults);
+    }
+
+    throw new XAPIError(
+      "X API credentials not configured. Provide OAuth credentials or X_BEARER_TOKEN."
+    );
   }
 
   /**
@@ -289,6 +310,44 @@ export class XClient {
         error
       );
     }
+  }
+
+  private async fetchRecentSearch(maxResults: number): Promise<XTweet[]> {
+    const params: Record<string, string> = {
+      query: this.fallbackQuery,
+      "tweet.fields": "created_at,public_metrics,conversation_id,author_id",
+      "user.fields": "username,name",
+      expansions: "author_id",
+      max_results: String(Math.min(maxResults, 100))
+    };
+
+    const data = await this.fetch<any>("/tweets/search/recent", params);
+    const tweets: XTweet[] = [];
+    const users = new Map<string, { username: string; name: string }>();
+
+    if (data.includes?.users) {
+      for (const user of data.includes.users) {
+        users.set(user.id, { username: user.username, name: user.name });
+      }
+    }
+
+    for (const tweet of data.data || []) {
+      const author = users.get(tweet.author_id) ?? { username: "unknown", name: "Unknown" };
+      tweets.push({
+        id: tweet.id,
+        text: tweet.text,
+        authorId: tweet.author_id ?? "unknown",
+        authorUsername: author.username,
+        authorName: author.name,
+        createdAt: tweet.created_at,
+        likeCount: tweet.public_metrics?.like_count ?? 0,
+        retweetCount: tweet.public_metrics?.retweet_count ?? 0,
+        replyCount: tweet.public_metrics?.reply_count ?? 0,
+        conversationId: tweet.conversation_id ?? tweet.id
+      });
+    }
+
+    return tweets;
   }
 }
 

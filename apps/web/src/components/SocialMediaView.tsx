@@ -56,10 +56,12 @@ function formatCachedLabel(cachedAt: string | null): string {
 function buildSyncErrorMessage(result: SocialMediaSyncResult): string | null {
   const parts: string[] = [];
   if (!result.youtube.success) {
-    parts.push(`YouTube sync failed: ${result.youtube.error ?? "unknown error"}`);
+    const code = result.youtube.errorCode ? ` [${result.youtube.errorCode}]` : "";
+    parts.push(`YouTube sync failed${code}: ${result.youtube.error ?? "unknown error"}`);
   }
   if (!result.x.success) {
-    parts.push(`X sync failed: ${result.x.error ?? "unknown error"}`);
+    const code = result.x.errorCode ? ` [${result.x.errorCode}]` : "";
+    parts.push(`X sync failed${code}: ${result.x.error ?? "unknown error"}`);
   }
   return parts.length > 0 ? parts.join(" | ") : null;
 }

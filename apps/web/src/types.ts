@@ -509,6 +509,7 @@ export interface SocialMediaSyncStatus {
   videosCount?: number;
   tweetsCount?: number;
   error?: string;
+  errorCode?: string;
 }
 
 export interface SocialMediaSyncResult {

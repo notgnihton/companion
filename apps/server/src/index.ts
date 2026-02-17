@@ -1671,7 +1671,8 @@ app.post("/api/social-media/sync", async (_req, res) => {
     x: {
       success: xResult.success,
       tweetsCount: xResult.tweetsCount,
-      error: xResult.error
+      error: xResult.error,
+      errorCode: xResult.errorCode
     },
     syncedAt: new Date().toISOString()
   });

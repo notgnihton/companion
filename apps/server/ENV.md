@@ -62,6 +62,7 @@ This file documents all environment variables required to run the Companion serv
 - `X_ACCESS_TOKEN` (optional) — X user access token
 - `X_ACCESS_TOKEN_SECRET` (optional) — X user access token secret
 - `X_BEARER_TOKEN` (optional) — X app-only bearer token (alternative to OAuth)
+- `X_FALLBACK_QUERY` (optional) — Search query used in bearer-token-only mode when home timeline endpoint is unavailable
 
 #### Gmail API (future)
 - `GMAIL_CLIENT_ID` (optional) — Gmail OAuth client ID
@@ -126,6 +127,7 @@ X_API_KEY_SECRET=your-x-api-secret
 X_ACCESS_TOKEN=your-x-access-token
 X_ACCESS_TOKEN_SECRET=your-x-access-token-secret
 X_BEARER_TOKEN=your-x-bearer-token
+X_FALLBACK_QUERY=(machine learning OR distributed systems OR software engineering) -is:retweet lang:en
 
 # Gmail bootstrap (optional)
 GMAIL_CLIENT_ID=your-gmail-client-id

@@ -2,10 +2,20 @@ import { RuntimeStore } from "./store.js";
 import { XClient, XTweet } from "./x-client.js";
 import { XData } from "./types.js";
 
+export type XSyncErrorCode =
+  | "not_configured"
+  | "auth"
+  | "rate_limit"
+  | "empty"
+  | "network"
+  | "parse"
+  | "unknown";
+
 export interface XSyncResult {
   success: boolean;
   tweetsCount: number;
   error?: string;
+  errorCode?: XSyncErrorCode;
 }
 
 export interface XSyncOptions {
@@ -61,7 +71,8 @@ export class XSyncService {
       return {
         success: false,
         tweetsCount: 0,
-        error: "X API credentials not configured"
+        error: "X API credentials not configured (set OAuth credentials or X_BEARER_TOKEN).",
+        errorCode: "not_configured"
       };
     }
 
@@ -89,19 +100,54 @@ export class XSyncService {
 
       this.store.setXData(xData);
 
+      if (tweets.length === 0) {
+        return {
+          success: false,
+          tweetsCount: 0,
+          error:
+            "X sync returned no tweets. If using bearer-token mode, confirm query access and account permissions.",
+          errorCode: "empty"
+        };
+      }
+
       return {
         success: true,
         tweetsCount: tweets.length
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      console.error("X sync failed:", errorMessage);
+      const classified = classifyXSyncError(error);
+      console.error("X sync failed:", classified.code, classified.message);
       
       return {
         success: false,
         tweetsCount: 0,
-        error: errorMessage
+        error: classified.message,
+        errorCode: classified.code
       };
     }
   }
+}
+
+function classifyXSyncError(error: unknown): { code: XSyncErrorCode; message: string } {
+  if (error instanceof Error) {
+    const message = error.message;
+    const lower = message.toLowerCase();
+
+    if (lower.includes("429") || lower.includes("rate limit")) {
+      return { code: "rate_limit", message };
+    }
+    if (lower.includes("401") || lower.includes("403") || lower.includes("unauthorized") || lower.includes("forbidden")) {
+      return { code: "auth", message };
+    }
+    if (lower.includes("network") || lower.includes("fetch")) {
+      return { code: "network", message };
+    }
+    if (lower.includes("parse") || lower.includes("json")) {
+      return { code: "parse", message };
+    }
+
+    return { code: "unknown", message };
+  }
+
+  return { code: "unknown", message: "Unknown X sync error" };
 }

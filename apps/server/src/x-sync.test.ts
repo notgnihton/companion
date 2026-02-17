@@ -29,7 +29,8 @@ describe("X Integration", () => {
       const result = await service.sync();
       
       expect(result.success).toBe(false);
-      expect(result.error).toBe("X API credentials not configured");
+      expect(result.error).toContain("X API credentials not configured");
+      expect(result.errorCode).toBe("not_configured");
       expect(result.tweetsCount).toBe(0);
     });
 
@@ -128,6 +129,21 @@ describe("X Integration", () => {
       expect(result.tweetsCount).toBe(25);
     });
 
+    it("should return actionable empty-feed diagnostics when X returns no tweets", async () => {
+      const mockClient = {
+        isConfigured: () => true,
+        fetchHomeTimeline: async () => []
+      } as unknown as XClient;
+
+      const service = new XSyncService(store, mockClient);
+      const result = await service.sync();
+
+      expect(result.success).toBe(false);
+      expect(result.tweetsCount).toBe(0);
+      expect(result.errorCode).toBe("empty");
+      expect(result.error).toContain("returned no tweets");
+    });
+
     it("should start and stop sync intervals", () => {
       const service = new XSyncService(store);
       
@@ -153,13 +169,18 @@ describe("X Integration", () => {
       expect(client.isConfigured()).toBe(true);
     });
 
+    it("should detect bearer-token-only configuration", () => {
+      const client = new XClient("", "", "", "", "bearer-token-only");
+      expect(client.isConfigured()).toBe(true);
+    });
+
     it("should detect incomplete OAuth configuration", () => {
       // Missing access token secret
-      const client1 = new XClient("key", "secret", "token", "", "bearer");
+      const client1 = new XClient("key", "secret", "token", "", "");
       expect(client1.isConfigured()).toBe(false);
 
       // Missing API key
-      const client2 = new XClient("", "secret", "token", "tokenSecret", "bearer");
+      const client2 = new XClient("", "secret", "token", "tokenSecret", "");
       expect(client2.isConfigured()).toBe(false);
     });
   });
