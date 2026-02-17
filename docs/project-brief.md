@@ -355,7 +355,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | | | | |
 | | **— Phase 7: Execution Feedback & Trust —** | | |
 | ✅ done | `study-plan-session-checkins-api` | backend-engineer | Add API + storage for marking generated study-plan sessions as done/skipped, with completion timestamps and per-week adherence metrics for replanning. |
-| ⬜ todo | `study-plan-session-checkins-ui` | frontend-engineer | Add tap-to-complete controls on Study Plan sessions, show daily completion progress, and support quick skip/reschedule actions optimized for iPhone touch input. |
+| ✅ done | `study-plan-session-checkins-ui` | frontend-engineer | Add tap-to-complete controls on Study Plan sessions, show daily completion progress, and support quick skip/reschedule actions optimized for iPhone touch input. |
 | ⬜ todo | `chat-citations` | backend-engineer | Extend chat responses with structured citations to schedule/deadline/journal/email/social records so guidance is traceable to concrete data. |
 | ⬜ todo | `chat-citation-chips-ui` | frontend-engineer | Render citation chips under assistant messages and deep-link taps to referenced deadlines, schedule blocks, journal entries, or settings screens. |
 | ⬜ todo | `sync-failure-recovery-prompts` | backend-engineer | Detect repeated TP/Canvas/Gmail sync failures and create actionable recovery prompts with root-cause hints and suggested fixes before data becomes stale. |

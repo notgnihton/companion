@@ -1,13 +1,29 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { generateStudyPlan } from "../lib/api";
+import {
+  checkInStudyPlanSession,
+  generateStudyPlan,
+  getStudyPlanAdherence,
+  getStudyPlanSessions
+} from "../lib/api";
 import { loadStudyPlanCache, loadStudyPlanCachedAt } from "../lib/storage";
-import { StudyPlan, StudyPlanGeneratePayload, StudyPlanSession } from "../types";
+import {
+  StudyPlan,
+  StudyPlanAdherenceMetrics,
+  StudyPlanGeneratePayload,
+  StudyPlanSession,
+  StudyPlanSessionRecord,
+  StudyPlanSessionStatus
+} from "../types";
 
 interface SessionDayGroup {
   key: string;
   label: string;
   sessions: StudyPlanSession[];
   totalMinutes: number;
+  doneCount: number;
+  skippedCount: number;
+  pendingCount: number;
+  completionRate: number;
 }
 
 const defaultControls: Required<StudyPlanGeneratePayload> = {
@@ -46,13 +62,36 @@ function toDayKey(value: string): string {
   return `${year}-${month}-${day}`;
 }
 
+function formatSessionStatus(status: StudyPlanSessionStatus): string {
+  switch (status) {
+    case "done":
+      return "Done";
+    case "skipped":
+      return "Skipped";
+    default:
+      return "Pending";
+  }
+}
+
+function buildSessionLookup(sessions: StudyPlanSessionRecord[]): Record<string, StudyPlanSessionRecord> {
+  const lookup: Record<string, StudyPlanSessionRecord> = {};
+  sessions.forEach((session) => {
+    lookup[session.id] = session;
+  });
+  return lookup;
+}
+
 export function StudyPlanView(): JSX.Element {
   const [plan, setPlan] = useState<StudyPlan | null>(() => loadStudyPlanCache());
   const [cachedAt, setCachedAt] = useState<string | null>(() => loadStudyPlanCachedAt());
   const [isOnline, setIsOnline] = useState<boolean>(() => navigator.onLine);
+  const [sessionLookup, setSessionLookup] = useState<Record<string, StudyPlanSessionRecord>>({});
+  const [adherence, setAdherence] = useState<StudyPlanAdherenceMetrics | null>(null);
   const [controls, setControls] = useState(defaultControls);
   const [loading, setLoading] = useState<boolean>(() => loadStudyPlanCache() === null);
   const [generating, setGenerating] = useState(false);
+  const [updatingSessionId, setUpdatingSessionId] = useState<string | null>(null);
+  const [sessionMessage, setSessionMessage] = useState("");
   const [error, setError] = useState("");
 
   const loadPlan = async (nextControls: Required<StudyPlanGeneratePayload>): Promise<void> => {
@@ -88,6 +127,47 @@ export function StudyPlanView(): JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    if (!plan) {
+      setSessionLookup({});
+      setAdherence(null);
+      return;
+    }
+
+    let disposed = false;
+
+    const syncSessionData = async (): Promise<void> => {
+      const [sessions, adherenceMetrics] = await Promise.all([
+        getStudyPlanSessions({
+          windowStart: plan.windowStart,
+          windowEnd: plan.windowEnd,
+          limit: 500
+        }),
+        getStudyPlanAdherence({
+          windowStart: plan.windowStart,
+          windowEnd: plan.windowEnd
+        })
+      ]);
+
+      if (disposed) {
+        return;
+      }
+
+      setSessionLookup(buildSessionLookup(sessions));
+      setAdherence(adherenceMetrics);
+    };
+
+    void syncSessionData();
+
+    return () => {
+      disposed = true;
+    };
+  }, [plan?.windowStart, plan?.windowEnd, plan?.generatedAt]);
+
+  const resolveSessionStatus = (session: StudyPlanSession): StudyPlanSessionStatus => {
+    return sessionLookup[session.id]?.status ?? "pending";
+  };
+
   const groupedSessions = useMemo<SessionDayGroup[]>(() => {
     if (!plan) {
       return [];
@@ -104,18 +184,80 @@ export function StudyPlanView(): JSX.Element {
 
     return Array.from(groups.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, sessions]) => ({
-        key,
-        label: formatDayLabel(sessions[0]?.startTime ?? key),
-        sessions,
-        totalMinutes: sessions.reduce((sum, session) => sum + session.durationMinutes, 0)
-      }));
-  }, [plan]);
+      .map(([key, sessions]) => {
+        const doneCount = sessions.filter((session) => resolveSessionStatus(session) === "done").length;
+        const skippedCount = sessions.filter((session) => resolveSessionStatus(session) === "skipped").length;
+        const pendingCount = sessions.filter((session) => resolveSessionStatus(session) === "pending").length;
+        const completionRate = sessions.length === 0 ? 0 : Math.round((doneCount / sessions.length) * 100);
+
+        return {
+          key,
+          label: formatDayLabel(sessions[0]?.startTime ?? key),
+          sessions,
+          totalMinutes: sessions.reduce((sum, session) => sum + session.durationMinutes, 0),
+          doneCount,
+          skippedCount,
+          pendingCount,
+          completionRate
+        };
+      });
+  }, [plan, sessionLookup]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     setGenerating(true);
     await loadPlan(controls);
+  };
+
+  const updateSessionStatus = async (
+    session: StudyPlanSession,
+    status: Exclude<StudyPlanSessionStatus, "pending">,
+    options?: { silent?: boolean }
+  ): Promise<boolean> => {
+    if (!isOnline || !plan) {
+      setSessionMessage("Reconnect to update session status.");
+      return false;
+    }
+
+    setUpdatingSessionId(session.id);
+    const updated = await checkInStudyPlanSession(session.id, status);
+
+    if (!updated) {
+      setSessionMessage("Could not save session status right now.");
+      setUpdatingSessionId(null);
+      return false;
+    }
+
+    setSessionLookup((prev) => ({
+      ...prev,
+      [updated.id]: updated
+    }));
+
+    const nextMetrics = await getStudyPlanAdherence({
+      windowStart: plan.windowStart,
+      windowEnd: plan.windowEnd
+    });
+    if (nextMetrics) {
+      setAdherence(nextMetrics);
+    }
+
+    if (!options?.silent) {
+      setSessionMessage(status === "done" ? "Session marked done." : "Session skipped.");
+    }
+
+    setUpdatingSessionId(null);
+    return true;
+  };
+
+  const handleReschedule = async (session: StudyPlanSession): Promise<void> => {
+    const skipped = await updateSessionStatus(session, "skipped", { silent: true });
+    if (!skipped) {
+      return;
+    }
+
+    setGenerating(true);
+    await loadPlan(controls);
+    setSessionMessage("Session skipped and plan regenerated.");
   };
 
   const cacheAgeMs = cachedAt ? Date.now() - new Date(cachedAt).getTime() : Number.POSITIVE_INFINITY;
@@ -199,6 +341,7 @@ export function StudyPlanView(): JSX.Element {
 
       {loading && <p className="study-plan-empty">Generating initial study plan...</p>}
       {error && <p className="study-plan-error">{error}</p>}
+      {sessionMessage && <p className="study-plan-sync-status">{sessionMessage}</p>}
 
       {plan && (
         <>
@@ -206,6 +349,23 @@ export function StudyPlanView(): JSX.Element {
             {plan.summary.totalSessions} sessions • {plan.summary.totalPlannedMinutes} minutes planned •{" "}
             {plan.summary.deadlinesCovered}/{plan.summary.deadlinesConsidered} deadlines covered
           </p>
+          {adherence && (
+            <section className="study-plan-adherence">
+              <div className="study-plan-adherence-header">
+                <h3>Weekly Adherence</h3>
+                <span>{adherence.completionRate}% complete</span>
+              </div>
+              <div className="study-plan-adherence-bar" aria-hidden="true">
+                <span
+                  className="study-plan-adherence-fill"
+                  style={{ width: `${Math.min(Math.max(adherence.completionRate, 0), 100)}%` }}
+                />
+              </div>
+              <p className="study-plan-adherence-meta">
+                {adherence.sessionsDone} done • {adherence.sessionsSkipped} skipped • {adherence.sessionsPending} pending
+              </p>
+            </section>
+          )}
 
           {groupedSessions.length === 0 && <p className="study-plan-empty">No available study blocks in this horizon.</p>}
 
@@ -217,17 +377,73 @@ export function StudyPlanView(): JSX.Element {
                   {group.sessions.length} session{group.sessions.length === 1 ? "" : "s"} • {group.totalMinutes} min
                 </span>
               </header>
+              <div className="study-plan-day-progress">
+                <p>
+                  {group.doneCount} done • {group.skippedCount} skipped • {group.pendingCount} pending
+                </p>
+                <div className="study-plan-day-progress-bar" aria-hidden="true">
+                  <span
+                    className="study-plan-day-progress-fill"
+                    style={{ width: `${Math.min(Math.max(group.completionRate, 0), 100)}%` }}
+                  />
+                </div>
+              </div>
 
               <ul className="study-plan-session-list">
-                {group.sessions.map((session) => (
-                  <li key={session.id} className={`study-plan-session priority-${session.priority}`}>
-                    <p className="study-plan-session-time">
-                      {formatTime(session.startTime)} - {formatTime(session.endTime)}
-                    </p>
-                    <p className="study-plan-session-title">{session.course}: {session.task}</p>
-                    <p className="study-plan-session-rationale">{session.rationale}</p>
-                  </li>
-                ))}
+                {group.sessions.map((session) => {
+                  const status = resolveSessionStatus(session);
+                  const checkedAt = sessionLookup[session.id]?.checkedAt;
+                  const isUpdating = updatingSessionId === session.id;
+
+                  return (
+                    <li
+                      key={session.id}
+                      className={`study-plan-session priority-${session.priority} study-plan-session-${status}`}
+                    >
+                      <div className="study-plan-session-header">
+                        <p className="study-plan-session-time">
+                          {formatTime(session.startTime)} - {formatTime(session.endTime)}
+                        </p>
+                        <span className={`study-plan-session-status study-plan-session-status-${status}`}>
+                          {formatSessionStatus(status)}
+                        </span>
+                      </div>
+                      <p className="study-plan-session-title">{session.course}: {session.task}</p>
+                      <p className="study-plan-session-rationale">{session.rationale}</p>
+                      {checkedAt && (
+                        <p className="study-plan-session-checked">
+                          Updated {new Date(checkedAt).toLocaleString()}
+                        </p>
+                      )}
+                      <div className="study-plan-session-actions">
+                        <button
+                          type="button"
+                          className="study-plan-action-done"
+                          onClick={() => void updateSessionStatus(session, "done")}
+                          disabled={!isOnline || isUpdating || status === "done"}
+                        >
+                          Done
+                        </button>
+                        <button
+                          type="button"
+                          className="study-plan-action-skip"
+                          onClick={() => void updateSessionStatus(session, "skipped")}
+                          disabled={!isOnline || isUpdating || status === "skipped"}
+                        >
+                          Skip
+                        </button>
+                        <button
+                          type="button"
+                          className="study-plan-action-reschedule"
+                          onClick={() => void handleReschedule(session)}
+                          disabled={!isOnline || isUpdating || status !== "pending" || generating}
+                        >
+                          Reschedule
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           ))}

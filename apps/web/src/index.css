@@ -2712,6 +2712,59 @@ button:disabled {
   color: var(--muted);
 }
 
+.study-plan-sync-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.study-plan-adherence {
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.study-plan-adherence-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.study-plan-adherence-header h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.study-plan-adherence-header span {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.study-plan-adherence-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.study-plan-adherence-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #7dd3a8, #f6c37f);
+}
+
+.study-plan-adherence-meta {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .study-plan-day {
   border: 1px solid var(--border-soft);
   border-radius: 12px;
@@ -2738,6 +2791,32 @@ button:disabled {
   color: var(--muted);
 }
 
+.study-plan-day-progress {
+  display: grid;
+  gap: 6px;
+}
+
+.study-plan-day-progress p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.study-plan-day-progress-bar {
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.study-plan-day-progress-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #7dd3a8, #f6c37f);
+}
+
 .study-plan-session-list {
   list-style: none;
   margin: 0;
@@ -2753,6 +2832,37 @@ button:disabled {
   padding: 10px;
   display: grid;
   gap: 6px;
+}
+
+.study-plan-session-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.study-plan-session-status {
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.study-plan-session-status-pending {
+  color: var(--warn);
+  border-color: var(--warn-border);
+}
+
+.study-plan-session-status-done {
+  color: var(--ok);
+  border-color: var(--ok-border);
+}
+
+.study-plan-session-status-skipped {
+  color: var(--danger);
+  border-color: var(--danger-border);
 }
 
 .study-plan-session.priority-critical {
@@ -2781,6 +2891,51 @@ button:disabled {
   font-size: 0.82rem;
   color: var(--muted);
   line-height: 1.35;
+}
+
+.study-plan-session-checked {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.study-plan-session-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.study-plan-session-actions button {
+  border-radius: 9px;
+  padding: 9px 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.study-plan-action-done {
+  border: 1px solid var(--ok-border);
+  background: rgba(125, 211, 168, 0.12);
+  color: var(--text);
+}
+
+.study-plan-action-skip {
+  border: 1px solid var(--warn-border);
+  background: var(--warn-surface);
+  color: var(--text);
+}
+
+.study-plan-action-reschedule {
+  border: 1px solid var(--accent-border);
+  background: var(--accent-surface);
+  color: var(--text);
+}
+
+.study-plan-session-done {
+  border-color: var(--ok-border);
+}
+
+.study-plan-session-skipped {
+  border-color: var(--warn-border);
 }
 
 .study-plan-unallocated {
@@ -2814,6 +2969,10 @@ button:disabled {
 
 @media (max-width: 640px) {
   .study-plan-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .study-plan-session-actions {
     grid-template-columns: 1fr;
   }
 

@@ -141,6 +141,29 @@ export interface StudyPlan {
   unallocated: StudyPlanUnallocatedItem[];
 }
 
+export type StudyPlanSessionStatus = "pending" | "done" | "skipped";
+
+export interface StudyPlanSessionRecord extends StudyPlanSession {
+  generatedAt: string;
+  status: StudyPlanSessionStatus;
+  checkedAt: string | null;
+}
+
+export interface StudyPlanAdherenceMetrics {
+  windowStart: string;
+  windowEnd: string;
+  sessionsPlanned: number;
+  sessionsDone: number;
+  sessionsSkipped: number;
+  sessionsPending: number;
+  completionRate: number;
+  adherenceRate: number;
+  totalPlannedMinutes: number;
+  completedMinutes: number;
+  skippedMinutes: number;
+  pendingMinutes: number;
+}
+
 export interface StudyPlanGeneratePayload {
   horizonDays?: number;
   minSessionMinutes?: number;

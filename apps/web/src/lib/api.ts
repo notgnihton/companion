@@ -7,6 +7,9 @@ import {
   LectureEvent,
   Deadline,
   StudyPlan,
+  StudyPlanSessionRecord,
+  StudyPlanSessionStatus,
+  StudyPlanAdherenceMetrics,
   StudyPlanGeneratePayload,
   Goal,
   Habit,
@@ -264,6 +267,82 @@ export async function generateStudyPlan(payload: StudyPlanGeneratePayload): Prom
       return cachedPlan;
     }
     throw error;
+  }
+}
+
+export async function getStudyPlanSessions(options?: {
+  windowStart?: string;
+  windowEnd?: string;
+  status?: StudyPlanSessionStatus;
+  limit?: number;
+}): Promise<StudyPlanSessionRecord[]> {
+  const params = new URLSearchParams();
+  if (options?.windowStart) {
+    params.set("windowStart", options.windowStart);
+  }
+  if (options?.windowEnd) {
+    params.set("windowEnd", options.windowEnd);
+  }
+  if (options?.status) {
+    params.set("status", options.status);
+  }
+  if (options?.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+
+  const query = params.toString();
+  const endpoint = query ? `/api/study-plan/sessions?${query}` : "/api/study-plan/sessions";
+
+  try {
+    const response = await jsonOrThrow<{ sessions: StudyPlanSessionRecord[] }>(endpoint);
+    return response.sessions;
+  } catch {
+    return [];
+  }
+}
+
+export async function checkInStudyPlanSession(
+  sessionId: string,
+  status: Exclude<StudyPlanSessionStatus, "pending">,
+  checkedAt?: string
+): Promise<StudyPlanSessionRecord | null> {
+  try {
+    const response = await jsonOrThrow<{ session: StudyPlanSessionRecord }>(
+      `/api/study-plan/sessions/${encodeURIComponent(sessionId)}/check-in`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          status,
+          checkedAt
+        })
+      }
+    );
+    return response.session;
+  } catch {
+    return null;
+  }
+}
+
+export async function getStudyPlanAdherence(options?: {
+  windowStart?: string;
+  windowEnd?: string;
+}): Promise<StudyPlanAdherenceMetrics | null> {
+  const params = new URLSearchParams();
+  if (options?.windowStart) {
+    params.set("windowStart", options.windowStart);
+  }
+  if (options?.windowEnd) {
+    params.set("windowEnd", options.windowEnd);
+  }
+
+  const query = params.toString();
+  const endpoint = query ? `/api/study-plan/adherence?${query}` : "/api/study-plan/adherence";
+
+  try {
+    const response = await jsonOrThrow<{ metrics: StudyPlanAdherenceMetrics }>(endpoint);
+    return response.metrics;
+  } catch {
+    return null;
   }
 }
 
