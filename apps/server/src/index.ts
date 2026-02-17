@@ -32,6 +32,7 @@ import { buildStudyPlanCalendarIcs } from "./study-plan-export.js";
 import { generateWeeklyStudyPlan } from "./study-plan.js";
 import { generateContentRecommendations } from "./content-recommendations.js";
 import { generateDailyJournalSummary } from "./daily-journal-summary.js";
+import { generateAnalyticsCoachInsight } from "./analytics-coach.js";
 import { PostgresRuntimeSnapshotStore } from "./postgres-persistence.js";
 import type { PostgresPersistenceDiagnostics } from "./postgres-persistence.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
@@ -205,6 +206,20 @@ app.get("/api/weekly-review", (req, res) => {
 app.get("/api/trends", (_req, res) => {
   const trends = store.getContextTrends();
   return res.json({ trends });
+});
+
+app.get("/api/analytics/coach", async (req, res) => {
+  const parsed = analyticsCoachQuerySchema.safeParse(req.query ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid analytics coach query", issues: parsed.error.issues });
+  }
+
+  const insight = await generateAnalyticsCoachInsight(store, {
+    periodDays: parsed.data.periodDays
+  });
+
+  return res.json({ insight });
 });
 
 app.post("/api/chat", async (req, res) => {
@@ -439,6 +454,18 @@ const chatHistoryQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(50).optional()
 });
+
+const analyticsCoachQuerySchema = z
+  .object({
+    periodDays: z.coerce.number().int().optional()
+  })
+  .refine(
+    (payload) => payload.periodDays === undefined || payload.periodDays === 7 || payload.periodDays === 14 || payload.periodDays === 30,
+    {
+      message: "periodDays must be one of 7, 14, or 30",
+      path: ["periodDays"]
+    }
+  );
 
 const tagIdSchema = z.string().trim().min(1);
 const tagIdsSchema = z.array(tagIdSchema).max(20);

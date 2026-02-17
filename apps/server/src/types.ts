@@ -508,6 +508,37 @@ export interface DailyJournalSummary {
   chatMessageCount: number;
 }
 
+export interface AnalyticsCoachMetrics {
+  deadlinesDue: number;
+  deadlinesCompleted: number;
+  openHighPriorityDeadlines: number;
+  habitsTracked: number;
+  habitsCompletedToday: number;
+  averageHabitCompletion7d: number;
+  goalsTracked: number;
+  goalsCompletedToday: number;
+  journalEntries: number;
+  userReflections: number;
+  studySessionsPlanned: number;
+  studySessionsDone: number;
+  studyCompletionRate: number;
+  dominantEnergy: UserContext["energyLevel"] | null;
+  dominantStress: UserContext["stressLevel"] | null;
+}
+
+export interface AnalyticsCoachInsight {
+  periodDays: 7 | 14 | 30;
+  windowStart: string;
+  windowEnd: string;
+  generatedAt: string;
+  source: "gemini" | "fallback";
+  summary: string;
+  strengths: string[];
+  risks: string[];
+  recommendations: string[];
+  metrics: AnalyticsCoachMetrics;
+}
+
 export interface ContextTrendBucket {
   total: number;
   energyLevels: Record<UserContext["energyLevel"], number>;
