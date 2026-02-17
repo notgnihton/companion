@@ -15,7 +15,7 @@ import {
 } from "../types";
 
 // Storage version - increment when data structures change to auto-clear cache
-const STORAGE_VERSION = "1.0.1";  // Changed to trigger cache clear
+const STORAGE_VERSION = "1.0.2";  // Changed to trigger cache clear
 const VERSION_KEY = "companion:version";
 
 // Auto-clear storage if version changed (prevents cached data bugs)
