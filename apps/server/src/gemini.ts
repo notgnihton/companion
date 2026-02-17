@@ -59,28 +59,19 @@ class RateLimiter {
     this.maxRequestsPerMinute = maxRequestsPerMinute;
   }
 
-  async waitForSlot(): Promise<void> {
-    const now = Date.now();
-    this.requestTimestamps = this.requestTimestamps.filter((ts) => now - ts < this.windowMs);
-
-    if (this.requestTimestamps.length >= this.maxRequestsPerMinute) {
-      const oldestTimestamp = this.requestTimestamps[0]!;
-      const timeToWait = this.windowMs - (now - oldestTimestamp) + 100;
-
-      if (timeToWait > 0) {
-        await new Promise((resolve) => setTimeout(resolve, timeToWait));
-      }
-
-      return this.waitForSlot();
-    }
-
-    this.requestTimestamps.push(now);
+  recordRequest(timestamp: number = Date.now()): void {
+    this.requestTimestamps = this.requestTimestamps.filter((ts) => timestamp - ts < this.windowMs);
+    this.requestTimestamps.push(timestamp);
   }
 
   getRequestCount(): number {
     const now = Date.now();
     this.requestTimestamps = this.requestTimestamps.filter((ts) => now - ts < this.windowMs);
     return this.requestTimestamps.length;
+  }
+
+  getLimit(): number {
+    return this.maxRequestsPerMinute;
   }
 
   reset(): void {
@@ -115,7 +106,7 @@ export class GeminiClient {
       throw new GeminiError("Gemini API key not configured. Set GEMINI_API_KEY environment variable.");
     }
 
-    await this.rateLimiter.waitForSlot();
+    this.rateLimiter.recordRequest();
 
     try {
       // Create model with or without tools
@@ -185,7 +176,7 @@ export class GeminiClient {
   getRateLimitStatus(): { requestCount: number; limit: number } {
     return {
       requestCount: this.rateLimiter.getRequestCount(),
-      limit: 15
+      limit: this.rateLimiter.getLimit()
     };
   }
 
