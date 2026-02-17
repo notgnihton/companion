@@ -3624,47 +3624,181 @@ label small.muted {
 /* Analytics Dashboard */
 .analytics-container {
   padding: 20px;
-  max-width: 1200px;
+  max-width: 980px;
   margin: 0 auto;
+  display: grid;
+  gap: 14px;
+}
+
+.analytics-header {
+  display: grid;
+  gap: 12px;
+}
+
+.analytics-subtitle {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.analytics-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.analytics-period-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.analytics-period-button {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.analytics-period-button.active {
+  background: var(--accent-surface);
+  border-color: var(--accent-border);
+  color: var(--text);
+}
+
+.analytics-refresh {
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.analytics-refresh:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.analytics-summary-card {
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.analytics-summary-card p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.analytics-summary-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.analytics-metrics-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.analytics-metric-pill {
+  margin: 0;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 0.84rem;
+  color: var(--muted);
 }
 
 .analytics-title {
-  font-size: 1.8rem;
+  font-size: 1.35rem;
   font-weight: 600;
-  margin: 0 0 24px 0;
+  margin: 0;
   color: var(--text);
 }
 
 .analytics-grid {
   display: grid;
-  gap: 20px;
+  gap: 12px;
   grid-template-columns: 1fr;
 }
 
 @media (min-width: 768px) {
   .analytics-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 .analytics-card {
-  background: var(--card);
-  border: 1px solid var(--card-border);
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
   border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.analytics-card-risk {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border-soft));
+}
+
+.analytics-card-recommendation {
+  border-color: color-mix(in srgb, var(--accent-border) 56%, var(--border-soft));
 }
 
 .analytics-card h3 {
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 600;
-  margin: 0 0 16px 0;
+  margin: 0;
   color: var(--text);
 }
 
-.chart-container {
-  height: 250px;
-  position: relative;
+.analytics-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 7px;
+}
+
+.analytics-list li {
+  color: var(--text);
+  line-height: 1.35;
+  font-size: 0.88rem;
+}
+
+.analytics-list-numbered {
+  padding-left: 20px;
+}
+
+@media (max-width: 767px) {
+  .analytics-container {
+    padding: 16px;
+  }
+
+  .analytics-title {
+    font-size: 1.2rem;
+  }
 }
 
 .recommendations-panel {

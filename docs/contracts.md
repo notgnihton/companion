@@ -899,6 +899,58 @@ Response:
 }
 ```
 
+### GET `/api/analytics/coach?periodDays=14`
+
+Generate narrative analytics coaching (Gemini-backed with deterministic fallback).
+
+Query params:
+- `periodDays` (optional): one of `7`, `14`, `30` (default `7`)
+
+Response:
+
+```json
+{
+  "insight": {
+    "periodDays": 14,
+    "windowStart": "2026-02-03T16:00:00.000Z",
+    "windowEnd": "2026-02-17T16:00:00.000Z",
+    "generatedAt": "2026-02-17T16:00:01.000Z",
+    "source": "gemini",
+    "summary": "Over the last two weeks, deadline follow-through improved but high-priority work is clustering near due dates.",
+    "strengths": [
+      "You are consistently checking in on habits.",
+      "Study-plan completion stayed above baseline."
+    ],
+    "risks": [
+      "Two high-priority deadlines are due within the next week.",
+      "Reflection volume is low on heavy workload days."
+    ],
+    "recommendations": [
+      "Reserve one deep-work block in the next 24 hours for the nearest high-priority deadline.",
+      "Do a two-line end-of-day reflection to improve tomorrow's coaching precision.",
+      "Anchor your key habit check-in to a fixed daily event after your first lecture."
+    ],
+    "metrics": {
+      "deadlinesDue": 5,
+      "deadlinesCompleted": 3,
+      "openHighPriorityDeadlines": 2,
+      "habitsTracked": 3,
+      "habitsCompletedToday": 2,
+      "averageHabitCompletion7d": 67,
+      "goalsTracked": 2,
+      "goalsCompletedToday": 1,
+      "journalEntries": 4,
+      "userReflections": 7,
+      "studySessionsPlanned": 8,
+      "studySessionsDone": 5,
+      "studyCompletionRate": 63,
+      "dominantEnergy": "medium",
+      "dominantStress": "medium"
+    }
+  }
+}
+```
+
 ### GET `/api/study-plan/export?horizonDays=7&minSessionMinutes=45&maxSessionMinutes=120`
 
 Generate and download study plan sessions as an ICS file.

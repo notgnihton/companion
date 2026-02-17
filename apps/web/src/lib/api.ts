@@ -37,7 +37,8 @@ import {
   SocialMediaFeed,
   SocialMediaSyncResult,
   ContentRecommendationsResponse,
-  DailyJournalSummary
+  DailyJournalSummary,
+  AnalyticsCoachInsight
 } from "../types";
 import {
   JournalQueueItem,
@@ -188,6 +189,19 @@ export async function getDailyJournalSummary(date?: string): Promise<DailyJourna
   try {
     const response = await jsonOrThrow<{ summary: DailyJournalSummary }>(endpoint);
     return response.summary;
+  } catch {
+    return null;
+  }
+}
+
+export async function getAnalyticsCoachInsight(periodDays: 7 | 14 | 30): Promise<AnalyticsCoachInsight | null> {
+  const params = new URLSearchParams();
+  params.set("periodDays", String(periodDays));
+  const endpoint = `/api/analytics/coach?${params.toString()}`;
+
+  try {
+    const response = await jsonOrThrow<{ insight: AnalyticsCoachInsight }>(endpoint);
+    return response.insight;
   } catch {
     return null;
   }

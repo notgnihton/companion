@@ -991,6 +991,62 @@ Response `200`:
 }
 ```
 
+### `GET /api/analytics/coach`
+
+Returns narrative behavior coaching for the selected window using Gemini (with deterministic fallback when Gemini is unavailable).
+
+Query params:
+- `periodDays` (optional): `7 | 14 | 30` (default `7`)
+
+Example:
+
+```http
+GET /api/analytics/coach?periodDays=14
+```
+
+Response `200`:
+
+```json
+{
+  "insight": {
+    "periodDays": 14,
+    "windowStart": "2026-02-03T16:00:00.000Z",
+    "windowEnd": "2026-02-17T16:00:00.000Z",
+    "generatedAt": "2026-02-17T16:00:01.000Z",
+    "source": "gemini",
+    "summary": "Over the last two weeks, deadline follow-through improved but high-priority work is clustering near due dates.",
+    "strengths": [
+      "You are consistently checking in on habits."
+    ],
+    "risks": [
+      "Two high-priority deadlines are due within the next week."
+    ],
+    "recommendations": [
+      "Reserve one deep-work block in the next 24 hours for the nearest high-priority deadline.",
+      "Do a two-line end-of-day reflection to improve tomorrow's coaching precision.",
+      "Anchor your key habit check-in to a fixed daily event after your first lecture."
+    ],
+    "metrics": {
+      "deadlinesDue": 5,
+      "deadlinesCompleted": 3,
+      "openHighPriorityDeadlines": 2,
+      "habitsTracked": 3,
+      "habitsCompletedToday": 2,
+      "averageHabitCompletion7d": 67,
+      "goalsTracked": 2,
+      "goalsCompletedToday": 1,
+      "journalEntries": 4,
+      "userReflections": 7,
+      "studySessionsPlanned": 8,
+      "studySessionsDone": 5,
+      "studyCompletionRate": 63,
+      "dominantEnergy": "medium",
+      "dominantStress": "medium"
+    }
+  }
+}
+```
+
 ### `GET /api/study-plan/export`
 
 Exports a generated study plan as an ICS calendar file for one-tap import into iPhone Calendar.
