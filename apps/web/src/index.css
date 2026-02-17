@@ -3506,6 +3506,113 @@ body.keyboard-open .pull-to-refresh-container {
   color: var(--muted);
 }
 
+.day-timeline-card {
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  padding: 12px;
+  margin: 0 0 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.day-timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.day-timeline-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.day-timeline-header span {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.day-timeline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.day-timeline-item {
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 9px 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.day-timeline-item-lecture {
+  border-color: var(--accent-border);
+  background: var(--accent-surface);
+}
+
+.day-timeline-item-gap {
+  border-style: dashed;
+  background: var(--surface);
+}
+
+.day-timeline-item-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.day-timeline-item-label {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.day-timeline-empty {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.day-timeline-deadlines {
+  display: grid;
+  gap: 7px;
+}
+
+.day-timeline-deadlines h4 {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.day-timeline-deadline-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.day-timeline-deadline-chip {
+  font-size: 0.74rem;
+  padding: 5px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--warn-border);
+  background: var(--warn-surface);
+  color: var(--text);
+}
+
+.day-timeline-deadline-empty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 @media (max-width: 640px) {
   .app-shell-chat-active .chat-context-cards,
   .app-shell-chat-active .recommendations-panel-chat {

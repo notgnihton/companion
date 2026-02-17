@@ -44,6 +44,86 @@ function formatCachedLabel(cachedAt: string | null): string {
   return `Cached ${timestamp.toLocaleString()}`;
 }
 
+interface DayTimelineSegment {
+  type: "lecture" | "gap";
+  start: Date;
+  end: Date;
+  lecture?: LectureEvent;
+}
+
+function isSameLocalDate(left: Date, right: Date): boolean {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
+}
+
+function minutesBetween(start: Date, end: Date): number {
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+}
+
+function formatDuration(minutes: number): string {
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder === 0 ? `${hours}h` : `${hours}h ${remainder}m`;
+}
+
+function buildDayTimeline(lectures: LectureEvent[], referenceDate: Date): DayTimelineSegment[] {
+  if (lectures.length === 0) {
+    return [];
+  }
+
+  const sorted = [...lectures].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+  const firstStart = new Date(sorted[0].startTime);
+  const timelineStart = new Date(referenceDate);
+  timelineStart.setHours(Math.min(7, firstStart.getHours()), 0, 0, 0);
+
+  const lastLecture = sorted[sorted.length - 1];
+  const lastEnd = new Date(new Date(lastLecture.startTime).getTime() + lastLecture.durationMinutes * 60000);
+  const timelineEnd = new Date(referenceDate);
+  timelineEnd.setHours(Math.max(20, lastEnd.getHours() + 1), 0, 0, 0);
+
+  const segments: DayTimelineSegment[] = [];
+  let cursor = timelineStart;
+
+  sorted.forEach((lecture) => {
+    const start = new Date(lecture.startTime);
+    const end = new Date(start.getTime() + lecture.durationMinutes * 60000);
+
+    const gapMinutes = minutesBetween(cursor, start);
+    if (gapMinutes >= 25) {
+      segments.push({
+        type: "gap",
+        start: new Date(cursor),
+        end: new Date(start)
+      });
+    }
+
+    segments.push({
+      type: "lecture",
+      start,
+      end,
+      lecture
+    });
+    cursor = end;
+  });
+
+  const trailingGap = minutesBetween(cursor, timelineEnd);
+  if (trailingGap >= 25) {
+    segments.push({
+      type: "gap",
+      start: new Date(cursor),
+      end: new Date(timelineEnd)
+    });
+  }
+
+  return segments;
+}
+
 interface ScheduleViewProps {
   focusLectureId?: string;
 }
@@ -162,6 +242,19 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
   const isStale = Number.isFinite(cacheAgeMs) && cacheAgeMs > SCHEDULE_STALE_MS;
   const pendingDeadlines = deadlines.filter((deadline) => !deadline.completed);
   const remainingHours = pendingDeadlines.reduce((sum, deadline) => sum + estimateDeadlineHours(deadline), 0);
+  const today = new Date();
+  const todayLectures = sortedSchedule.filter((lecture) => isSameLocalDate(new Date(lecture.startTime), today));
+  const dayTimeline = buildDayTimeline(todayLectures, today);
+  const todayDeadlineMarkers = pendingDeadlines
+    .filter((deadline) => {
+      const dueAt = new Date(deadline.dueDate);
+      if (Number.isNaN(dueAt.getTime())) {
+        return false;
+      }
+      return isSameLocalDate(dueAt, today) || dueAt.getTime() >= Date.now() && dueAt.getTime() <= Date.now() + 24 * 60 * 60 * 1000;
+    })
+    .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime())
+    .slice(0, 4);
 
   return (
     <section className="panel schedule-panel">
@@ -184,6 +277,52 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
       <p className="schedule-workload-context">
         {pendingDeadlines.length} pending deadline{pendingDeadlines.length === 1 ? "" : "s"} • ~{formatHours(remainingHours)}h remaining
       </p>
+
+      <section className="day-timeline-card" aria-label="Today timeline">
+        <div className="day-timeline-header">
+          <h3>Today timeline</h3>
+          <span>{todayLectures.length} lecture block{todayLectures.length === 1 ? "" : "s"}</span>
+        </div>
+
+        {dayTimeline.length > 0 ? (
+          <ul className="day-timeline-list">
+            {dayTimeline.map((segment, index) => (
+              <li
+                key={`${segment.type}-${segment.start.toISOString()}-${index}`}
+                className={segment.type === "lecture" ? "day-timeline-item day-timeline-item-lecture" : "day-timeline-item day-timeline-item-gap"}
+              >
+                <div className="day-timeline-item-meta">
+                  <span>
+                    {segment.start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true })} -{" "}
+                    {segment.end.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true })}
+                  </span>
+                  <span>{formatDuration(minutesBetween(segment.start, segment.end))}</span>
+                </div>
+                <p className="day-timeline-item-label">
+                  {segment.type === "lecture" ? segment.lecture?.title ?? "Lecture" : "Free gap"}
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="day-timeline-empty">No lectures today. Use the free time for planned assignments.</p>
+        )}
+
+        <div className="day-timeline-deadlines">
+          <h4>Upcoming deadlines</h4>
+          {todayDeadlineMarkers.length > 0 ? (
+            <div className="day-timeline-deadline-chips">
+              {todayDeadlineMarkers.map((deadline) => (
+                <span key={deadline.id} className="day-timeline-deadline-chip">
+                  {deadline.course}: {deadline.task} ({new Date(deadline.dueDate).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true })})
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="day-timeline-deadline-empty">No deadlines due in the next 24 hours.</p>
+          )}
+        </div>
+      </section>
 
       <div 
         ref={containerRef}
