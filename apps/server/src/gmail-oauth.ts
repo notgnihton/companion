@@ -10,13 +10,32 @@ export class GmailOAuthService {
 
   constructor(store: RuntimeStore) {
     this.store = store;
+    this.bootstrapTokensFromEnvironment();
+  }
+
+  private hasOAuthCredentials(): boolean {
+    return Boolean(config.GMAIL_CLIENT_ID && config.GMAIL_CLIENT_SECRET);
+  }
+
+  private bootstrapTokensFromEnvironment(): void {
+    const envAccessToken = config.GMAIL_ACCESS_TOKEN?.trim();
+    const envRefreshToken = config.GMAIL_REFRESH_TOKEN?.trim();
+
+    if (!envAccessToken && !envRefreshToken) {
+      return;
+    }
+
+    const existing = this.store.getGmailTokens();
+    this.store.setGmailTokens({
+      refreshToken: envRefreshToken || existing?.refreshToken,
+      accessToken: envAccessToken || existing?.accessToken,
+      email: existing?.email ?? "env-token",
+      connectedAt: existing?.connectedAt ?? new Date().toISOString(),
+      source: "env"
+    });
   }
 
   getOAuth2Client() {
-    if (!config.GMAIL_CLIENT_ID || !config.GMAIL_CLIENT_SECRET) {
-      throw new Error("Gmail OAuth credentials not configured");
-    }
-
     return new google.auth.OAuth2(
       config.GMAIL_CLIENT_ID,
       config.GMAIL_CLIENT_SECRET,
@@ -25,6 +44,10 @@ export class GmailOAuthService {
   }
 
   getAuthUrl(): string {
+    if (!this.hasOAuthCredentials()) {
+      throw new Error("Gmail OAuth credentials not configured");
+    }
+
     const oauth2Client = this.getOAuth2Client();
     
     return oauth2Client.generateAuthUrl({
@@ -35,6 +58,10 @@ export class GmailOAuthService {
   }
 
   async handleCallback(code: string): Promise<{ email: string; connectedAt: string }> {
+    if (!this.hasOAuthCredentials()) {
+      throw new Error("Gmail OAuth credentials not configured");
+    }
+
     const oauth2Client = this.getOAuth2Client();
     
     try {
@@ -54,8 +81,10 @@ export class GmailOAuthService {
       const connectedAt = new Date().toISOString();
       this.store.setGmailTokens({
         refreshToken: tokens.refresh_token,
+        accessToken: tokens.access_token ?? undefined,
         email,
-        connectedAt
+        connectedAt,
+        source: "oauth"
       });
 
       return { email, connectedAt };
@@ -68,13 +97,29 @@ export class GmailOAuthService {
   async getAuthenticatedClient() {
     const tokens = this.store.getGmailTokens();
     
-    if (!tokens?.refreshToken) {
+    if (!tokens?.refreshToken && !tokens?.accessToken) {
       throw new Error("Gmail not connected");
     }
 
     const oauth2Client = this.getOAuth2Client();
     oauth2Client.setCredentials({
-      refresh_token: tokens.refreshToken
+      refresh_token: tokens.refreshToken,
+      access_token: tokens.accessToken
+    });
+
+    oauth2Client.on("tokens", (nextTokens) => {
+      if (!nextTokens.refresh_token && !nextTokens.access_token) {
+        return;
+      }
+
+      const latest = this.store.getGmailTokens();
+      this.store.setGmailTokens({
+        refreshToken: nextTokens.refresh_token ?? latest?.refreshToken,
+        accessToken: nextTokens.access_token ?? latest?.accessToken,
+        email: latest?.email ?? "unknown",
+        connectedAt: latest?.connectedAt ?? new Date().toISOString(),
+        source: latest?.source ?? "unknown"
+      });
     });
 
     return oauth2Client;
@@ -88,14 +133,18 @@ export class GmailOAuthService {
   getConnectionInfo() {
     const tokens = this.store.getGmailTokens();
     
-    if (!tokens?.refreshToken) {
+    if (!tokens) {
       return { connected: false };
     }
 
     return {
       connected: true,
       email: tokens.email,
-      connectedAt: tokens.connectedAt
+      connectedAt: tokens.connectedAt,
+      source: tokens.source,
+      tokenBootstrap: tokens.source === "env",
+      hasRefreshToken: Boolean(tokens.refreshToken),
+      hasAccessToken: Boolean(tokens.accessToken)
     };
   }
 }

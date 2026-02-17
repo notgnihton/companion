@@ -66,6 +66,8 @@ This file documents all environment variables required to run the Companion serv
 #### Gmail API (future)
 - `GMAIL_CLIENT_ID` (optional) — Gmail OAuth client ID
 - `GMAIL_CLIENT_SECRET` (optional) — Gmail OAuth client secret
+- `GMAIL_ACCESS_TOKEN` (optional) — Bootstrap Gmail access token for non-interactive production startup
+- `GMAIL_REFRESH_TOKEN` (optional) — Bootstrap Gmail refresh token for non-interactive production startup
 
 ## Deployment Checklist
 
@@ -124,4 +126,10 @@ X_API_KEY_SECRET=your-x-api-secret
 X_ACCESS_TOKEN=your-x-access-token
 X_ACCESS_TOKEN_SECRET=your-x-access-token-secret
 X_BEARER_TOKEN=your-x-bearer-token
+
+# Gmail bootstrap (optional)
+GMAIL_CLIENT_ID=your-gmail-client-id
+GMAIL_CLIENT_SECRET=your-gmail-client-secret
+GMAIL_ACCESS_TOKEN=your-gmail-access-token
+GMAIL_REFRESH_TOKEN=your-gmail-refresh-token
 ```

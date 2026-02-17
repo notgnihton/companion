@@ -438,8 +438,10 @@ export class RuntimeStore {
       CREATE TABLE IF NOT EXISTS gmail_data (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         refreshToken TEXT,
+        accessToken TEXT,
         email TEXT,
         connectedAt TEXT,
+        tokenSource TEXT,
         messages TEXT DEFAULT '[]',
         lastSyncedAt TEXT
       );
@@ -475,6 +477,14 @@ export class RuntimeStore {
     const hasLastSyncedAtColumn = gmailColumns.some((col) => col.name === "lastSyncedAt");
     if (!hasLastSyncedAtColumn) {
       this.db.prepare("ALTER TABLE gmail_data ADD COLUMN lastSyncedAt TEXT").run();
+    }
+    const hasAccessTokenColumn = gmailColumns.some((col) => col.name === "accessToken");
+    if (!hasAccessTokenColumn) {
+      this.db.prepare("ALTER TABLE gmail_data ADD COLUMN accessToken TEXT").run();
+    }
+    const hasTokenSourceColumn = gmailColumns.some((col) => col.name === "tokenSource");
+    if (!hasTokenSourceColumn) {
+      this.db.prepare("ALTER TABLE gmail_data ADD COLUMN tokenSource TEXT").run();
     }
 
     const studyPlanColumns = this.db.prepare("PRAGMA table_info(study_plan_sessions)").all() as Array<{ name: string }>;
@@ -4417,32 +4427,58 @@ export class RuntimeStore {
   /**
    * Set Gmail OAuth tokens
    */
-  setGmailTokens(data: { refreshToken: string; email: string; connectedAt: string }): void {
+  setGmailTokens(data: {
+    refreshToken?: string;
+    accessToken?: string;
+    email: string;
+    connectedAt: string;
+    source?: "oauth" | "env" | "unknown";
+  }): void {
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO gmail_data (
-        id, refreshToken, email, connectedAt
-      ) VALUES (1, ?, ?, ?)
+      INSERT INTO gmail_data (
+        id, refreshToken, accessToken, email, connectedAt, tokenSource
+      ) VALUES (1, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        refreshToken = excluded.refreshToken,
+        accessToken = excluded.accessToken,
+        email = excluded.email,
+        connectedAt = excluded.connectedAt,
+        tokenSource = excluded.tokenSource
     `);
 
-    stmt.run(data.refreshToken, data.email, data.connectedAt);
+    stmt.run(
+      data.refreshToken ?? null,
+      data.accessToken ?? null,
+      data.email,
+      data.connectedAt,
+      data.source ?? "oauth"
+    );
   }
 
   /**
    * Get Gmail OAuth tokens
    */
-  getGmailTokens(): { refreshToken: string; email: string; connectedAt: string } | null {
+  getGmailTokens(): {
+    refreshToken?: string;
+    accessToken?: string;
+    email: string;
+    connectedAt: string;
+    source: "oauth" | "env" | "unknown";
+  } | null {
     const stmt = this.db.prepare(`
-      SELECT refreshToken, email, connectedAt
+      SELECT refreshToken, accessToken, email, connectedAt, tokenSource
       FROM gmail_data WHERE id = 1
     `);
 
     const row = stmt.get() as {
       refreshToken: string | null;
+      accessToken: string | null;
       email: string | null;
       connectedAt: string | null;
+      tokenSource: string | null;
     } | undefined;
 
-    if (!row || !row.refreshToken) {
+    if (!row || (!row.refreshToken && !row.accessToken)) {
       return null;
     }
 
@@ -4452,9 +4488,14 @@ export class RuntimeStore {
     }
 
     return {
-      refreshToken: row.refreshToken,
+      ...(row.refreshToken ? { refreshToken: row.refreshToken } : {}),
+      ...(row.accessToken ? { accessToken: row.accessToken } : {}),
       email: row.email || "unknown",
-      connectedAt: row.connectedAt || new Date().toISOString()
+      connectedAt: row.connectedAt || new Date().toISOString(),
+      source:
+        row.tokenSource === "oauth" || row.tokenSource === "env"
+          ? row.tokenSource
+          : "unknown"
     };
   }
 
@@ -4463,8 +4504,11 @@ export class RuntimeStore {
    */
   setGmailMessages(messages: GmailMessage[], lastSyncedAt: string): void {
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO gmail_data (id, messages, lastSyncedAt)
+      INSERT INTO gmail_data (id, messages, lastSyncedAt)
       VALUES (1, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        messages = excluded.messages,
+        lastSyncedAt = excluded.lastSyncedAt
     `);
 
     stmt.run(JSON.stringify(messages), lastSyncedAt);

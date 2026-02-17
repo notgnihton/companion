@@ -16,7 +16,13 @@ describe("GmailSyncService", () => {
 
   describe("sync", () => {
     it("should fail when Gmail not connected", async () => {
-      const result = await service.sync();
+      const disconnectedService = new GmailSyncService(
+        store,
+        {
+          isConnected: () => false
+        } as GmailOAuthService
+      );
+      const result = await disconnectedService.sync();
       
       expect(result.success).toBe(false);
       expect(result.messagesCount).toBe(0);

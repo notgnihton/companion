@@ -1370,6 +1370,10 @@ app.get("/api/sync/status", (_req, res) => {
   const gmailData = store.getGmailData();
   const geminiClient = getGeminiClient();
   const gmailConnection = gmailOAuthService.getConnectionInfo();
+  const gmailConnectionSource = gmailConnection.connected ? gmailConnection.source : null;
+  const gmailTokenBootstrap = gmailConnection.connected ? gmailConnection.tokenBootstrap : false;
+  const gmailHasRefreshToken = gmailConnection.connected ? gmailConnection.hasRefreshToken : false;
+  const gmailHasAccessToken = gmailConnection.connected ? gmailConnection.hasAccessToken : false;
 
   return res.json({
     canvas: {
@@ -1412,7 +1416,11 @@ app.get("/api/sync/status", (_req, res) => {
       lastSyncAt: gmailData.lastSyncedAt,
       status: gmailConnection.connected ? "ok" : "not_connected",
       messagesProcessed: gmailData.messages.length,
-      connected: gmailConnection.connected
+      connected: gmailConnection.connected,
+      connectionSource: gmailConnectionSource,
+      tokenBootstrap: gmailTokenBootstrap,
+      hasRefreshToken: gmailHasRefreshToken,
+      hasAccessToken: gmailHasAccessToken
     }
   });
 });
