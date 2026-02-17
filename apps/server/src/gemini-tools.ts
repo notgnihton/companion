@@ -1718,6 +1718,8 @@ export interface PendingActionExecutionResult {
   deadline?: Deadline;
   lecture?: LectureEvent;
   journal?: JournalEntry;
+  habit?: HabitWithStatus;
+  goal?: GoalWithStatus;
 }
 
 function asTrimmedString(value: unknown): string | null {
@@ -2214,6 +2216,251 @@ export function executePendingChatAction(
         success: true,
         message: "Saved journal draft entry.",
         journal
+      };
+    }
+    case "create-habit": {
+      const name = asTrimmedString(pendingAction.payload.name);
+      if (!name) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Habit name is missing."
+        };
+      }
+
+      const cadenceRaw = asTrimmedString(pendingAction.payload.cadence)?.toLowerCase();
+      const cadence = cadenceRaw === "weekly" ? "weekly" : "daily";
+      const targetPerWeek = clampNumber(
+        pendingAction.payload.targetPerWeek,
+        cadence === "daily" ? 5 : 3,
+        1,
+        7
+      );
+      const motivation = asTrimmedString(pendingAction.payload.motivation);
+
+      const existingHabit = store
+        .getHabitsWithStatus()
+        .find((habit) => habit.name.trim().toLowerCase() === name.trim().toLowerCase());
+
+      if (existingHabit) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: true,
+          message: `Habit "${existingHabit.name}" already exists.`,
+          habit: existingHabit
+        };
+      }
+
+      const habit = store.createHabit({
+        name,
+        cadence,
+        targetPerWeek,
+        ...(motivation ? { motivation } : {})
+      });
+
+      return {
+        actionId: pendingAction.id,
+        actionType: pendingAction.actionType,
+        success: true,
+        message: `Created habit "${habit.name}".`,
+        habit
+      };
+    }
+    case "update-habit": {
+      const habitId = asTrimmedString(pendingAction.payload.habitId);
+      if (!habitId) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Habit ID is missing for update."
+        };
+      }
+
+      const patch: Parameters<RuntimeStore["updateHabit"]>[1] = {};
+      const name = asTrimmedString(pendingAction.payload.name);
+      if (name) {
+        patch.name = name;
+      }
+
+      const cadenceRaw = asTrimmedString(pendingAction.payload.cadence)?.toLowerCase();
+      if (cadenceRaw === "daily" || cadenceRaw === "weekly") {
+        patch.cadence = cadenceRaw;
+      }
+
+      if (typeof pendingAction.payload.targetPerWeek === "number") {
+        patch.targetPerWeek = clampNumber(pendingAction.payload.targetPerWeek, 5, 1, 7);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(pendingAction.payload, "motivation")) {
+        patch.motivation = asTrimmedString(pendingAction.payload.motivation) ?? undefined;
+      }
+
+      if (Object.keys(patch).length === 0) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "No valid habit update fields were provided."
+        };
+      }
+
+      const habit = store.updateHabit(habitId, patch);
+      if (!habit) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Habit not found for update."
+        };
+      }
+
+      return {
+        actionId: pendingAction.id,
+        actionType: pendingAction.actionType,
+        success: true,
+        message: `Updated habit "${habit.name}".`,
+        habit
+      };
+    }
+    case "create-goal": {
+      const title = asTrimmedString(pendingAction.payload.title);
+      if (!title) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Goal title is missing."
+        };
+      }
+
+      const cadenceRaw = asTrimmedString(pendingAction.payload.cadence)?.toLowerCase();
+      const cadence = cadenceRaw === "daily" ? "daily" : "weekly";
+      const targetCount = clampNumber(pendingAction.payload.targetCount, cadence === "daily" ? 7 : 5, 1, 50);
+      const dueDateRaw = asTrimmedString(pendingAction.payload.dueDate);
+      const motivation = asTrimmedString(pendingAction.payload.motivation);
+
+      let dueDate: string | null = null;
+      if (dueDateRaw) {
+        const parsedDueDate = new Date(dueDateRaw);
+        if (Number.isNaN(parsedDueDate.getTime())) {
+          return {
+            actionId: pendingAction.id,
+            actionType: pendingAction.actionType,
+            success: false,
+            message: "Goal due date is invalid."
+          };
+        }
+        dueDate = parsedDueDate.toISOString();
+      }
+
+      const existingGoal = store
+        .getGoalsWithStatus()
+        .find((goal) => goal.title.trim().toLowerCase() === title.trim().toLowerCase());
+
+      if (existingGoal) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: true,
+          message: `Goal "${existingGoal.title}" already exists.`,
+          goal: existingGoal
+        };
+      }
+
+      const goal = store.createGoal({
+        title,
+        cadence,
+        targetCount,
+        dueDate,
+        ...(motivation ? { motivation } : {})
+      });
+
+      return {
+        actionId: pendingAction.id,
+        actionType: pendingAction.actionType,
+        success: true,
+        message: `Created goal "${goal.title}".`,
+        goal
+      };
+    }
+    case "update-goal": {
+      const goalId = asTrimmedString(pendingAction.payload.goalId);
+      if (!goalId) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Goal ID is missing for update."
+        };
+      }
+
+      const patch: Parameters<RuntimeStore["updateGoal"]>[1] = {};
+      const title = asTrimmedString(pendingAction.payload.title);
+      if (title) {
+        patch.title = title;
+      }
+
+      const cadenceRaw = asTrimmedString(pendingAction.payload.cadence)?.toLowerCase();
+      if (cadenceRaw === "daily" || cadenceRaw === "weekly") {
+        patch.cadence = cadenceRaw;
+      }
+
+      if (typeof pendingAction.payload.targetCount === "number") {
+        patch.targetCount = clampNumber(pendingAction.payload.targetCount, 5, 1, 50);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(pendingAction.payload, "motivation")) {
+        patch.motivation = asTrimmedString(pendingAction.payload.motivation) ?? undefined;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(pendingAction.payload, "dueDate")) {
+        if (pendingAction.payload.dueDate === null) {
+          patch.dueDate = null;
+        } else {
+          const dueDateRaw = asTrimmedString(pendingAction.payload.dueDate);
+          if (dueDateRaw) {
+            const parsedDueDate = new Date(dueDateRaw);
+            if (Number.isNaN(parsedDueDate.getTime())) {
+              return {
+                actionId: pendingAction.id,
+                actionType: pendingAction.actionType,
+                success: false,
+                message: "Goal due date is invalid."
+              };
+            }
+            patch.dueDate = parsedDueDate.toISOString();
+          }
+        }
+      }
+
+      if (Object.keys(patch).length === 0) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "No valid goal update fields were provided."
+        };
+      }
+
+      const goal = store.updateGoal(goalId, patch);
+      if (!goal) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Goal not found for update."
+        };
+      }
+
+      return {
+        actionId: pendingAction.id,
+        actionType: pendingAction.actionType,
+        success: true,
+        message: `Updated goal "${goal.title}".`,
+        goal
       };
     }
     default:

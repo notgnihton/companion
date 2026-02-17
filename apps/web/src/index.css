@@ -2449,6 +2449,66 @@ button:disabled {
   background: var(--accent-surface);
 }
 
+.chat-pending-action-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.chat-pending-action-card {
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.chat-pending-action-summary {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.chat-pending-action-rationale {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.chat-pending-action-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.chat-pending-action-confirm,
+.chat-pending-action-cancel {
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.chat-pending-action-confirm {
+  border-color: var(--ok-border);
+  color: var(--ok);
+}
+
+.chat-pending-action-cancel {
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
+.chat-pending-action-confirm:disabled,
+.chat-pending-action-cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .chat-bubble-timestamp {
   font-size: 0.7rem;
   color: var(--muted);

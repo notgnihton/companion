@@ -37,7 +37,11 @@ export type ChatActionType =
   | "snooze-deadline"
   | "create-schedule-block"
   | "update-schedule-block"
-  | "create-journal-draft";
+  | "create-journal-draft"
+  | "create-habit"
+  | "update-habit"
+  | "create-goal"
+  | "update-goal";
 
 export interface ChatPendingAction {
   id: string;

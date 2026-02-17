@@ -532,7 +532,7 @@ describe("chat service", () => {
     const now = new Date();
     const schedule = store.createLectureEvent({
       title: "DAT520 Lecture",
-      startTime: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
+      startTime: now.toISOString(),
       durationMinutes: 90,
       workload: "medium"
     });
@@ -1001,6 +1001,52 @@ describe("chat service", () => {
     expect(result.assistantMessage.metadata?.pendingActions?.length).toBe(1);
     expect(result.reply).toContain("need your confirmation");
     expect(result.reply).toContain("confirm ");
+  });
+
+  it("autocaptures repeated commitment language into a habit creation pending action", async () => {
+    store.recordChatMessage("user", "I keep missing morning gym lately.");
+
+    const result = await sendChatMessage(store, "I want to do morning gym consistently.", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    expect(generateChatResponse).not.toHaveBeenCalled();
+    expect(result.reply).toContain("Why this suggestion");
+    expect(result.reply).toContain("Confirm/Cancel buttons");
+    expect(result.assistantMessage.metadata?.pendingActions).toHaveLength(1);
+    expect(result.assistantMessage.metadata?.pendingActions?.[0]).toMatchObject({
+      actionType: "create-habit"
+    });
+  });
+
+  it("autocaptures repeated struggle language into habit update and executes on confirm", async () => {
+    const habit = store.createHabit({
+      name: "Morning gym",
+      cadence: "daily",
+      targetPerWeek: 5
+    });
+
+    store.recordChatMessage("user", "I keep missing morning gym.");
+
+    const suggestion = await sendChatMessage(store, "I keep missing morning gym this week.", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    expect(generateChatResponse).not.toHaveBeenCalled();
+
+    const pendingAction = suggestion.assistantMessage.metadata?.pendingActions?.[0];
+    expect(pendingAction).toBeDefined();
+    expect(pendingAction?.actionType).toBe("update-habit");
+
+    const confirmResult = await sendChatMessage(store, `confirm ${pendingAction?.id}`, {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    expect(confirmResult.assistantMessage.metadata?.actionExecution?.status).toBe("confirmed");
+    expect(store.getHabitById(habit.id)?.targetPerWeek).toBe(4);
   });
 
   it("creates journal entries immediately when Gemini calls createJournalEntry", async () => {
