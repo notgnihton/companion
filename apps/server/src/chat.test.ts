@@ -350,4 +350,88 @@ describe("chat service", () => {
     const contextWindow = result.assistantMessage.metadata?.contextWindow;
     expect(contextWindow).toContain("Gmail: No emails synced yet");
   });
+
+  it("executes pending action on explicit confirm command without Gemini call", async () => {
+    const deadline = store.createDeadline({
+      course: "DAT520",
+      task: "Lab 5",
+      dueDate: "2026-02-20T12:00:00.000Z",
+      priority: "high",
+      completed: false
+    });
+    const pending = store.createPendingChatAction({
+      actionType: "complete-deadline",
+      summary: "Complete DAT520 Lab 5",
+      payload: { deadlineId: deadline.id }
+    });
+
+    const result = await sendChatMessage(store, `confirm ${pending.id}`, {
+      geminiClient: fakeGemini
+    });
+
+    expect(generateChatResponse).not.toHaveBeenCalled();
+    expect(result.reply).toContain("Marked DAT520 Lab 5 as completed");
+    expect(result.assistantMessage.metadata?.actionExecution?.status).toBe("confirmed");
+    expect(store.getDeadlineById(deadline.id, false)?.completed).toBe(true);
+    expect(store.getPendingChatActions()).toHaveLength(0);
+  });
+
+  it("cancels pending action on explicit cancel command without Gemini call", async () => {
+    const pending = store.createPendingChatAction({
+      actionType: "create-journal-draft",
+      summary: "Create draft",
+      payload: { content: "Draft from chat" }
+    });
+
+    const result = await sendChatMessage(store, `cancel ${pending.id}`, {
+      geminiClient: fakeGemini
+    });
+
+    expect(generateChatResponse).not.toHaveBeenCalled();
+    expect(result.reply).toContain("Cancelled action");
+    expect(result.assistantMessage.metadata?.actionExecution?.status).toBe("cancelled");
+    expect(store.getPendingChatActions()).toHaveLength(0);
+  });
+
+  it("adds pending action metadata when Gemini queues an action tool call", async () => {
+    generateChatResponse = vi
+      .fn()
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop",
+        functionCalls: [
+          {
+            name: "queueJournalDraft",
+            args: { content: "Draft a reflection from our chat." }
+          }
+        ],
+        usageMetadata: {
+          promptTokenCount: 10,
+          candidatesTokenCount: 5,
+          totalTokenCount: 15
+        }
+      })
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop",
+        usageMetadata: {
+          promptTokenCount: 9,
+          candidatesTokenCount: 4,
+          totalTokenCount: 13
+        }
+      });
+    fakeGemini = {
+      generateChatResponse
+    } as unknown as GeminiClient;
+
+    const result = await sendChatMessage(store, "Save this as a journal draft", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    expect(generateChatResponse).toHaveBeenCalledTimes(2);
+    expect(result.assistantMessage.metadata?.pendingActions?.length).toBe(1);
+    expect(result.reply).toContain("need your confirmation");
+    expect(result.reply).toContain("confirm ");
+  });
 });

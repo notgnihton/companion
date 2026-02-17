@@ -5,6 +5,7 @@ import { BackgroundSyncService } from "./background-sync.js";
 import { buildCalendarImportPreview, parseICS } from "./calendar-import.js";
 import { config } from "./config.js";
 import { generateDeadlineSuggestions } from "./deadline-suggestions.js";
+import { executePendingChatAction } from "./gemini-tools.js";
 import { OrchestratorRuntime } from "./orchestrator.js";
 import { EmailDigestService } from "./email-digest.js";
 import { getVapidPublicKey, hasStaticVapidKeys, sendPushNotification } from "./push.js";
@@ -111,6 +112,42 @@ app.get("/api/chat/history", (req, res) => {
   });
 
   return res.json({ history });
+});
+
+app.get("/api/chat/actions/pending", (_req, res) => {
+  return res.json({ actions: store.getPendingChatActions() });
+});
+
+app.post("/api/chat/actions/:id/confirm", (req, res) => {
+  const pendingAction = store.getPendingChatActionById(req.params.id);
+
+  if (!pendingAction) {
+    return res.status(404).json({ error: "Pending chat action not found" });
+  }
+
+  const result = executePendingChatAction(pendingAction, store);
+  store.deletePendingChatAction(pendingAction.id);
+
+  return res.json({
+    result,
+    pendingActions: store.getPendingChatActions()
+  });
+});
+
+app.post("/api/chat/actions/:id/cancel", (req, res) => {
+  const pendingAction = store.getPendingChatActionById(req.params.id);
+
+  if (!pendingAction) {
+    return res.status(404).json({ error: "Pending chat action not found" });
+  }
+
+  store.deletePendingChatAction(pendingAction.id);
+
+  return res.json({
+    actionId: pendingAction.id,
+    cancelled: true,
+    pendingActions: store.getPendingChatActions()
+  });
 });
 
 app.get("/api/export", (_req, res) => {

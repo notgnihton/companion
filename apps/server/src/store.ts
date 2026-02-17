@@ -45,6 +45,8 @@ import {
   ChatMessage,
   ChatMessageMetadata,
   ChatHistoryPage,
+  ChatActionType,
+  ChatPendingAction,
   GmailMessage
 } from "./types.js";
 import { makeId, nowIso } from "./utils.js";
@@ -112,6 +114,19 @@ export class RuntimeStore {
         metadata TEXT,
         insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
       );
+
+      CREATE TABLE IF NOT EXISTS chat_pending_actions (
+        id TEXT PRIMARY KEY,
+        actionType TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        expiresAt TEXT NOT NULL,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_chat_pending_actions_expiresAt
+        ON chat_pending_actions(expiresAt);
 
       CREATE TABLE IF NOT EXISTS email_digests (
         id TEXT PRIMARY KEY,
@@ -728,6 +743,103 @@ export class RuntimeStore {
       total,
       hasMore
     };
+  }
+
+  private parsePendingChatPayload(raw: string): Record<string, unknown> {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
+  private pruneExpiredPendingChatActions(referenceDate: Date = new Date()): void {
+    this.db.prepare("DELETE FROM chat_pending_actions WHERE expiresAt <= ?").run(referenceDate.toISOString());
+  }
+
+  createPendingChatAction(input: {
+    actionType: ChatActionType;
+    summary: string;
+    payload: Record<string, unknown>;
+    expiresAt?: string;
+  }): ChatPendingAction {
+    const createdAt = nowIso();
+    const defaultExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const action: ChatPendingAction = {
+      id: makeId("action"),
+      actionType: input.actionType,
+      summary: input.summary,
+      payload: input.payload,
+      createdAt,
+      expiresAt: input.expiresAt ?? defaultExpiresAt
+    };
+
+    this.db
+      .prepare(
+        "INSERT INTO chat_pending_actions (id, actionType, summary, payload, createdAt, expiresAt, insertOrder) VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(insertOrder), 0) + 1 FROM chat_pending_actions))"
+      )
+      .run(action.id, action.actionType, action.summary, JSON.stringify(action.payload), action.createdAt, action.expiresAt);
+
+    return action;
+  }
+
+  getPendingChatActions(referenceDate: Date = new Date()): ChatPendingAction[] {
+    this.pruneExpiredPendingChatActions(referenceDate);
+
+    const rows = this.db
+      .prepare("SELECT id, actionType, summary, payload, createdAt, expiresAt FROM chat_pending_actions ORDER BY insertOrder ASC")
+      .all() as Array<{
+      id: string;
+      actionType: string;
+      summary: string;
+      payload: string;
+      createdAt: string;
+      expiresAt: string;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      actionType: row.actionType as ChatActionType,
+      summary: row.summary,
+      payload: this.parsePendingChatPayload(row.payload),
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt
+    }));
+  }
+
+  getPendingChatActionById(id: string, referenceDate: Date = new Date()): ChatPendingAction | null {
+    this.pruneExpiredPendingChatActions(referenceDate);
+
+    const row = this.db
+      .prepare("SELECT id, actionType, summary, payload, createdAt, expiresAt FROM chat_pending_actions WHERE id = ?")
+      .get(id) as
+      | {
+          id: string;
+          actionType: string;
+          summary: string;
+          payload: string;
+          createdAt: string;
+          expiresAt: string;
+        }
+      | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      actionType: row.actionType as ChatActionType,
+      summary: row.summary,
+      payload: this.parsePendingChatPayload(row.payload),
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt
+    };
+  }
+
+  deletePendingChatAction(id: string): boolean {
+    const result = this.db.prepare("DELETE FROM chat_pending_actions WHERE id = ?").run(id);
+    return result.changes > 0;
   }
 
   private recordContextHistory(context: UserContext, timestamp: string): void {

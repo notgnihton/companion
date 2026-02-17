@@ -9,10 +9,10 @@ import {
   getGeminiClient
 } from "./gemini.js";
 import { Part } from "@google/generative-ai";
-import { functionDeclarations, executeFunctionCall } from "./gemini-tools.js";
+import { functionDeclarations, executeFunctionCall, executePendingChatAction } from "./gemini-tools.js";
 import { generateContentRecommendations } from "./content-recommendations.js";
 import { RuntimeStore } from "./store.js";
-import { ChatHistoryPage, ChatMessage, ChatMessageMetadata, UserContext } from "./types.js";
+import { ChatHistoryPage, ChatMessage, ChatMessageMetadata, ChatPendingAction, UserContext } from "./types.js";
 
 interface ChatContextResult {
   contextWindow: string;
@@ -293,6 +293,63 @@ function toGeminiMessages(history: ChatMessage[], userInput: string): GeminiMess
   return formatted;
 }
 
+interface ParsedActionCommand {
+  type: "confirm" | "cancel";
+  actionId: string;
+}
+
+function parseActionCommand(input: string): ParsedActionCommand | null {
+  const match = input.trim().match(/^(confirm|cancel)\s+([a-zA-Z0-9_-]+)$/i);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    type: match[1].toLowerCase() as ParsedActionCommand["type"],
+    actionId: match[2]
+  };
+}
+
+function extractPendingActions(value: unknown): ChatPendingAction[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const candidate = value as { pendingAction?: unknown; requiresConfirmation?: unknown };
+  if (!candidate.requiresConfirmation || !candidate.pendingAction) {
+    return [];
+  }
+
+  const pendingAction = candidate.pendingAction as Partial<ChatPendingAction>;
+  if (
+    typeof pendingAction.id !== "string" ||
+    typeof pendingAction.actionType !== "string" ||
+    typeof pendingAction.summary !== "string" ||
+    typeof pendingAction.createdAt !== "string" ||
+    typeof pendingAction.expiresAt !== "string" ||
+    typeof pendingAction.payload !== "object" ||
+    pendingAction.payload === null
+  ) {
+    return [];
+  }
+
+  return [pendingAction as ChatPendingAction];
+}
+
+function buildPendingActionFallbackReply(actions: ChatPendingAction[]): string {
+  if (actions.length === 0) {
+    return "I couldn't complete that request. Please try again.";
+  }
+
+  const lines = ["I prepared actions that need your confirmation before execution:"];
+  actions.forEach((action) => {
+    lines.push(`- ${action.summary}`);
+    lines.push(`  Confirm: confirm ${action.id}`);
+    lines.push(`  Cancel: cancel ${action.id}`);
+  });
+  return lines.join("\n");
+}
+
 export interface SendChatResult {
   reply: string;
   userMessage: ChatMessage;
@@ -308,6 +365,63 @@ export async function sendChatMessage(
   options: { now?: Date; geminiClient?: GeminiClient; useFunctionCalling?: boolean } = {}
 ): Promise<SendChatResult> {
   const now = options.now ?? new Date();
+  const actionCommand = parseActionCommand(userInput);
+
+  if (actionCommand) {
+    const userMessage = store.recordChatMessage("user", userInput);
+    const pendingAction = store.getPendingChatActionById(actionCommand.actionId, now);
+
+    let assistantReply: string;
+    let assistantMetadata: ChatMessageMetadata;
+
+    if (!pendingAction) {
+      assistantReply = `No pending action found for "${actionCommand.actionId}".`;
+      assistantMetadata = {
+        contextWindow: "",
+        pendingActions: store.getPendingChatActions(now)
+      };
+    } else if (actionCommand.type === "cancel") {
+      store.deletePendingChatAction(pendingAction.id);
+      assistantReply = `Cancelled action "${pendingAction.summary}".`;
+      assistantMetadata = {
+        contextWindow: "",
+        actionExecution: {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          status: "cancelled",
+          message: "Cancelled by user confirmation command."
+        },
+        pendingActions: store.getPendingChatActions(now)
+      };
+    } else {
+      const execution = executePendingChatAction(pendingAction, store);
+      store.deletePendingChatAction(pendingAction.id);
+
+      assistantReply = execution.message;
+      assistantMetadata = {
+        contextWindow: "",
+        actionExecution: {
+          actionId: execution.actionId,
+          actionType: execution.actionType,
+          status: execution.success ? "confirmed" : "failed",
+          message: execution.message
+        },
+        pendingActions: store.getPendingChatActions(now)
+      };
+    }
+
+    const assistantMessage = store.recordChatMessage("assistant", assistantReply, assistantMetadata);
+    const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
+
+    return {
+      reply: assistantMessage.content,
+      userMessage,
+      assistantMessage,
+      finishReason: "stop",
+      history: historyPage
+    };
+  }
+
   const gemini = options.geminiClient ?? getGeminiClient();
   const useFunctionCalling = options.useFunctionCalling ?? true;
   
@@ -319,7 +433,9 @@ export async function sendChatMessage(
   const systemInstruction = useFunctionCalling
     ? `You are Companion, a personal AI assistant for ${config.AXIS_USER_NAME}, a university student at UiS (University of Stavanger). 
 
-When you need information about the user's schedule, deadlines, journal entries, emails, or social media, use the available tools to fetch that data on demand. Keep responses concise, encouraging, and conversational.`
+When you need information about the user's schedule, deadlines, journal entries, emails, or social media, use the available tools to fetch that data on demand.
+For actions that change data, use queue* action tools and clearly request explicit user confirmation.
+Keep responses concise, encouraging, and conversational.`
     : buildSystemPrompt(config.AXIS_USER_NAME, contextWindow);
 
   const messages = toGeminiMessages(history, userInput);
@@ -339,6 +455,7 @@ When you need information about the user's schedule, deadlines, journal entries,
         totalTokens: response.usageMetadata.totalTokenCount
       }
     : undefined;
+  let pendingActionsFromTooling: ChatPendingAction[] = [];
 
   // Handle function calls if present
   if (response.functionCalls && response.functionCalls.length > 0) {
@@ -350,6 +467,7 @@ When you need information about the user's schedule, deadlines, journal entries,
         response: result.response
       };
     });
+    pendingActionsFromTooling = functionResponses.flatMap((fnResp) => extractPendingActions(fnResp.response));
 
     // Build function response messages
     const functionResponseParts = functionResponses.map((fnResp) => ({
@@ -384,16 +502,27 @@ When you need information about the user's schedule, deadlines, journal entries,
       totalUsage.promptTokens += response.usageMetadata.promptTokenCount;
       totalUsage.responseTokens += response.usageMetadata.candidatesTokenCount;
       totalUsage.totalTokens += response.usageMetadata.totalTokenCount;
+    } else if (response.usageMetadata && !totalUsage) {
+      totalUsage = {
+        promptTokens: response.usageMetadata.promptTokenCount,
+        responseTokens: response.usageMetadata.candidatesTokenCount,
+        totalTokens: response.usageMetadata.totalTokenCount
+      };
     }
   }
+
+  const finalReply = response.text.trim().length > 0
+    ? response.text
+    : buildPendingActionFallbackReply(pendingActionsFromTooling);
 
   const assistantMetadata: ChatMessageMetadata = {
     contextWindow,
     finishReason: response.finishReason,
-    usage: totalUsage
+    usage: totalUsage,
+    ...(pendingActionsFromTooling.length > 0 ? { pendingActions: store.getPendingChatActions(now) } : {})
   };
 
-  const assistantMessage = store.recordChatMessage("assistant", response.text, assistantMetadata);
+  const assistantMessage = store.recordChatMessage("assistant", finalReply, assistantMetadata);
 
   const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
 

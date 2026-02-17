@@ -6,11 +6,13 @@ import {
   handleSearchJournal,
   handleGetEmails,
   handleGetSocialDigest,
+  handleQueueDeadlineAction,
+  handleQueueScheduleBlock,
+  handleQueueJournalDraft,
+  executePendingChatAction,
   executeFunctionCall
 } from "./gemini-tools.js";
 import { RuntimeStore } from "./store.js";
-import { Deadline, JournalEntry, LectureEvent } from "./types.js";
-import fs from "fs";
 
 describe("gemini-tools", () => {
   let store: RuntimeStore;
@@ -21,8 +23,8 @@ describe("gemini-tools", () => {
   });
 
   describe("functionDeclarations", () => {
-    it("should define 5 function declarations", () => {
-      expect(functionDeclarations).toHaveLength(5);
+    it("should define 8 function declarations", () => {
+      expect(functionDeclarations).toHaveLength(8);
     });
 
     it("should include getSchedule function", () => {
@@ -53,6 +55,12 @@ describe("gemini-tools", () => {
       const getSocialDigest = functionDeclarations.find((f) => f.name === "getSocialDigest");
       expect(getSocialDigest).toBeDefined();
       expect(getSocialDigest?.description).toContain("social media");
+    });
+
+    it("should include queue action functions", () => {
+      expect(functionDeclarations.find((f) => f.name === "queueDeadlineAction")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "queueScheduleBlock")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "queueJournalDraft")).toBeDefined();
     });
   });
 
@@ -197,6 +205,103 @@ describe("gemini-tools", () => {
     });
   });
 
+  describe("queue action handlers", () => {
+    it("queues a deadline completion action", () => {
+      const deadline = store.createDeadline({
+        course: "DAT560",
+        task: "Assignment 2",
+        dueDate: "2026-02-20T12:00:00.000Z",
+        priority: "high",
+        completed: false
+      });
+
+      const result = handleQueueDeadlineAction(store, {
+        deadlineId: deadline.id,
+        action: "complete"
+      });
+
+      expect(result).toHaveProperty("requiresConfirmation", true);
+      if (!("pendingAction" in result)) {
+        throw new Error("Expected pendingAction in queue result");
+      }
+
+      expect(result.pendingAction.actionType).toBe("complete-deadline");
+      expect(result.confirmationCommand).toContain(`confirm ${result.pendingAction.id}`);
+      expect(store.getPendingChatActions()).toHaveLength(1);
+    });
+
+    it("queues a schedule block action", () => {
+      const result = handleQueueScheduleBlock(store, {
+        title: "DAT520 revision",
+        startTime: "2026-02-18T13:00:00.000Z",
+        durationMinutes: 90,
+        workload: "high"
+      });
+
+      expect(result).toHaveProperty("requiresConfirmation", true);
+      if (!("pendingAction" in result)) {
+        throw new Error("Expected pendingAction in queue result");
+      }
+
+      expect(result.pendingAction.actionType).toBe("create-schedule-block");
+      expect(store.getPendingChatActions()).toHaveLength(1);
+    });
+
+    it("queues a journal draft action", () => {
+      const result = handleQueueJournalDraft(store, {
+        content: "Draft reflection about today's lab."
+      });
+
+      expect(result).toHaveProperty("requiresConfirmation", true);
+      if (!("pendingAction" in result)) {
+        throw new Error("Expected pendingAction in queue result");
+      }
+
+      expect(result.pendingAction.actionType).toBe("create-journal-draft");
+      expect(store.getPendingChatActions()).toHaveLength(1);
+    });
+  });
+
+  describe("executePendingChatAction", () => {
+    it("executes queued deadline completion", () => {
+      const deadline = store.createDeadline({
+        course: "DAT560",
+        task: "Assignment 3",
+        dueDate: "2026-02-21T12:00:00.000Z",
+        priority: "high",
+        completed: false
+      });
+      const pending = store.createPendingChatAction({
+        actionType: "complete-deadline",
+        summary: "Complete deadline",
+        payload: { deadlineId: deadline.id }
+      });
+
+      const result = executePendingChatAction(pending, store);
+
+      expect(result.success).toBe(true);
+      expect(result.deadline?.completed).toBe(true);
+    });
+
+    it("executes queued schedule block creation", () => {
+      const pending = store.createPendingChatAction({
+        actionType: "create-schedule-block",
+        summary: "Create DAT600 block",
+        payload: {
+          title: "DAT600 writing",
+          startTime: "2026-02-22T09:00:00.000Z",
+          durationMinutes: 60,
+          workload: "medium"
+        }
+      });
+
+      const result = executePendingChatAction(pending, store);
+
+      expect(result.success).toBe(true);
+      expect(result.lecture?.title).toContain("DAT600");
+    });
+  });
+
   describe("executeFunctionCall", () => {
     it("should execute getSchedule function", () => {
       const result = executeFunctionCall("getSchedule", {}, store);
@@ -232,6 +337,25 @@ describe("gemini-tools", () => {
       expect(result.name).toBe("getSocialDigest");
       expect(result.response).toHaveProperty("youtube");
       expect(result.response).toHaveProperty("x");
+    });
+
+    it("should execute queueDeadlineAction function", () => {
+      const deadline = store.createDeadline({
+        course: "DAT520",
+        task: "Lab 4",
+        dueDate: "2026-02-24T12:00:00.000Z",
+        priority: "high",
+        completed: false
+      });
+
+      const result = executeFunctionCall(
+        "queueDeadlineAction",
+        { deadlineId: deadline.id, action: "snooze", snoozeHours: 24 },
+        store
+      );
+
+      expect(result.name).toBe("queueDeadlineAction");
+      expect(result.response).toHaveProperty("requiresConfirmation", true);
     });
 
     it("should throw error for unknown function", () => {

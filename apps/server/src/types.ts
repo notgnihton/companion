@@ -31,6 +31,28 @@ export interface Notification {
 
 export type ChatRole = "user" | "assistant";
 
+export type ChatActionType =
+  | "complete-deadline"
+  | "snooze-deadline"
+  | "create-schedule-block"
+  | "create-journal-draft";
+
+export interface ChatPendingAction {
+  id: string;
+  actionType: ChatActionType;
+  summary: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface ChatActionExecution {
+  actionId: string;
+  actionType: ChatActionType;
+  status: "confirmed" | "cancelled" | "failed";
+  message: string;
+}
+
 export interface ChatMessageMetadata {
   contextWindow?: string;
   finishReason?: string;
@@ -39,6 +61,8 @@ export interface ChatMessageMetadata {
     responseTokens?: number;
     totalTokens?: number;
   };
+  pendingActions?: ChatPendingAction[];
+  actionExecution?: ChatActionExecution;
 }
 
 export interface ChatMessage {
