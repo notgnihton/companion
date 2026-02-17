@@ -9,6 +9,8 @@ This file documents all environment variables required to run the Companion serv
 ### Server Configuration
 - `PORT` (default: 8787) — HTTP server port
 - `NODE_ENV` (recommended: "production") — Node.js environment
+- `DATABASE_URL` (optional, recommended on Railway) — PostgreSQL connection string used for persistent runtime snapshots
+- `SQLITE_DB_PATH` (default: `companion.db`) — Local SQLite runtime file path (restored from PostgreSQL snapshot when `DATABASE_URL` is set)
 
 ### User Configuration
 - `TIMEZONE` (required) — User's timezone (e.g., "America/New_York")
@@ -85,6 +87,8 @@ This file documents all environment variables required to run the Companion serv
 # Server config
 PORT=8787
 NODE_ENV=production
+DATABASE_URL=postgresql://user:pass@host:5432/railway
+SQLITE_DB_PATH=companion.db
 
 # User config
 TIMEZONE=America/New_York

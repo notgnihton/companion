@@ -19,7 +19,17 @@ Validation errors return HTTP `400` with:
 Response `200`:
 
 ```json
-{ "status": "ok" }
+{
+  "status": "ok",
+  "storage": {
+    "backend": "postgres-snapshot",
+    "sqlitePath": "/app/data/companion.db",
+    "snapshotRestoredAt": "2026-02-17T15:40:00.000Z",
+    "snapshotPersistedAt": "2026-02-17T15:45:00.000Z",
+    "snapshotSizeBytes": 284672,
+    "lastError": null
+  }
+}
 ```
 
 ## Dashboard

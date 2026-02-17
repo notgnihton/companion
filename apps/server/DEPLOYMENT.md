@@ -8,7 +8,7 @@ The Companion server is a Node.js application that provides:
 - AI chat powered by Google Gemini
 - Data sync services (Canvas LMS, TP EduCloud, GitHub courses, YouTube, X/Twitter)
 - Push notifications via Web Push
-- SQLite database for persistent storage
+- SQLite runtime store with optional PostgreSQL-backed snapshot persistence
 
 ## Prerequisites
 
@@ -103,16 +103,19 @@ curl https://your-railway-app.up.railway.app/api/dashboard
 
 ## Database Persistence
 
-Railway provides ephemeral storage by default. For SQLite persistence:
+Railway provides ephemeral storage by default. Companion supports two persistence modes:
 
-1. **Option A: Railway Volumes** (recommended)
+1. **Option A: PostgreSQL snapshots via `DATABASE_URL`** (recommended on Railway)
+   - Add a Railway PostgreSQL service and expose `DATABASE_URL`
+   - Server restores SQLite runtime state from PostgreSQL on boot
+   - Server auto-persists snapshots to PostgreSQL every ~30s and on shutdown
+   - No volume mount required
+
+2. **Option B: Railway Volume-backed SQLite**
    - In Railway dashboard, go to "Settings" → "Volumes"
    - Add a volume mounted at `/app/data`
-   - Update server code to use `/app/data/companion.sqlite`
-
-2. **Option B: External PostgreSQL** (future)
-   - Railway offers PostgreSQL as a service
-   - Migrate from SQLite to PostgreSQL for production-grade persistence
+   - Set `SQLITE_DB_PATH=/app/data/companion.sqlite`
+   - Useful fallback if PostgreSQL is unavailable
 
 ## Monitoring & Logs
 
@@ -138,9 +141,14 @@ Railway provides ephemeral storage by default. For SQLite persistence:
 - Verify Railway deployment URL is correct and accessible
 
 ### Database not persisting
-- Confirm Railway volume is mounted at `/app/data`
-- Check server logs for SQLite file path
-- Ensure server has write permissions to `/app/data`
+- If using PostgreSQL snapshots:
+  - Confirm `DATABASE_URL` is set and reachable
+  - Check startup log for `storage backend=postgres-snapshot`
+  - Check `/api/health` and `/api/sync/status` `storage` diagnostics
+- If using volume-backed SQLite:
+  - Confirm Railway volume is mounted at `/app/data`
+  - Set `SQLITE_DB_PATH=/app/data/companion.sqlite`
+  - Ensure server has write permissions to `/app/data`
 
 ## Continuous Deployment
 

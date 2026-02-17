@@ -21,6 +21,8 @@ const env = {
 
 const schema = z.object({
   PORT: z.coerce.number().default(8787),
+  DATABASE_URL: z.string().url().optional(),
+  SQLITE_DB_PATH: z.string().default("companion.db"),
   TIMEZONE: z.string().default("America/New_York"),
   USER_NAME: z.string().default("friend"),
   VAPID_PUBLIC_KEY: z.string().optional(),

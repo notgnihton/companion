@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import { resolve } from "path";
 import { z } from "zod";
 import { BackgroundSyncService } from "./background-sync.js";
 import { buildCalendarImportPreview, parseICS } from "./calendar-import.js";
@@ -30,12 +31,71 @@ import { GmailSyncService } from "./gmail-sync.js";
 import { buildStudyPlanCalendarIcs } from "./study-plan-export.js";
 import { generateWeeklyStudyPlan } from "./study-plan.js";
 import { generateContentRecommendations } from "./content-recommendations.js";
+import { PostgresRuntimeSnapshotStore } from "./postgres-persistence.js";
+import type { PostgresPersistenceDiagnostics } from "./postgres-persistence.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
 import { SyncFailureRecoveryTracker, SyncRecoveryPrompt } from "./sync-failure-recovery.js";
 import { nowIso } from "./utils.js";
 
 const app = express();
-const store = new RuntimeStore();
+
+interface RuntimePersistenceContext {
+  store: RuntimeStore;
+  sqlitePath: string;
+  backend: "sqlite" | "postgres-snapshot";
+  postgresSnapshotStore: PostgresRuntimeSnapshotStore | null;
+  restoredSnapshotAt: string | null;
+}
+
+function fallbackStorageDiagnostics(sqlitePath: string): PostgresPersistenceDiagnostics {
+  return {
+    backend: "sqlite",
+    sqlitePath: resolve(sqlitePath),
+    snapshotRestoredAt: null,
+    snapshotPersistedAt: null,
+    snapshotSizeBytes: 0,
+    lastError: null
+  };
+}
+
+async function initializeRuntimeStore(): Promise<RuntimePersistenceContext> {
+  const sqlitePath = config.SQLITE_DB_PATH;
+  const postgresUrl = config.DATABASE_URL;
+
+  if (!postgresUrl) {
+    return {
+      store: new RuntimeStore(sqlitePath),
+      sqlitePath,
+      backend: "sqlite",
+      postgresSnapshotStore: null,
+      restoredSnapshotAt: null
+    };
+  }
+
+  const postgresSnapshotStore = new PostgresRuntimeSnapshotStore(postgresUrl);
+  await postgresSnapshotStore.initialize();
+  const restoreResult = await postgresSnapshotStore.restoreToSqliteFile(sqlitePath);
+  const store = new RuntimeStore(sqlitePath);
+
+  await postgresSnapshotStore.persistSnapshot(store.serializeDatabase());
+  postgresSnapshotStore.startAutoSync(() => store.serializeDatabase(), 30_000);
+
+  return {
+    store,
+    sqlitePath,
+    backend: "postgres-snapshot",
+    postgresSnapshotStore,
+    restoredSnapshotAt: restoreResult.updatedAt
+  };
+}
+
+const persistenceContext = await initializeRuntimeStore();
+const store = persistenceContext.store;
+const storageDiagnostics = (): PostgresPersistenceDiagnostics =>
+  persistenceContext.postgresSnapshotStore
+    ? persistenceContext.postgresSnapshotStore.getDiagnostics(persistenceContext.sqlitePath)
+    : fallbackStorageDiagnostics(persistenceContext.sqlitePath);
+
 const runtime = new OrchestratorRuntime(store);
 const syncService = new BackgroundSyncService(store);
 const digestService = new EmailDigestService(store);
@@ -83,7 +143,10 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
+  res.json({
+    status: "ok",
+    storage: storageDiagnostics()
+  });
 });
 
 app.get("/api/dashboard", (_req, res) => {
@@ -1369,6 +1432,7 @@ app.post("/api/sync/process", async (_req, res) => {
 
 app.get("/api/sync/status", (_req, res) => {
   // Get data from various integrations
+  const storage = storageDiagnostics();
   const canvasData = store.getCanvasData();
   const githubData = store.getGitHubCourseData();
   const xData = store.getXData();
@@ -1383,6 +1447,7 @@ app.get("/api/sync/status", (_req, res) => {
   const gmailHasAccessToken = gmailConnection.connected ? gmailConnection.hasAccessToken : false;
 
   return res.json({
+    storage,
     canvas: {
       lastSyncAt: canvasData?.lastSyncedAt ?? null,
       status: canvasData ? "ok" : "not_synced",
@@ -1892,19 +1957,59 @@ async function fetchCalendarIcs(url: string): Promise<string | null> {
 }
 
 const server = app.listen(config.PORT, () => {
+  const storage = storageDiagnostics();
   // eslint-disable-next-line no-console
   console.log(`[axis-server] listening on http://localhost:${config.PORT}`);
+  // eslint-disable-next-line no-console
+  console.log(
+    `[axis-server] storage backend=${storage.backend} sqlite=${storage.sqlitePath}` +
+      (persistenceContext.restoredSnapshotAt
+        ? ` restoredSnapshotAt=${persistenceContext.restoredSnapshotAt}`
+        : "")
+  );
 });
 
+let shuttingDown = false;
+
 const shutdown = (): void => {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
+
   runtime.stop();
   syncService.stop();
   digestService.stop();
   tpSyncService.stop();
+  canvasSyncService.stop();
+  githubCourseSyncService.stop();
+  youtubeSyncService.stop();
   xSyncService.stop();
-  server.close(() => {
-    process.exit(0);
-  });
+  gmailSyncService.stop();
+
+  const finalize = async (): Promise<void> => {
+    if (persistenceContext.postgresSnapshotStore) {
+      try {
+        await persistenceContext.postgresSnapshotStore.flush(() => store.serializeDatabase());
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error("[axis-server] failed final PostgreSQL snapshot flush", error);
+      }
+
+      try {
+        await persistenceContext.postgresSnapshotStore.close();
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error("[axis-server] failed closing PostgreSQL snapshot store", error);
+      }
+    }
+
+    server.close(() => {
+      process.exit(0);
+    });
+  };
+
+  void finalize();
 };
 
 process.on("SIGINT", shutdown);

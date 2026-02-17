@@ -4307,6 +4307,14 @@ export class RuntimeStore {
   }
 
   /**
+   * Serialize the current SQLite database state.
+   * Used for external snapshot persistence (e.g. PostgreSQL-backed backups).
+   */
+  serializeDatabase(): Buffer {
+    return this.db.serialize();
+  }
+
+  /**
    * Set Canvas data
    */
   setCanvasData(data: import("./types.js").CanvasData): void {

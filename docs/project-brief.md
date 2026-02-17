@@ -107,7 +107,7 @@ The key difference from a generic chatbot: Companion has **context**. It knows y
 | **Frontend** (`apps/web`) | ✅ Deployed | GitHub Pages — static files only, auto-deploys on push to `main` |
 | **Backend** (`apps/server`) | ✅ Deployment ready | Railway-ready with Dockerfile, health checks, and workflow. Awaiting production deployment. |
 | **API calls** | ✅ Configurable | In dev: Vite proxies `/api/*` → `localhost:8787`. In prod: configurable via `VITE_API_BASE_URL` secret. |
-| **Database** | ⚠️ Ephemeral | SQLite in-memory on Railway (ephemeral storage). For persistence, add Railway volume or migrate to PostgreSQL. |
+| **Database** | ✅ Persistent-ready | SQLite runtime store with PostgreSQL snapshot persistence when `DATABASE_URL` is configured (Railway-friendly). |
 | **Cron jobs/sync** | ✅ Ready | Canvas, TP, GitHub, YouTube, X sync services run automatically when server starts. |
 | **Push notifications** | ✅ Ready | Web Push configured with VAPID keys (set via Railway environment variables). |
 
@@ -115,7 +115,7 @@ The key difference from a generic chatbot: Companion has **context**. It knows y
 - Backend is production-ready with Docker, health checks, and deployment workflow
 - To deploy: Connect Railway to the GitHub repo, set environment variables (see `apps/server/ENV.md`), and Railway will auto-deploy
 - Frontend can connect to production API by setting `VITE_API_BASE_URL` GitHub secret to the Railway URL
-- Database persistence requires adding a Railway volume at `/app/data` or migrating to PostgreSQL
+- Recommended persistence on Railway: configure `DATABASE_URL` so runtime snapshots restore/persist automatically
 
 ## LLM Architecture: Gemini with Tools
 
@@ -378,4 +378,5 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `pwa-custom-icon-assets` | frontend-engineer | Add production PWA icon assets (192/512/maskable + Apple touch icon) and wire manifest/index metadata so iOS Home Screen installs show Companion branding. |
 | ✅ done | `chat-agent-indicator-cleanup` | frontend-engineer | Remove irrelevant agent-running status from chat surface so top context cards stay focused on user-facing planning signals. |
 | ✅ done | `github-pat-syllabus-sync` | backend-engineer | Support private GitHub course ingestion with `GITHUB_PAT`, expose `/api/sync/github` + `/api/github/course-content`, and persist extracted syllabus/course-info docs for chat context. |
+| ✅ done | `postgres-database-url-persistence` | backend-engineer | Add PostgreSQL snapshot persistence behind `DATABASE_URL`: restore SQLite runtime state on boot, auto-persist snapshots on interval/shutdown, and expose active storage backend diagnostics. |
 | ⬜ todo | `integration-health-log-api` | backend-engineer | Persist TP/Canvas/Gmail sync attempt history (success/failure, latency, root-cause category) and expose an API for troubleshooting and reliability analytics. |
