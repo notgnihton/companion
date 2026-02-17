@@ -985,6 +985,31 @@ const nutritionSummaryQuerySchema = z.object({
   date: nutritionDateSchema.optional()
 });
 
+const nutritionTargetProfileUpsertSchema = z
+  .object({
+    date: nutritionDateSchema.optional(),
+    weightKg: z.number().min(0).max(500).nullable().optional(),
+    maintenanceCalories: z.number().min(0).max(10000).nullable().optional(),
+    surplusCalories: z.number().min(-5000).max(5000).nullable().optional(),
+    targetCalories: z.number().min(0).max(15000).nullable().optional(),
+    targetProteinGrams: z.number().min(0).max(1000).nullable().optional(),
+    targetCarbsGrams: z.number().min(0).max(1500).nullable().optional(),
+    targetFatGrams: z.number().min(0).max(600).nullable().optional()
+  })
+  .refine(
+    (value) =>
+      [
+        "weightKg",
+        "maintenanceCalories",
+        "surplusCalories",
+        "targetCalories",
+        "targetProteinGrams",
+        "targetCarbsGrams",
+        "targetFatGrams"
+      ].some((field) => Object.prototype.hasOwnProperty.call(value, field)),
+    "At least one target profile field is required"
+  );
+
 const nutritionMealPlanCreateSchema = z.object({
   title: z.string().trim().min(1).max(160),
   scheduledFor: z.string().datetime(),
@@ -1955,6 +1980,26 @@ app.get("/api/nutrition/summary", (req, res) => {
 
   const summary = store.getNutritionDailySummary(parsed.data.date ?? new Date());
   return res.json({ summary });
+});
+
+app.get("/api/nutrition/targets", (req, res) => {
+  const parsed = nutritionSummaryQuerySchema.safeParse(req.query ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid nutrition target-profile query", issues: parsed.error.issues });
+  }
+
+  const profile = store.getNutritionTargetProfile(parsed.data.date ?? new Date());
+  return res.json({ profile });
+});
+
+app.put("/api/nutrition/targets", (req, res) => {
+  const parsed = nutritionTargetProfileUpsertSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid nutrition target-profile payload", issues: parsed.error.issues });
+  }
+
+  const profile = store.upsertNutritionTargetProfile(parsed.data);
+  return res.json({ profile });
 });
 
 app.get("/api/nutrition/meals", (req, res) => {

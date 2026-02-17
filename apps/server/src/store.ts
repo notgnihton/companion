@@ -39,6 +39,7 @@ import {
   NutritionDailySummary,
   NutritionMeal,
   NutritionMealPlanBlock,
+  NutritionTargetProfile,
   NutritionMealType,
   StudyPlanSession,
   StudyPlanSessionRecord,
@@ -98,6 +99,7 @@ export class RuntimeStore {
   private readonly maxGoals = 100;
   private readonly maxNutritionMeals = 5000;
   private readonly maxNutritionMealPlanBlocks = 600;
+  private readonly maxNutritionTargetProfiles = 4000;
   private readonly maxContextHistory = 500;
   private readonly maxCheckInsPerItem = 400;
   private readonly maxStudyPlanSessions = 5000;
@@ -323,6 +325,23 @@ export class RuntimeStore {
 
       CREATE INDEX IF NOT EXISTS idx_nutrition_meal_plan_blocks_scheduledFor
         ON nutrition_meal_plan_blocks(scheduledFor DESC);
+
+      CREATE TABLE IF NOT EXISTS nutrition_target_profiles (
+        dateKey TEXT PRIMARY KEY,
+        weightKg REAL,
+        maintenanceCalories REAL,
+        surplusCalories REAL,
+        targetCalories REAL,
+        targetProteinGrams REAL,
+        targetCarbsGrams REAL,
+        targetFatGrams REAL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_nutrition_target_profiles_updatedAt
+        ON nutrition_target_profiles(updatedAt DESC);
 
       CREATE TABLE IF NOT EXISTS study_plan_sessions (
         sessionId TEXT PRIMARY KEY,
@@ -2768,6 +2787,61 @@ export class RuntimeStore {
     return Math.round(clamped * 10) / 10;
   }
 
+  private clampSignedNutritionMetric(value: number, fallback = 0, min = -5000, max = 5000): number {
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+    const clamped = Math.min(max, Math.max(min, value));
+    return Math.round(clamped * 10) / 10;
+  }
+
+  private toOptionalMetric(value: unknown, max: number): number | null {
+    if (typeof value !== "number") {
+      return null;
+    }
+    return this.clampNutritionMetric(value, 0, max);
+  }
+
+  private toOptionalSignedMetric(value: unknown, min: number, max: number): number | null {
+    if (typeof value !== "number") {
+      return null;
+    }
+    return this.clampSignedNutritionMetric(value, 0, min, max);
+  }
+
+  private deriveNutritionTargetsFromSettings(input: {
+    weightKg: number | null;
+    maintenanceCalories: number | null;
+    surplusCalories: number | null;
+  }): {
+    targetCalories: number;
+    targetProteinGrams: number;
+    targetCarbsGrams: number;
+    targetFatGrams: number;
+  } | null {
+    if (
+      typeof input.weightKg !== "number" ||
+      typeof input.maintenanceCalories !== "number" ||
+      typeof input.surplusCalories !== "number"
+    ) {
+      return null;
+    }
+
+    const targetCalories = this.clampNutritionMetric(input.maintenanceCalories + input.surplusCalories, 0, 15000);
+    const weightLb = input.weightKg * 2.2046226218;
+    const targetProteinGrams = this.clampNutritionMetric(weightLb * 0.8, 0, 1000);
+    const targetFatGrams = this.clampNutritionMetric(weightLb * 0.4, 0, 600);
+    const remainingCalories = Math.max(0, targetCalories - targetProteinGrams * 4 - targetFatGrams * 9);
+    const targetCarbsGrams = this.clampNutritionMetric(remainingCalories / 4, 0, 1500);
+
+    return {
+      targetCalories,
+      targetProteinGrams,
+      targetCarbsGrams,
+      targetFatGrams
+    };
+  }
+
   private normalizeIsoOrNow(value: string | undefined): string {
     if (typeof value !== "string") {
       return nowIso();
@@ -3131,10 +3205,189 @@ export class RuntimeStore {
     return result.changes > 0;
   }
 
+  getNutritionTargetProfile(date: string | Date = new Date()): NutritionTargetProfile | null {
+    const dateKey = this.toDateKey(date);
+    const row = this.db.prepare("SELECT * FROM nutrition_target_profiles WHERE dateKey = ?").get(dateKey) as
+      | {
+          dateKey: string;
+          weightKg: number | null;
+          maintenanceCalories: number | null;
+          surplusCalories: number | null;
+          targetCalories: number | null;
+          targetProteinGrams: number | null;
+          targetCarbsGrams: number | null;
+          targetFatGrams: number | null;
+          createdAt: string;
+          updatedAt: string;
+        }
+      | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      date: row.dateKey,
+      ...(typeof row.weightKg === "number" ? { weightKg: this.clampNutritionMetric(row.weightKg, 0, 500) } : {}),
+      ...(typeof row.maintenanceCalories === "number"
+        ? { maintenanceCalories: this.clampNutritionMetric(row.maintenanceCalories, 0, 10000) }
+        : {}),
+      ...(typeof row.surplusCalories === "number"
+        ? { surplusCalories: this.clampSignedNutritionMetric(row.surplusCalories, 0, -5000, 5000) }
+        : {}),
+      ...(typeof row.targetCalories === "number"
+        ? { targetCalories: this.clampNutritionMetric(row.targetCalories, 0, 15000) }
+        : {}),
+      ...(typeof row.targetProteinGrams === "number"
+        ? { targetProteinGrams: this.clampNutritionMetric(row.targetProteinGrams, 0, 1000) }
+        : {}),
+      ...(typeof row.targetCarbsGrams === "number"
+        ? { targetCarbsGrams: this.clampNutritionMetric(row.targetCarbsGrams, 0, 1500) }
+        : {}),
+      ...(typeof row.targetFatGrams === "number"
+        ? { targetFatGrams: this.clampNutritionMetric(row.targetFatGrams, 0, 600) }
+        : {}),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt
+    };
+  }
+
+  upsertNutritionTargetProfile(entry: {
+    date?: string | Date;
+    weightKg?: number | null;
+    maintenanceCalories?: number | null;
+    surplusCalories?: number | null;
+    targetCalories?: number | null;
+    targetProteinGrams?: number | null;
+    targetCarbsGrams?: number | null;
+    targetFatGrams?: number | null;
+  }): NutritionTargetProfile {
+    const dateKey = this.toDateKey(entry.date ?? new Date());
+    const existing = this.getNutritionTargetProfile(dateKey);
+    const now = nowIso();
+
+    const has = (field: string): boolean => Object.prototype.hasOwnProperty.call(entry, field);
+
+    let weightKg = has("weightKg")
+      ? this.toOptionalMetric(entry.weightKg, 500)
+      : existing?.weightKg ?? null;
+    let maintenanceCalories = has("maintenanceCalories")
+      ? this.toOptionalMetric(entry.maintenanceCalories, 10000)
+      : existing?.maintenanceCalories ?? null;
+    let surplusCalories = has("surplusCalories")
+      ? this.toOptionalSignedMetric(entry.surplusCalories, -5000, 5000)
+      : existing?.surplusCalories ?? null;
+    let targetCalories = has("targetCalories")
+      ? this.toOptionalMetric(entry.targetCalories, 15000)
+      : existing?.targetCalories ?? null;
+    let targetProteinGrams = has("targetProteinGrams")
+      ? this.toOptionalMetric(entry.targetProteinGrams, 1000)
+      : existing?.targetProteinGrams ?? null;
+    let targetCarbsGrams = has("targetCarbsGrams")
+      ? this.toOptionalMetric(entry.targetCarbsGrams, 1500)
+      : existing?.targetCarbsGrams ?? null;
+    let targetFatGrams = has("targetFatGrams")
+      ? this.toOptionalMetric(entry.targetFatGrams, 600)
+      : existing?.targetFatGrams ?? null;
+
+    const settingsChanged = has("weightKg") || has("maintenanceCalories") || has("surplusCalories");
+    const targetsChanged = has("targetCalories") || has("targetProteinGrams") || has("targetCarbsGrams") || has("targetFatGrams");
+
+    const derived = this.deriveNutritionTargetsFromSettings({
+      weightKg,
+      maintenanceCalories,
+      surplusCalories
+    });
+
+    if (derived) {
+      if (settingsChanged && !targetsChanged) {
+        targetCalories = derived.targetCalories;
+        targetProteinGrams = derived.targetProteinGrams;
+        targetCarbsGrams = derived.targetCarbsGrams;
+        targetFatGrams = derived.targetFatGrams;
+      } else {
+        targetCalories = targetCalories ?? derived.targetCalories;
+        targetProteinGrams = targetProteinGrams ?? derived.targetProteinGrams;
+        targetCarbsGrams = targetCarbsGrams ?? derived.targetCarbsGrams;
+        targetFatGrams = targetFatGrams ?? derived.targetFatGrams;
+      }
+    }
+
+    if (existing) {
+      this.db
+        .prepare(
+          `UPDATE nutrition_target_profiles SET
+            weightKg = ?,
+            maintenanceCalories = ?,
+            surplusCalories = ?,
+            targetCalories = ?,
+            targetProteinGrams = ?,
+            targetCarbsGrams = ?,
+            targetFatGrams = ?,
+            updatedAt = ?
+           WHERE dateKey = ?`
+        )
+        .run(
+          weightKg,
+          maintenanceCalories,
+          surplusCalories,
+          targetCalories,
+          targetProteinGrams,
+          targetCarbsGrams,
+          targetFatGrams,
+          now,
+          dateKey
+        );
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO nutrition_target_profiles (
+            dateKey,
+            weightKg,
+            maintenanceCalories,
+            surplusCalories,
+            targetCalories,
+            targetProteinGrams,
+            targetCarbsGrams,
+            targetFatGrams,
+            createdAt,
+            updatedAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          dateKey,
+          weightKg,
+          maintenanceCalories,
+          surplusCalories,
+          targetCalories,
+          targetProteinGrams,
+          targetCarbsGrams,
+          targetFatGrams,
+          now,
+          now
+        );
+      this.trimNutritionTargetProfiles();
+    }
+
+    return this.getNutritionTargetProfile(dateKey) ?? {
+      date: dateKey,
+      ...(typeof weightKg === "number" ? { weightKg } : {}),
+      ...(typeof maintenanceCalories === "number" ? { maintenanceCalories } : {}),
+      ...(typeof surplusCalories === "number" ? { surplusCalories } : {}),
+      ...(typeof targetCalories === "number" ? { targetCalories } : {}),
+      ...(typeof targetProteinGrams === "number" ? { targetProteinGrams } : {}),
+      ...(typeof targetCarbsGrams === "number" ? { targetCarbsGrams } : {}),
+      ...(typeof targetFatGrams === "number" ? { targetFatGrams } : {}),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now
+    };
+  }
+
   getNutritionDailySummary(date: string | Date = new Date()): NutritionDailySummary {
     const dateKey = this.toDateKey(date);
     const meals = this.getNutritionMeals({ date: dateKey, limit: 1000 });
     const mealPlanBlocks = this.getNutritionMealPlanBlocks({ date: dateKey, limit: 500 });
+    const targetProfile = this.getNutritionTargetProfile(dateKey);
 
     const totals = meals.reduce(
       (acc, meal) => {
@@ -3160,6 +3413,20 @@ export class RuntimeStore {
         carbsGrams: this.clampNutritionMetric(totals.carbsGrams, 0, 10000),
         fatGrams: this.clampNutritionMetric(totals.fatGrams, 0, 6000)
       },
+      targetProfile,
+      remainingToTarget:
+        targetProfile &&
+        typeof targetProfile.targetCalories === "number" &&
+        typeof targetProfile.targetProteinGrams === "number" &&
+        typeof targetProfile.targetCarbsGrams === "number" &&
+        typeof targetProfile.targetFatGrams === "number"
+          ? {
+              calories: Math.round((targetProfile.targetCalories - totals.calories) * 10) / 10,
+              proteinGrams: Math.round((targetProfile.targetProteinGrams - totals.proteinGrams) * 10) / 10,
+              carbsGrams: Math.round((targetProfile.targetCarbsGrams - totals.carbsGrams) * 10) / 10,
+              fatGrams: Math.round((targetProfile.targetFatGrams - totals.fatGrams) * 10) / 10
+            }
+          : null,
       mealsLogged: meals.length,
       meals,
       mealPlanBlocks
@@ -4497,6 +4764,23 @@ export class RuntimeStore {
         )`
       )
       .run(count - this.maxNutritionMealPlanBlocks);
+  }
+
+  private trimNutritionTargetProfiles(): void {
+    const count = (
+      this.db.prepare("SELECT COUNT(*) as count FROM nutrition_target_profiles").get() as { count: number }
+    ).count;
+    if (count <= this.maxNutritionTargetProfiles) {
+      return;
+    }
+
+    this.db
+      .prepare(
+        `DELETE FROM nutrition_target_profiles WHERE dateKey IN (
+          SELECT dateKey FROM nutrition_target_profiles ORDER BY updatedAt ASC LIMIT ?
+        )`
+      )
+      .run(count - this.maxNutritionTargetProfiles);
   }
 
   private trimAuthSessions(): void {

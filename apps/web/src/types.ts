@@ -276,6 +276,19 @@ export interface NutritionMealPlanBlock {
   updatedAt: string;
 }
 
+export interface NutritionTargetProfile {
+  date: string;
+  weightKg?: number;
+  maintenanceCalories?: number;
+  surplusCalories?: number;
+  targetCalories?: number;
+  targetProteinGrams?: number;
+  targetCarbsGrams?: number;
+  targetFatGrams?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface NutritionDailySummary {
   date: string;
   totals: {
@@ -284,6 +297,13 @@ export interface NutritionDailySummary {
     carbsGrams: number;
     fatGrams: number;
   };
+  targetProfile: NutritionTargetProfile | null;
+  remainingToTarget: {
+    calories: number;
+    proteinGrams: number;
+    carbsGrams: number;
+    fatGrams: number;
+  } | null;
   mealsLogged: number;
   meals: NutritionMeal[];
   mealPlanBlocks: NutritionMealPlanBlock[];

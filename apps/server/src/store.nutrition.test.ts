@@ -42,6 +42,8 @@ describe("RuntimeStore - nutrition", () => {
     expect(summary.totals.proteinGrams).toBe(86);
     expect(summary.totals.carbsGrams).toBe(144);
     expect(summary.totals.fatGrams).toBe(32);
+    expect(summary.targetProfile).toBeNull();
+    expect(summary.remainingToTarget).toBeNull();
   });
 
   it("filters meals by date and supports deletion", () => {
@@ -105,5 +107,56 @@ describe("RuntimeStore - nutrition", () => {
 
     expect(store.deleteNutritionMealPlanBlock(created.id)).toBe(true);
     expect(store.getNutritionMealPlanBlockById(created.id)).toBeNull();
+  });
+
+  it("stores daily nutrition target profile and derives macro targets from settings", () => {
+    const profile = store.upsertNutritionTargetProfile({
+      date: "2026-02-17",
+      weightKg: 73,
+      maintenanceCalories: 2621,
+      surplusCalories: 300
+    });
+
+    expect(profile.date).toBe("2026-02-17");
+    expect(profile.weightKg).toBe(73);
+    expect(profile.maintenanceCalories).toBe(2621);
+    expect(profile.surplusCalories).toBe(300);
+    expect(profile.targetCalories).toBe(2921);
+    expect(profile.targetProteinGrams).toBeCloseTo(128.7, 1);
+    expect(profile.targetFatGrams).toBeCloseTo(64.4, 1);
+    expect(profile.targetCarbsGrams).toBeCloseTo(456.7, 1);
+
+    const fetched = store.getNutritionTargetProfile("2026-02-17");
+    expect(fetched).not.toBeNull();
+    expect(fetched?.targetCalories).toBe(2921);
+  });
+
+  it("includes remaining-to-target deltas in daily summary and supports explicit target overrides", () => {
+    store.upsertNutritionTargetProfile({
+      date: "2026-02-17",
+      weightKg: 73,
+      maintenanceCalories: 2621,
+      surplusCalories: 300,
+      targetProteinGrams: 140
+    });
+
+    store.createNutritionMeal({
+      name: "Breakfast",
+      mealType: "breakfast",
+      consumedAt: "2026-02-17T08:00:00.000Z",
+      calories: 500,
+      proteinGrams: 30,
+      carbsGrams: 60,
+      fatGrams: 10
+    });
+
+    const summary = store.getNutritionDailySummary("2026-02-17");
+    expect(summary.targetProfile).not.toBeNull();
+    expect(summary.targetProfile?.targetProteinGrams).toBe(140);
+    expect(summary.remainingToTarget).not.toBeNull();
+    expect(summary.remainingToTarget?.calories).toBeCloseTo(2421, 1);
+    expect(summary.remainingToTarget?.proteinGrams).toBeCloseTo(110, 1);
+    expect(summary.remainingToTarget?.carbsGrams).toBeCloseTo(396.7, 1);
+    expect(summary.remainingToTarget?.fatGrams).toBeCloseTo(54.4, 1);
   });
 });

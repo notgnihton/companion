@@ -16,6 +16,7 @@ import {
   NutritionDailySummary,
   NutritionMeal,
   NutritionMealPlanBlock,
+  NutritionTargetProfile,
   DeadlineStatusConfirmation,
   JournalEntry,
   JournalSyncPayload,
@@ -924,6 +925,17 @@ export interface NutritionMealPlanUpsertPayload {
   notes?: string;
 }
 
+export interface NutritionTargetProfileUpsertPayload {
+  date?: string;
+  weightKg?: number | null;
+  maintenanceCalories?: number | null;
+  surplusCalories?: number | null;
+  targetCalories?: number | null;
+  targetProteinGrams?: number | null;
+  targetCarbsGrams?: number | null;
+  targetFatGrams?: number | null;
+}
+
 export async function getNutritionSummary(date?: string): Promise<NutritionDailySummary | null> {
   const params = new URLSearchParams();
   if (date) {
@@ -936,6 +948,37 @@ export async function getNutritionSummary(date?: string): Promise<NutritionDaily
   try {
     const response = await jsonOrThrow<{ summary: NutritionDailySummary }>(endpoint);
     return response.summary;
+  } catch {
+    return null;
+  }
+}
+
+export async function getNutritionTargetProfile(date?: string): Promise<NutritionTargetProfile | null> {
+  const params = new URLSearchParams();
+  if (date) {
+    params.set("date", date);
+  }
+
+  const query = params.toString();
+  const endpoint = query ? `/api/nutrition/targets?${query}` : "/api/nutrition/targets";
+
+  try {
+    const response = await jsonOrThrow<{ profile: NutritionTargetProfile | null }>(endpoint);
+    return response.profile;
+  } catch {
+    return null;
+  }
+}
+
+export async function upsertNutritionTargetProfile(
+  payload: NutritionTargetProfileUpsertPayload
+): Promise<NutritionTargetProfile | null> {
+  try {
+    const response = await jsonOrThrow<{ profile: NutritionTargetProfile }>("/api/nutrition/targets", {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    });
+    return response.profile;
   } catch {
     return null;
   }

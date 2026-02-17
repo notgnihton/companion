@@ -85,7 +85,28 @@ Response `200`:
 
 ### `GET /api/nutrition/summary?date=YYYY-MM-DD`
 
-Returns daily macro totals (`calories`, `proteinGrams`, `carbsGrams`, `fatGrams`) plus meals and meal-plan blocks.
+Returns daily macro totals (`calories`, `proteinGrams`, `carbsGrams`, `fatGrams`) plus meals, meal-plan blocks, optional `targetProfile`, and computed `remainingToTarget`.
+
+### `GET /api/nutrition/targets?date=YYYY-MM-DD`
+
+Returns the saved nutrition target profile for a specific day (or today when omitted).
+
+### `PUT /api/nutrition/targets`
+
+Creates or updates the nutrition target profile for a day.
+
+Request fields:
+
+- `date` (`YYYY-MM-DD`, optional; defaults to today)
+- `weightKg` (`number | null`, optional)
+- `maintenanceCalories` (`number | null`, optional)
+- `surplusCalories` (`number | null`, optional)
+- `targetCalories` (`number | null`, optional)
+- `targetProteinGrams` (`number | null`, optional)
+- `targetCarbsGrams` (`number | null`, optional)
+- `targetFatGrams` (`number | null`, optional)
+
+When `weightKg`, `maintenanceCalories`, and `surplusCalories` are present, target macros are auto-derived unless explicitly overridden in the same payload.
 
 ### `GET /api/nutrition/meals?date=YYYY-MM-DD&limit=50`
 

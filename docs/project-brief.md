@@ -303,7 +303,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `haptic-feedback-system` | frontend-engineer | Integrate Vibration API for tactile feedback on task completions, timer events, and critical notifications to make interactions feel native on iPhone. |
 | ✅ done | `sync-status-indicator` | frontend-engineer | Add persistent sync status badge showing online/offline state, pending queue count, and last sync timestamp so users know when data is safely persisted. |
 | ✅ done | `pull-to-refresh-gesture` | frontend-engineer | Add pull-to-refresh gesture to all list views (journal, schedule, deadlines) using touch event handlers for familiar iPhone UX pattern. |
-| | | | |
+| ✅ done | `nutrition-target-profile-persistence` | backend-engineer | Persist per-day nutrition target settings (weight, maintenance/surplus calories, macro targets), expose typed `GET/PUT /api/nutrition/targets`, and include `targetProfile` + `remainingToTarget` in nutrition summary responses. Tracked in issue #359. |
 | | **— Phase 2: Conversational AI & Data Integrations —** | | |
 | ✅ done | `gemini-client` | backend-engineer | Add Gemini API client module (`apps/server/src/gemini.ts`) with typed request/response, context window builder, and robust provider error handling. Store API key as `GEMINI_API_KEY` env var. |
 | ✅ done | `chat-api` | backend-engineer | Add POST /api/chat (send message) and GET /api/chat/history (paginated) endpoints. Each request builds a context window from schedule, deadlines, recent journals, Canvas data, and user state, then calls Gemini. Persist chat history in store. |

@@ -84,9 +84,80 @@ Response:
       "carbsGrams": 201,
       "fatGrams": 58
     },
+    "targetProfile": {
+      "date": "2026-02-17",
+      "weightKg": 73,
+      "maintenanceCalories": 2621,
+      "surplusCalories": 300,
+      "targetCalories": 2921,
+      "targetProteinGrams": 128.7,
+      "targetCarbsGrams": 456.7,
+      "targetFatGrams": 64.4,
+      "createdAt": "2026-02-17T07:00:00.000Z",
+      "updatedAt": "2026-02-17T07:00:00.000Z"
+    },
+    "remainingToTarget": {
+      "calories": 1061,
+      "proteinGrams": -3.3,
+      "carbsGrams": 255.7,
+      "fatGrams": 6.4
+    },
     "mealsLogged": 3,
     "meals": [],
     "mealPlanBlocks": []
+  }
+}
+```
+
+### GET `/api/nutrition/targets?date=YYYY-MM-DD`
+
+Response:
+
+```json
+{
+  "profile": {
+    "date": "2026-02-17",
+    "weightKg": 73,
+    "maintenanceCalories": 2621,
+    "surplusCalories": 300,
+    "targetCalories": 2921,
+    "targetProteinGrams": 128.7,
+    "targetCarbsGrams": 456.7,
+    "targetFatGrams": 64.4,
+    "createdAt": "2026-02-17T07:00:00.000Z",
+    "updatedAt": "2026-02-17T07:00:00.000Z"
+  }
+}
+```
+
+### PUT `/api/nutrition/targets`
+
+Request:
+
+```json
+{
+  "date": "2026-02-17",
+  "weightKg": 73,
+  "maintenanceCalories": 2621,
+  "surplusCalories": 300
+}
+```
+
+Response:
+
+```json
+{
+  "profile": {
+    "date": "2026-02-17",
+    "weightKg": 73,
+    "maintenanceCalories": 2621,
+    "surplusCalories": 300,
+    "targetCalories": 2921,
+    "targetProteinGrams": 128.7,
+    "targetCarbsGrams": 456.7,
+    "targetFatGrams": 64.4,
+    "createdAt": "2026-02-17T07:00:00.000Z",
+    "updatedAt": "2026-02-17T07:00:00.000Z"
   }
 }
 ```
