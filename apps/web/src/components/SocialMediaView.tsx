@@ -53,13 +53,6 @@ function formatCachedLabel(cachedAt: string | null): string {
   return `Cached ${timestamp.toLocaleString()}`;
 }
 
-function hasSocialContent(feed: SocialMediaFeed | null): boolean {
-  if (!feed) {
-    return false;
-  }
-  return feed.youtube.videos.length > 0 || feed.x.tweets.length > 0;
-}
-
 function buildSyncErrorMessage(result: SocialMediaSyncResult): string | null {
   const parts: string[] = [];
   if (!result.youtube.success) {
@@ -71,6 +64,15 @@ function buildSyncErrorMessage(result: SocialMediaSyncResult): string | null {
   return parts.length > 0 ? parts.join(" | ") : null;
 }
 
+function shouldAttemptBootstrapSync(feed: SocialMediaFeed | null): boolean {
+  if (!feed) {
+    return true;
+  }
+  const youtubeNeverSynced = !feed.youtube.lastSyncedAt;
+  const xNeverSynced = !feed.x.lastSyncedAt;
+  return youtubeNeverSynced || xNeverSynced;
+}
+
 export function SocialMediaView(): JSX.Element {
   const [feed, setFeed] = useState<SocialMediaFeed | null>(() => loadSocialMediaCache());
   const [loading, setLoading] = useState<boolean>(() => loadSocialMediaCache() === null);
@@ -80,9 +82,11 @@ export function SocialMediaView(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<SocialFilter>("all");
 
-  const loadFeed = async (): Promise<SocialMediaFeed | null> => {
+  const loadFeed = async (options: { clearError?: boolean } = {}): Promise<SocialMediaFeed | null> => {
     try {
-      setError(null);
+      if (options.clearError !== false) {
+        setError(null);
+      }
       const next = await getSocialMediaFeed();
       setFeed(next);
       setCachedAt(loadSocialMediaCachedAt());
@@ -104,16 +108,22 @@ export function SocialMediaView(): JSX.Element {
 
     const bootstrap = async (): Promise<void> => {
       const initialFeed = await loadFeed();
-      if (!navigator.onLine || hasSocialContent(initialFeed)) {
+      if (!navigator.onLine || !shouldAttemptBootstrapSync(initialFeed)) {
         return;
       }
 
-      const syncResult = await syncSocialMediaFeed();
-      const syncError = buildSyncErrorMessage(syncResult);
+      let syncError: string | null = null;
+      try {
+        const syncResult = await syncSocialMediaFeed();
+        syncError = buildSyncErrorMessage(syncResult);
+      } catch (error) {
+        syncError = error instanceof Error ? error.message : "Initial social sync failed";
+      }
+
+      await loadFeed({ clearError: !syncError });
       if (syncError) {
         setError(syncError);
       }
-      await loadFeed();
     };
 
     void bootstrap();
@@ -134,16 +144,22 @@ export function SocialMediaView(): JSX.Element {
     setError(null);
 
     try {
-      const syncResult = await syncSocialMediaFeed();
-      const syncError = buildSyncErrorMessage(syncResult);
+      let syncError: string | null = null;
+      try {
+        const syncResult = await syncSocialMediaFeed();
+        syncError = buildSyncErrorMessage(syncResult);
+      } catch (syncErrorRaw) {
+        syncError = syncErrorRaw instanceof Error ? syncErrorRaw.message : "Refresh failed";
+      }
+
+      await loadFeed({ clearError: !syncError });
       if (syncError) {
         setError(syncError);
       }
-      await loadFeed();
     } catch (refreshError) {
       const message = refreshError instanceof Error ? refreshError.message : "Refresh failed";
       setError(message);
-      await loadFeed();
+      await loadFeed({ clearError: false });
     } finally {
       setRefreshing(false);
     }
