@@ -204,6 +204,72 @@ export class YouTubeClient {
   }
 
   /**
+   * Fetch channel metadata for explicit channel IDs
+   * Quota cost: 1 unit per request
+   */
+  async fetchChannelsByIds(channelIds: string[]): Promise<YouTubeChannel[]> {
+    if (!this.isConfigured()) {
+      throw new YouTubeAPIError("YouTube API key not configured. Set YOUTUBE_API_KEY environment variable.");
+    }
+
+    const uniqueIds = Array.from(new Set(channelIds.map((value) => value.trim()).filter(Boolean))).slice(0, 50);
+    if (uniqueIds.length === 0) {
+      return [];
+    }
+
+    const quotaCost = 1;
+    if (!this.quotaTracker.canMakeRequest(quotaCost)) {
+      throw new YouTubeQuotaExceededError();
+    }
+
+    try {
+      const url = new URL(`${this.baseUrl}/channels`);
+      url.searchParams.set("part", "snippet,statistics");
+      url.searchParams.set("id", uniqueIds.join(","));
+      url.searchParams.set("maxResults", String(Math.min(uniqueIds.length, 50)));
+      url.searchParams.set("key", this.apiKey!);
+
+      const response = await fetch(url.toString());
+      if (!response.ok) {
+        if (response.status === 403) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage = (errorData as any)?.error?.message ?? "Quota exceeded";
+          if (errorMessage.toLowerCase().includes("quota")) {
+            throw new YouTubeQuotaExceededError(errorMessage);
+          }
+        }
+        throw new YouTubeAPIError(`YouTube API error: ${response.statusText}`, response.status);
+      }
+
+      this.quotaTracker.recordUsage(quotaCost);
+
+      const data = await response.json() as any;
+      const channels: YouTubeChannel[] = [];
+
+      for (const item of data.items || []) {
+        channels.push({
+          id: item.id,
+          title: item.snippet?.title ?? "Unknown channel",
+          description: item.snippet?.description ?? "",
+          thumbnailUrl: item.snippet?.thumbnails?.default?.url || "",
+          subscriberCount: parseInt(item.statistics?.subscriberCount ?? "0", 10)
+        });
+      }
+
+      return channels;
+    } catch (error) {
+      if (error instanceof YouTubeAPIError) {
+        throw error;
+      }
+      throw new YouTubeAPIError(
+        `Failed to fetch channels by id: ${error instanceof Error ? error.message : "Unknown error"}`,
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
    * Fetch recent uploads from a channel
    * Quota cost: 100 units per request
    */
@@ -258,6 +324,71 @@ export class YouTubeClient {
       }
       throw new YouTubeAPIError(
         `Failed to fetch channel uploads: ${error instanceof Error ? error.message : "Unknown error"}`,
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
+   * Search recent videos by keyword query
+   * Quota cost: 100 units per request
+   */
+  async searchVideosByQuery(query: string, maxResults: number = 10): Promise<string[]> {
+    if (!this.isConfigured()) {
+      throw new YouTubeAPIError("YouTube API key not configured. Set YOUTUBE_API_KEY environment variable.");
+    }
+
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      return [];
+    }
+
+    const quotaCost = 100;
+    if (!this.quotaTracker.canMakeRequest(quotaCost)) {
+      throw new YouTubeQuotaExceededError();
+    }
+
+    try {
+      const url = new URL(`${this.baseUrl}/search`);
+      url.searchParams.set("part", "id");
+      url.searchParams.set("q", normalizedQuery);
+      url.searchParams.set("order", "date");
+      url.searchParams.set("type", "video");
+      url.searchParams.set("maxResults", String(Math.min(maxResults, 50)));
+      url.searchParams.set("key", this.apiKey!);
+
+      const response = await fetch(url.toString());
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage = (errorData as any)?.error?.message ?? "Quota exceeded";
+          if (errorMessage.toLowerCase().includes("quota")) {
+            throw new YouTubeQuotaExceededError(errorMessage);
+          }
+        }
+        throw new YouTubeAPIError(`YouTube API error: ${response.statusText}`, response.status);
+      }
+
+      this.quotaTracker.recordUsage(quotaCost);
+
+      const data = await response.json() as any;
+      const videoIds: string[] = [];
+
+      for (const item of data.items || []) {
+        if (item.id?.videoId) {
+          videoIds.push(item.id.videoId);
+        }
+      }
+
+      return videoIds;
+    } catch (error) {
+      if (error instanceof YouTubeAPIError) {
+        throw error;
+      }
+      throw new YouTubeAPIError(
+        `Failed to search videos by query: ${error instanceof Error ? error.message : "Unknown error"}`,
         undefined,
         error
       );

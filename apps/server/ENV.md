@@ -51,6 +51,10 @@ This file documents all environment variables required to run the Companion serv
 - `YOUTUBE_API_KEY` (optional) — YouTube Data API key
   - Get key: https://console.cloud.google.com/apis/credentials
   - Quota: 10,000 units/day
+- `YOUTUBE_CHANNEL_IDS` (optional) — Comma-separated channel IDs to track directly (recommended when OAuth subscriptions are unavailable)
+- `YOUTUBE_FALLBACK_QUERIES` (optional) — Comma-separated keyword queries used when subscriptions cannot be fetched
+  - Example: `YOUTUBE_FALLBACK_QUERIES=DAT560 machine learning,DAT520 software engineering`
+  - Note: API key-only mode cannot reliably use `mine=true` subscriptions; fallback channel IDs/queries are used instead.
 
 #### X (Twitter) API v2
 - `X_API_KEY` (optional) — X API consumer key
@@ -111,6 +115,8 @@ COURSE_GITHUB_PAT=your-github-pat
 
 # YouTube
 YOUTUBE_API_KEY=your-youtube-key
+YOUTUBE_CHANNEL_IDS=UCxxxxxxxx,UCyyyyyyyy
+YOUTUBE_FALLBACK_QUERIES=DAT560 machine learning,DAT520 software engineering
 
 # X (Twitter)
 X_API_KEY=your-x-api-key

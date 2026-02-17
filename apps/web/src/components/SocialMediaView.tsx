@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getSocialMediaFeed, syncSocialMediaFeed } from "../lib/api";
 import { loadSocialMediaCache, loadSocialMediaCachedAt } from "../lib/storage";
-import type { SocialMediaFeed, SocialTweet, SocialVideo } from "../types";
+import type { SocialMediaFeed, SocialMediaSyncResult, SocialTweet, SocialVideo } from "../types";
 import { ContentRecommendationsPanel } from "./ContentRecommendationsPanel";
 
 type SocialFilter = "all" | "youtube" | "x";
@@ -53,6 +53,24 @@ function formatCachedLabel(cachedAt: string | null): string {
   return `Cached ${timestamp.toLocaleString()}`;
 }
 
+function hasSocialContent(feed: SocialMediaFeed | null): boolean {
+  if (!feed) {
+    return false;
+  }
+  return feed.youtube.videos.length > 0 || feed.x.tweets.length > 0;
+}
+
+function buildSyncErrorMessage(result: SocialMediaSyncResult): string | null {
+  const parts: string[] = [];
+  if (!result.youtube.success) {
+    parts.push(`YouTube sync failed: ${result.youtube.error ?? "unknown error"}`);
+  }
+  if (!result.x.success) {
+    parts.push(`X sync failed: ${result.x.error ?? "unknown error"}`);
+  }
+  return parts.length > 0 ? parts.join(" | ") : null;
+}
+
 export function SocialMediaView(): JSX.Element {
   const [feed, setFeed] = useState<SocialMediaFeed | null>(() => loadSocialMediaCache());
   const [loading, setLoading] = useState<boolean>(() => loadSocialMediaCache() === null);
@@ -62,15 +80,17 @@ export function SocialMediaView(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<SocialFilter>("all");
 
-  const loadFeed = async (): Promise<void> => {
+  const loadFeed = async (): Promise<SocialMediaFeed | null> => {
     try {
       setError(null);
       const next = await getSocialMediaFeed();
       setFeed(next);
       setCachedAt(loadSocialMediaCachedAt());
+      return next;
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Failed to load social feed";
       setError(message);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -82,7 +102,21 @@ export function SocialMediaView(): JSX.Element {
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
-    void loadFeed();
+    const bootstrap = async (): Promise<void> => {
+      const initialFeed = await loadFeed();
+      if (!navigator.onLine || hasSocialContent(initialFeed)) {
+        return;
+      }
+
+      const syncResult = await syncSocialMediaFeed();
+      const syncError = buildSyncErrorMessage(syncResult);
+      if (syncError) {
+        setError(syncError);
+      }
+      await loadFeed();
+    };
+
+    void bootstrap();
 
     return () => {
       window.removeEventListener("online", handleOnline);
@@ -100,7 +134,11 @@ export function SocialMediaView(): JSX.Element {
     setError(null);
 
     try {
-      await syncSocialMediaFeed();
+      const syncResult = await syncSocialMediaFeed();
+      const syncError = buildSyncErrorMessage(syncResult);
+      if (syncError) {
+        setError(syncError);
+      }
       await loadFeed();
     } catch (refreshError) {
       const message = refreshError instanceof Error ? refreshError.message : "Refresh failed";

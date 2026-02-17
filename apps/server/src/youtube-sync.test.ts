@@ -157,9 +157,50 @@ describe("YouTube Integration", () => {
       expect(result.videosCount).toBe(1);
     });
 
+    it("falls back to keyword search when subscriptions endpoint requires OAuth", async () => {
+      store.createDeadline({
+        course: "DAT560",
+        task: "Assignment 3",
+        dueDate: "2026-03-01T12:00:00.000Z",
+        priority: "high",
+        completed: false
+      });
+
+      const mockClient = {
+        isConfigured: () => true,
+        fetchSubscriptions: async () => {
+          throw new Error("Request is not properly authorized for mine parameter.");
+        },
+        searchVideosByQuery: async () => ["vid-search-1", "vid-search-2"],
+        fetchVideoMetadata: async () => [
+          {
+            id: "vid-search-1",
+            channelId: "UC-DAT560",
+            channelTitle: "DAT560 Channel",
+            title: "DAT560 ML lecture walkthrough",
+            description: "Course support video",
+            publishedAt: "2026-02-10T00:00:00Z",
+            thumbnailUrl: "https://example.com/vid-search-1.jpg",
+            duration: "PT12M",
+            viewCount: 100,
+            likeCount: 10,
+            commentCount: 2
+          }
+        ],
+        getQuotaStatus: () => ({ used: 201, limit: 10000, remaining: 9799, resetAt: "2026-02-18T00:00:00Z" })
+      } as unknown as YouTubeClient;
+
+      const service = new YouTubeSyncService(store, mockClient);
+      const result = await service.sync({ maxVideosPerChannel: 2 });
+
+      expect(result.success).toBe(true);
+      expect(result.videosCount).toBe(1);
+      expect(result.channelsCount).toBe(1);
+      expect(store.getYouTubeData()?.videos[0]?.title).toContain("DAT560");
+    });
+
     it("should respect maxChannels and maxVideosPerChannel options", async () => {
       let subscriptionsCalled = false;
-      let uploadsCalled = false;
 
       const mockClient = {
         isConfigured: () => true,
@@ -168,8 +209,11 @@ describe("YouTube Integration", () => {
           expect(maxResults).toBe(25);
           return [];
         },
-        fetchChannelUploads: async (channelId: string, maxResults: number) => {
-          uploadsCalled = true;
+        fetchChannelUploads: async (_channelId: string, maxResults: number) => {
+          expect(maxResults).toBe(3);
+          return [];
+        },
+        searchVideosByQuery: async (_query: string, maxResults: number) => {
           expect(maxResults).toBe(3);
           return [];
         },

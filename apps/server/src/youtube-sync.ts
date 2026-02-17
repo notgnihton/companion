@@ -1,5 +1,6 @@
 import { RuntimeStore } from "./store.js";
-import { YouTubeClient, YouTubeVideo, YouTubeChannel } from "./youtube-client.js";
+import { YouTubeClient, YouTubeChannel } from "./youtube-client.js";
+import { config } from "./config.js";
 import { YouTubeData } from "./types.js";
 
 export interface YouTubeSyncResult {
@@ -12,6 +13,27 @@ export interface YouTubeSyncResult {
 export interface YouTubeSyncOptions {
   maxChannels?: number;
   maxVideosPerChannel?: number;
+}
+
+function parseCsvEnv(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+  return Array.from(new Set(value.split(",").map((item) => item.trim()).filter(Boolean)));
+}
+
+function dedupeVideoIds(videoIds: string[]): string[] {
+  return Array.from(new Set(videoIds));
+}
+
+function looksLikeSubscriptionAuthError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes("mine") ||
+    message.includes("insufficient authentication scopes") ||
+    message.includes("login required") ||
+    message.includes("not properly authorized")
+  );
 }
 
 export class YouTubeSyncService {
@@ -55,6 +77,38 @@ export class YouTubeSyncService {
     }
   }
 
+  private getConfiguredChannelIds(): string[] {
+    return parseCsvEnv(config.YOUTUBE_CHANNEL_IDS);
+  }
+
+  private buildFallbackQueries(): string[] {
+    const configured = parseCsvEnv(config.YOUTUBE_FALLBACK_QUERIES);
+    if (configured.length > 0) {
+      return configured;
+    }
+
+    const queries: string[] = [];
+    const now = new Date();
+    const deadlines = this.store
+      .getDeadlines(now)
+      .filter((deadline) => !deadline.completed)
+      .slice(0, 8);
+    const schedule = this.store.getScheduleEvents().slice(0, 8);
+
+    deadlines.forEach((deadline) => {
+      queries.push(`${deadline.course} ${deadline.task}`.trim());
+      queries.push(`${deadline.course} lecture`);
+    });
+    schedule.forEach((lecture) => {
+      queries.push(lecture.title);
+    });
+
+    queries.push("machine learning tutorial");
+    queries.push("software engineering lecture");
+
+    return Array.from(new Set(queries.map((query) => query.trim()).filter(Boolean)));
+  }
+
   /**
    * Perform a YouTube sync
    */
@@ -71,26 +125,65 @@ export class YouTubeSyncService {
     try {
       const maxChannels = options?.maxChannels ?? 50;
       const maxVideosPerChannel = options?.maxVideosPerChannel ?? 5;
+      const configuredChannelIds = this.getConfiguredChannelIds().slice(0, maxChannels);
 
-      // Fetch subscribed channels
-      const channels = await this.client.fetchSubscriptions(maxChannels);
+      let channels: YouTubeChannel[] = [];
+      let allVideoIds: string[] = [];
 
-      // Fetch recent uploads from each channel
-      const allVideoIds: string[] = [];
-      for (const channel of channels.slice(0, Math.min(channels.length, 10))) {
+      if (configuredChannelIds.length > 0) {
+        channels = await this.client.fetchChannelsByIds(configuredChannelIds);
+      } else {
         try {
-          const videoIds = await this.client.fetchChannelUploads(channel.id, maxVideosPerChannel);
-          allVideoIds.push(...videoIds);
+          channels = await this.client.fetchSubscriptions(maxChannels);
         } catch (error) {
-          console.error(`Failed to fetch uploads for channel ${channel.id}:`, error);
-          // Continue with other channels even if one fails
+          if (!looksLikeSubscriptionAuthError(error)) {
+            throw error;
+          }
+          console.warn("YouTube subscriptions endpoint requires OAuth. Falling back to keyword video search.");
+          channels = [];
         }
       }
 
-      // Fetch video metadata for all videos
-      const videos = allVideoIds.length > 0 
-        ? await this.client.fetchVideoMetadata(allVideoIds) 
-        : [];
+      if (channels.length > 0) {
+        for (const channel of channels.slice(0, Math.min(channels.length, 10))) {
+          try {
+            const videoIds = await this.client.fetchChannelUploads(channel.id, maxVideosPerChannel);
+            allVideoIds.push(...videoIds);
+          } catch (error) {
+            console.error(`Failed to fetch uploads for channel ${channel.id}:`, error);
+            // Continue with other channels even if one fails
+          }
+        }
+      } else {
+        const fallbackQueries = this.buildFallbackQueries().slice(0, 4);
+        for (const query of fallbackQueries) {
+          try {
+            const videoIds = await this.client.searchVideosByQuery(query, maxVideosPerChannel);
+            allVideoIds.push(...videoIds);
+          } catch (error) {
+            console.error(`Failed to search YouTube for query "${query}":`, error);
+          }
+        }
+      }
+
+      allVideoIds = dedupeVideoIds(allVideoIds);
+      const videos = allVideoIds.length > 0 ? await this.client.fetchVideoMetadata(allVideoIds) : [];
+
+      if (channels.length === 0 && videos.length > 0) {
+        const channelMap = new Map<string, YouTubeChannel>();
+        videos.forEach((video) => {
+          if (!channelMap.has(video.channelId)) {
+            channelMap.set(video.channelId, {
+              id: video.channelId,
+              title: video.channelTitle,
+              description: "",
+              thumbnailUrl: video.thumbnailUrl,
+              subscriberCount: 0
+            });
+          }
+        });
+        channels = Array.from(channelMap.values());
+      }
 
       const youtubeData: YouTubeData = {
         channels,

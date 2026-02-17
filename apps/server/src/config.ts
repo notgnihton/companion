@@ -33,6 +33,8 @@ const schema = z.object({
   VIDEO_PROVIDER: z.string().default("manual"),
   GEMINI_API_KEY: z.string().optional(),
   YOUTUBE_API_KEY: z.string().optional(),
+  YOUTUBE_CHANNEL_IDS: z.string().optional(),
+  YOUTUBE_FALLBACK_QUERIES: z.string().optional(),
   CANVAS_API_TOKEN: z.string().optional(),
   CANVAS_BASE_URL: z.string().default("https://stavanger.instructure.com"),
   COURSE_GITHUB_PAT: z.string().optional(),
