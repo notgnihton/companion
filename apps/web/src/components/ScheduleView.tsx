@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { getDeadlines, getSchedule } from "../lib/api";
 import { Deadline, LectureEvent, Priority } from "../types";
 import { loadDeadlines, loadSchedule, loadScheduleCachedAt } from "../lib/storage";
-import { usePullToRefresh } from "../hooks/usePullToRefresh";
-import { PullToRefreshIndicator } from "./PullToRefreshIndicator";
 
 const SCHEDULE_STALE_MS = 12 * 60 * 60 * 1000;
 
@@ -263,11 +261,6 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
     setRefreshing(false);
   };
 
-  const { containerRef, isPulling, pullDistance, isRefreshing } = usePullToRefresh<HTMLDivElement>({
-    onRefresh: handleRefresh,
-    threshold: 80
-  });
-
   useEffect(() => {
     let disposed = false;
 
@@ -452,62 +445,6 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
         </div>
       </section>
 
-      <div 
-        ref={containerRef}
-        className="pull-to-refresh-container"
-      >
-        {(isPulling || isRefreshing) && (
-          <PullToRefreshIndicator
-            pullDistance={pullDistance}
-            threshold={80}
-            isRefreshing={isRefreshing}
-          />
-        )}
-        {todayBlocks.length > 0 ? (
-          <ul className="schedule-list">
-            {todayBlocks.map((lecture) => {
-              const minutesUntil = getMinutesUntil(lecture.startTime);
-              const isUpcoming = minutesUntil >= 0 && minutesUntil < 120;
-              const roomLabel = formatRoomLabel(lecture.location);
-              
-              return (
-                <li 
-                  key={lecture.id} 
-                  id={`lecture-${lecture.id}`}
-                  className={`schedule-item ${isUpcoming ? "schedule-item-upcoming" : ""} ${
-                    focusLectureId === lecture.id ? "schedule-item-focused" : ""
-                  }`}
-                >
-                  <div className="schedule-item-header">
-                    <h3 className="schedule-item-title">{formatLectureTitle(lecture.title)}</h3>
-                  </div>
-                  <div className="schedule-item-details">
-                    <span className="schedule-date">{formatDate(lecture.startTime)}</span>
-                    <span className="schedule-separator">•</span>
-                    <span className="schedule-time">{formatTime(lecture.startTime)}</span>
-                    <span className="schedule-separator">•</span>
-                    <span className="schedule-duration">{lecture.durationMinutes}min</span>
-                    {roomLabel && (
-                      <>
-                        <span className="schedule-separator">•</span>
-                        <span className="schedule-location">{roomLabel}</span>
-                      </>
-                    )}
-                    {isUpcoming && (
-                      <>
-                        <span className="schedule-separator">•</span>
-                        <span className="schedule-until">{getTimeUntilLabel(lecture.startTime)}</span>
-                      </>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="schedule-empty">No schedule blocks for today.</p>
-        )}
-      </div>
     </section>
   );
 }
