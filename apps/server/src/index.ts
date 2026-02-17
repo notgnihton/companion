@@ -22,6 +22,7 @@ import { XSyncService } from "./x-sync.js";
 import { SocialMediaSummarizer } from "./social-media-summarizer.js";
 import { GmailOAuthService } from "./gmail-oauth.js";
 import { GmailSyncService } from "./gmail-sync.js";
+import { buildStudyPlanCalendarIcs } from "./study-plan-export.js";
 import { generateWeeklyStudyPlan } from "./study-plan.js";
 import { generateContentRecommendations } from "./content-recommendations.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
@@ -428,6 +429,16 @@ const studyPlanGenerateSchema = z
     horizonDays: z.number().int().min(1).max(14).optional().default(7),
     minSessionMinutes: z.number().int().min(30).max(180).optional().default(45),
     maxSessionMinutes: z.number().int().min(45).max(240).optional().default(120)
+  })
+  .refine((value) => value.maxSessionMinutes >= value.minSessionMinutes, {
+    message: "maxSessionMinutes must be greater than or equal to minSessionMinutes"
+  });
+
+const studyPlanExportQuerySchema = z
+  .object({
+    horizonDays: z.coerce.number().int().min(1).max(14).optional().default(7),
+    minSessionMinutes: z.coerce.number().int().min(30).max(180).optional().default(45),
+    maxSessionMinutes: z.coerce.number().int().min(45).max(240).optional().default(120)
   })
   .refine((value) => value.maxSessionMinutes >= value.minSessionMinutes, {
     message: "maxSessionMinutes must be greater than or equal to minSessionMinutes"
@@ -905,6 +916,28 @@ app.post("/api/study-plan/generate", (req, res) => {
   });
 
   return res.json({ plan });
+});
+
+app.get("/api/study-plan/export", (req, res) => {
+  const parsed = studyPlanExportQuerySchema.safeParse(req.query ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid study plan export query", issues: parsed.error.issues });
+  }
+
+  const plan = generateWeeklyStudyPlan(store.getDeadlines(), store.getScheduleEvents(), {
+    horizonDays: parsed.data.horizonDays,
+    minSessionMinutes: parsed.data.minSessionMinutes,
+    maxSessionMinutes: parsed.data.maxSessionMinutes,
+    now: new Date()
+  });
+
+  const ics = buildStudyPlanCalendarIcs(plan);
+  const generatedOn = new Date().toISOString().slice(0, 10);
+
+  res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename=\"study-plan-${generatedOn}.ics\"`);
+  return res.status(200).send(ics);
 });
 
 app.get("/api/deadlines/:id", (req, res) => {

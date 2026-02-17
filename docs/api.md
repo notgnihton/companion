@@ -671,6 +671,27 @@ Response `200`:
 }
 ```
 
+### `GET /api/study-plan/export`
+
+Exports a generated study plan as an ICS calendar file for one-tap import into iPhone Calendar.
+
+Query params (all optional, same constraints/defaults as generate endpoint):
+- `horizonDays` (`1..14`, default `7`)
+- `minSessionMinutes` (`30..180`, default `45`)
+- `maxSessionMinutes` (`45..240`, default `120`, must be `>= minSessionMinutes`)
+
+Example:
+
+```http
+GET /api/study-plan/export?horizonDays=7&minSessionMinutes=45&maxSessionMinutes=120
+```
+
+Response `200`:
+- `Content-Type: text/calendar; charset=utf-8`
+- `Content-Disposition: attachment; filename="study-plan-YYYY-MM-DD.ics"`
+
+ICS events use stable deterministic `UID` values based on deadline ID, session start time, and duration.
+
 ## Content Recommendations
 
 ### `GET /api/recommendations/content`

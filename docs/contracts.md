@@ -513,6 +513,22 @@ Response:
 }
 ```
 
+### GET `/api/study-plan/export?horizonDays=7&minSessionMinutes=45&maxSessionMinutes=120`
+
+Generate and download study plan sessions as an ICS file.
+
+Query params are optional and match `/api/study-plan/generate` validation.
+
+Response headers:
+
+```http
+Content-Type: text/calendar; charset=utf-8
+Content-Disposition: attachment; filename="study-plan-YYYY-MM-DD.ics"
+```
+
+Notes:
+- Each `VEVENT` UID is deterministic (`deadlineId + startTime + duration`) to keep stable event IDs across exports.
+
 ### GET `/api/recommendations/content?horizonDays=7&limit=5`
 
 Rank YouTube videos and X posts against upcoming deadlines and lectures.
