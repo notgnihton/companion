@@ -49,6 +49,7 @@ export function JournalView({ focusJournalId }: JournalViewProps): JSX.Element {
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => new Set(loadArchivedJournalIds()));
   const [undoToast, setUndoToast] = useState<UndoToast | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const undoTimerRef = useRef<number | null>(null);
   const pendingDeleteRef = useRef<Map<string, number>>(new Map());
@@ -430,6 +431,12 @@ export function JournalView({ focusJournalId }: JournalViewProps): JSX.Element {
 
   const visibleEntries = displayedEntries.filter((entry) => !archivedIds.has(entry.id));
 
+  const ensureTextareaInView = (): void => {
+    window.setTimeout(() => {
+      textareaRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, 60);
+  };
+
   return (
     <section className="panel journal-panel">
       <header className="panel-header">
@@ -441,10 +448,12 @@ export function JournalView({ focusJournalId }: JournalViewProps): JSX.Element {
       <form className="journal-input-form" onSubmit={(event) => void handleSubmit(event)}>
         <div className="journal-input-wrapper">
           <textarea
+            ref={textareaRef}
             className="journal-textarea"
             placeholder="What's on your mind? Quick thoughts, reflections, or to-dos..."
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onFocus={ensureTextareaInView}
             rows={3}
             disabled={busy}
           />

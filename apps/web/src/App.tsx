@@ -60,6 +60,56 @@ export default function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    const root = document.documentElement;
+
+    const hasEditableFocus = (): boolean => {
+      const active = document.activeElement;
+      if (!active) {
+        return false;
+      }
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+        return true;
+      }
+      return (active as HTMLElement).isContentEditable;
+    };
+
+    const updateViewportVars = (): void => {
+      const viewport = window.visualViewport;
+      const viewportHeight = Math.round(viewport?.height ?? window.innerHeight);
+      const viewportOffsetTop = Math.round(viewport?.offsetTop ?? 0);
+      root.style.setProperty("--app-viewport-height", `${viewportHeight}px`);
+      root.style.setProperty("--app-viewport-offset-top", `${viewportOffsetTop}px`);
+
+      const keyboardGap = window.innerHeight - viewportHeight - viewportOffsetTop;
+      const keyboardOpen = hasEditableFocus() && keyboardGap > 80;
+      document.body.classList.toggle("keyboard-open", keyboardOpen);
+    };
+
+    const handleFocusEvent = (): void => {
+      window.setTimeout(updateViewportVars, 40);
+    };
+
+    updateViewportVars();
+
+    window.addEventListener("resize", updateViewportVars);
+    window.addEventListener("focusin", handleFocusEvent);
+    window.addEventListener("focusout", handleFocusEvent);
+    window.visualViewport?.addEventListener("resize", updateViewportVars);
+    window.visualViewport?.addEventListener("scroll", updateViewportVars);
+
+    return () => {
+      window.removeEventListener("resize", updateViewportVars);
+      window.removeEventListener("focusin", handleFocusEvent);
+      window.removeEventListener("focusout", handleFocusEvent);
+      window.visualViewport?.removeEventListener("resize", updateViewportVars);
+      window.visualViewport?.removeEventListener("scroll", updateViewportVars);
+      root.style.removeProperty("--app-viewport-height");
+      root.style.removeProperty("--app-viewport-offset-top");
+      document.body.classList.remove("keyboard-open");
+    };
+  }, []);
+
+  useEffect(() => {
     let disposed = false;
 
     const syncPushState = async (): Promise<void> => {
@@ -243,8 +293,8 @@ export default function App(): JSX.Element {
       <FloatingQuickCapture onUpdated={refresh} />
       <SyncStatusBadge />
 
-      {/* Header shown only for push notifications setup */}
-      {pushState !== "enabled" && (
+      {/* Push setup messaging stays in Settings to avoid squashing chat layout */}
+      {activeTab === "settings" && pushState !== "enabled" && (
         <header className="hero-compact">
           <div className="hero-actions">
             <button type="button" onClick={() => void handleEnablePush()} disabled={pushButtonDisabled}>
@@ -253,7 +303,7 @@ export default function App(): JSX.Element {
           </div>
         </header>
       )}
-      {pushMessage && <p className="push-message">{pushMessage}</p>}
+      {activeTab === "settings" && pushMessage && <p className="push-message">{pushMessage}</p>}
 
       {loading && <p>Loading...</p>}
       {error && <p className="error">{error}</p>}
@@ -263,11 +313,7 @@ export default function App(): JSX.Element {
           {/* Tab content area */}
           <div className="tab-content-area">
             {activeTab === "chat" && (
-              <ChatTab
-                todayFocus={data.summary.todayFocus}
-                pendingDeadlines={data.summary.pendingDeadlines}
-                journalStreak={data.summary.journalStreak}
-              />
+              <ChatTab />
             )}
             {activeTab === "schedule" && (
               <ScheduleTab

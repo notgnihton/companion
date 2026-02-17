@@ -348,6 +348,12 @@ export function ChatView(): JSX.Element {
     inputRef.current?.focus();
   };
 
+  const ensureInputInView = (): void => {
+    window.setTimeout(() => {
+      inputRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, 60);
+  };
+
   const handleCitationClick = (citation: ChatCitation): void => {
     const target = toCitationTarget(citation);
     const params = new URLSearchParams();
@@ -428,6 +434,18 @@ export function ChatView(): JSX.Element {
             <h2>👋 Hi there!</h2>
             <p>I'm your personal AI companion. I know your schedule, deadlines, and journal history.</p>
             <p>Ask me anything about your academic life!</p>
+            <div className="chat-quick-actions">
+              {quickActions.map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  className="chat-quick-action-chip"
+                  onClick={() => handleQuickAction(action.prompt)}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -487,21 +505,6 @@ export function ChatView(): JSX.Element {
         <div ref={messagesEndRef} />
       </div>
 
-      {messages.length === 0 && (
-        <div className="chat-quick-actions">
-          {quickActions.map((action) => (
-            <button
-              key={action.label}
-              type="button"
-              className="chat-quick-action-chip"
-              onClick={() => handleQuickAction(action.prompt)}
-            >
-              {action.label}
-            </button>
-          ))}
-        </div>
-      )}
-
       {error && <div className="chat-error">{error}</div>}
 
       <div className="chat-input-container">
@@ -523,6 +526,7 @@ export function ChatView(): JSX.Element {
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           onKeyPress={handleKeyPress}
+          onFocus={ensureInputInView}
           disabled={isSending}
         />
         <button
