@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { getCanvasStatus, triggerCanvasSync } from "../lib/api";
+import {
+  getCanvasStatus,
+  getGeminiStatus,
+  getTPStatus,
+  triggerCanvasSync,
+  triggerTPSync
+} from "../lib/api";
 import { loadCanvasSettings, saveCanvasStatus } from "../lib/storage";
 import type { CanvasStatus, TPStatus, GeminiStatus } from "../types";
 
@@ -17,51 +23,6 @@ function formatRelative(timestamp: string | null): string {
   if (diffMin < 60) return `${diffMin}m ago`;
   if (diffHour < 24) return `${diffHour}h ago`;
   return `${diffDay}d ago`;
-}
-
-async function getTPStatus(): Promise<TPStatus> {
-  try {
-    const response = await fetch("/api/tp/status");
-    if (!response.ok) throw new Error("Failed to fetch TP status");
-    return await response.json() as TPStatus;
-  } catch {
-    return {
-      lastSyncedAt: null,
-      eventsCount: 0,
-      isSyncing: false
-    };
-  }
-}
-
-async function triggerTPSync(): Promise<{ success: boolean; error?: string }> {
-  try {
-    const response = await fetch("/api/sync/tp", { method: "POST" });
-    if (!response.ok) {
-      const data = await response.json() as { error?: string };
-      return { success: false, error: data.error };
-    }
-    return { success: true };
-  } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : "TP sync failed" 
-    };
-  }
-}
-
-async function getGeminiStatus(): Promise<GeminiStatus> {
-  try {
-    const response = await fetch("/api/gemini/status");
-    if (!response.ok) throw new Error("Failed to fetch Gemini status");
-    return await response.json() as GeminiStatus;
-  } catch {
-    return {
-      apiConfigured: false,
-      model: "unknown",
-      rateLimitRemaining: 0,
-      lastRequestAt: null
-    };
-  }
 }
 
 export function IntegrationStatusView(): JSX.Element {

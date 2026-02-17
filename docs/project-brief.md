@@ -348,6 +348,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | | | | |
 | | **— Phase 6: Reliability & Integration Controls —** | | |
 | ✅ done | `integration-scope-settings-ui` | frontend-engineer | Add integration scope controls in Settings: selectable Canvas courses, editable TP course IDs, and date-window inputs with a preview of records that will sync before applying changes. |
+| ✅ done | `integration-status-railway-routing` | frontend-engineer | Route TP/Gemini status requests through the shared web API client so GitHub Pages correctly targets Railway (`VITE_API_BASE_URL`) and integration cards reflect true server-side configuration/state. |
 | ✅ done | `integration-scope-enforcement` | backend-engineer | Enforce per-user integration scope in TP/Canvas ingestion and sync pipelines so only selected courses and in-window records are stored and bridged into deadlines/schedule. |
 | ✅ done | `deadline-dedup-merge` | backend-engineer | Add duplicate deadline detection across Canvas, GitHub, and manual sources with merge suggestions and a canonical-record strategy to prevent multi-source assignment duplicates. |
 | ✅ done | `notification-digest-batching` | backend-engineer | Batch non-urgent nudges into configurable morning/evening digest notifications with deep links, while preserving immediate delivery for critical reminders. |

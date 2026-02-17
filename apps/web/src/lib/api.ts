@@ -27,8 +27,10 @@ import {
   CanvasSettings,
   CanvasStatus,
   CanvasSyncResult,
+  TPStatus,
   TPSyncResult,
   IntegrationScopePreview,
+  GeminiStatus,
   SocialMediaFeed,
   SocialMediaSyncResult,
   ContentRecommendationsResponse
@@ -685,6 +687,32 @@ export async function getCanvasStatus(): Promise<CanvasStatus> {
     return status;
   } catch {
     return loadCanvasStatus();
+  }
+}
+
+export async function getTPStatus(): Promise<TPStatus> {
+  try {
+    return await jsonOrThrow<TPStatus>("/api/tp/status");
+  } catch {
+    return {
+      lastSyncedAt: null,
+      eventsCount: 0,
+      isSyncing: false
+    };
+  }
+}
+
+export async function getGeminiStatus(): Promise<GeminiStatus> {
+  try {
+    return await jsonOrThrow<GeminiStatus>("/api/gemini/status");
+  } catch {
+    return {
+      apiConfigured: false,
+      model: "unknown",
+      rateLimitRemaining: 0,
+      lastRequestAt: null,
+      error: "Could not load Gemini status."
+    };
   }
 }
 
