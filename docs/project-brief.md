@@ -370,6 +370,6 @@ Features are built in priority order. The orchestrator reads this section to dec
 | | **— Phase 8: Personalization & Execution Quality —** | | |
 | ✅ done | `study-session-energy-tracking` | backend-engineer | Extend study-plan session check-ins with optional perceived-focus/energy ratings and short notes, then expose trends for adaptive planning inputs. |
 | ✅ done | `study-session-energy-ui` | frontend-engineer | Add quick post-session check-in UI (1-tap energy/focus scale + optional note) in Study Plan view, optimized for iPhone thumb reach and minimal friction. |
-| ⬜ todo | `deadline-effort-budgeting` | backend-engineer | Add per-deadline effort estimates (hours remaining + confidence) and use them as constraints in weekly plan generation to avoid under/over-allocation. |
+| ✅ done | `deadline-effort-budgeting` | backend-engineer | Add per-deadline effort estimates (hours remaining + confidence) and use them as constraints in weekly plan generation to avoid under/over-allocation. |
 | ⬜ todo | `deadline-effort-editor-ui` | frontend-engineer | Add effort-estimate controls on deadline cards with sensible defaults and inline validation, and surface “hours remaining” context in schedule/planning views. |
 | ⬜ todo | `integration-health-log-api` | backend-engineer | Persist TP/Canvas/Gmail sync attempt history (success/failure, latency, root-cause category) and expose an API for troubleshooting and reliability analytics. |

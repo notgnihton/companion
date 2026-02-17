@@ -572,6 +572,8 @@ Deadline payload fields:
 - `dueDate`: ISO datetime string
 - `priority`: `low | medium | high | critical`
 - `completed`: boolean (`false` by default on create)
+- `effortHoursRemaining`: number (optional, `0..200`, remaining hours estimate)
+- `effortConfidence`: `low | medium | high` (optional, confidence for effort estimate)
 
 ### `POST /api/deadlines`
 
@@ -582,7 +584,9 @@ Request:
   "course": "Algorithms",
   "task": "Problem Set 4",
   "dueDate": "2026-02-17T23:59:00.000Z",
-  "priority": "high"
+  "priority": "high",
+  "effortHoursRemaining": 5.5,
+  "effortConfidence": "medium"
 }
 ```
 
@@ -596,7 +600,9 @@ Response `201`:
     "task": "Problem Set 4",
     "dueDate": "2026-02-17T23:59:00.000Z",
     "priority": "high",
-    "completed": false
+    "completed": false,
+    "effortHoursRemaining": 5.5,
+    "effortConfidence": "medium"
   }
 }
 ```
@@ -614,7 +620,9 @@ Response `200`:
       "task": "Problem Set 4",
       "dueDate": "2026-02-17T23:59:00.000Z",
       "priority": "high",
-      "completed": false
+      "completed": false,
+      "effortHoursRemaining": 5.5,
+      "effortConfidence": "medium"
     }
   ]
 }
@@ -678,7 +686,9 @@ Request (any subset of fields):
 
 ```json
 {
-  "completed": true
+  "completed": true,
+  "effortHoursRemaining": 2,
+  "effortConfidence": "low"
 }
 ```
 
@@ -780,6 +790,7 @@ Response `200`:
 ### `POST /api/study-plan/generate`
 
 Generates a deterministic weekly study plan by combining incomplete deadlines with schedule gaps.
+If a deadline includes `effortHoursRemaining`, planning uses that value (adjusted by `effortConfidence`) instead of the priority-based default estimate.
 
 Request:
 
@@ -1292,7 +1303,9 @@ Request:
       "task": "Assignment 1",
       "dueDate": "2026-02-20T23:59:00.000Z",
       "priority": "high",
-      "completed": false
+      "completed": false,
+      "effortHoursRemaining": 8,
+      "effortConfidence": "medium"
     }
   }
 }
@@ -1306,7 +1319,9 @@ Request:
     "deadlineId": "deadline-existing-id",
     "updates": {
       "completed": true,
-      "priority": "low"
+      "priority": "low",
+      "effortHoursRemaining": 1,
+      "effortConfidence": "high"
     }
   }
 }

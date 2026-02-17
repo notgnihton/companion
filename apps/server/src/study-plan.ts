@@ -15,7 +15,7 @@ interface DeadlineState {
   remainingMinutes: number;
 }
 
-function estimateWorkMinutes(priority: Priority): number {
+function estimateWorkMinutesFromPriority(priority: Priority): number {
   switch (priority) {
     case "critical":
       return 300;
@@ -26,6 +26,28 @@ function estimateWorkMinutes(priority: Priority): number {
     case "low":
       return 90;
   }
+}
+
+function effortConfidenceMultiplier(confidence: Deadline["effortConfidence"] | undefined): number {
+  switch (confidence) {
+    case "high":
+      return 1;
+    case "low":
+      return 1.35;
+    case "medium":
+    default:
+      return 1.15;
+  }
+}
+
+function estimateWorkMinutes(deadline: Deadline): number {
+  if (typeof deadline.effortHoursRemaining === "number" && Number.isFinite(deadline.effortHoursRemaining)) {
+    const effortMinutes = Math.max(0, deadline.effortHoursRemaining * 60);
+    const adjusted = Math.round(effortMinutes * effortConfidenceMultiplier(deadline.effortConfidence));
+    return adjusted;
+  }
+
+  return estimateWorkMinutesFromPriority(deadline.priority);
 }
 
 function priorityWeight(priority: Priority): number {
@@ -109,7 +131,7 @@ export function generateWeeklyStudyPlan(
     .map((entry) => ({
       ...entry,
       score: deadlineScore(entry.deadline, entry.dueDate, now),
-      remainingMinutes: estimateWorkMinutes(entry.deadline.priority)
+      remainingMinutes: estimateWorkMinutes(entry.deadline)
     }));
 
   if (states.length === 0) {
@@ -194,7 +216,9 @@ export function generateWeeklyStudyPlan(
   const unallocated = states
     .filter((state) => state.remainingMinutes > 0)
     .map(toUnallocatedItem);
-  const coveredDeadlines = new Set(sessions.map((session) => session.deadlineId));
+  const coveredDeadlines = new Set(
+    states.filter((state) => state.remainingMinutes <= 0).map((state) => state.deadline.id)
+  );
   const totalPlannedMinutes = sessions.reduce((sum, session) => sum + session.durationMinutes, 0);
 
   return {

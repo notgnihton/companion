@@ -142,13 +142,15 @@ describe("RuntimeStore - Schedule and Deadlines", () => {
         task: "Lab Report",
         dueDate: "2026-02-17T23:59:00.000Z",
         priority: "high",
-        completed: false
+        completed: false,
+        effortHoursRemaining: 6,
+        effortConfidence: "medium"
       });
 
       expect(deadline.id).toMatch(/^deadline-/);
-      expect(store.getDeadlines()).toHaveLength(1);
-      expect(store.getDeadlines()[0]).toEqual(deadline);
-      expect(store.getDeadlineById(deadline.id)).toEqual(deadline);
+      expect(store.getDeadlines(new Date(), false)).toHaveLength(1);
+      expect(store.getDeadlines(new Date(), false)[0]).toEqual(deadline);
+      expect(store.getDeadlineById(deadline.id, false)).toEqual(deadline);
     });
 
     it("updates and deletes deadlines", () => {
@@ -157,17 +159,23 @@ describe("RuntimeStore - Schedule and Deadlines", () => {
         task: "Problem Set 5",
         dueDate: "2026-02-18T22:00:00.000Z",
         priority: "critical",
-        completed: false
+        completed: false,
+        effortHoursRemaining: 4,
+        effortConfidence: "high"
       });
 
       const updated = store.updateDeadline(deadline.id, {
         completed: true,
-        priority: "medium"
+        priority: "medium",
+        effortHoursRemaining: 2,
+        effortConfidence: "low"
       });
 
       expect(updated).not.toBeNull();
       expect(updated?.completed).toBe(true);
       expect(updated?.priority).toBe("medium");
+      expect(updated?.effortHoursRemaining).toBe(2);
+      expect(updated?.effortConfidence).toBe("low");
 
       expect(store.deleteDeadline(deadline.id)).toBe(true);
       expect(store.getDeadlines()).toHaveLength(0);

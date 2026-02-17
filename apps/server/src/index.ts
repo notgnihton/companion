@@ -239,7 +239,9 @@ const deadlineImportSchema = z.object({
   task: z.string().trim().min(1).max(300),
   dueDate: z.string().datetime(),
   priority: z.enum(["low", "medium", "high", "critical"]),
-  completed: z.boolean()
+  completed: z.boolean(),
+  effortHoursRemaining: z.number().min(0).max(200).optional(),
+  effortConfidence: z.enum(["low", "medium", "high"]).optional()
 });
 
 const habitImportSchema = z.object({
@@ -372,7 +374,9 @@ const deadlineCreateSchema = z.object({
   task: z.string().trim().min(1).max(300),
   dueDate: z.string().datetime(),
   priority: z.enum(["low", "medium", "high", "critical"]),
-  completed: z.boolean().optional().default(false)
+  completed: z.boolean().optional().default(false),
+  effortHoursRemaining: z.number().min(0).max(200).optional(),
+  effortConfidence: z.enum(["low", "medium", "high"]).optional()
 });
 
 const deadlineUpdateSchema = deadlineCreateSchema.partial().refine(

@@ -10,7 +10,9 @@ function makeDeadline(overrides: Partial<Deadline>): Deadline {
     dueDate: overrides.dueDate ?? "2026-02-20T23:59:00.000Z",
     priority: overrides.priority ?? "medium",
     completed: overrides.completed ?? false,
-    canvasAssignmentId: overrides.canvasAssignmentId
+    canvasAssignmentId: overrides.canvasAssignmentId,
+    effortHoursRemaining: overrides.effortHoursRemaining,
+    effortConfidence: overrides.effortConfidence
   };
 }
 
@@ -94,6 +96,79 @@ describe("generateWeeklyStudyPlan", () => {
         expect(overlapsLecture).toBe(false);
       }
     }
+  });
+
+  it("uses effort hours and confidence as allocation constraints", () => {
+    const now = new Date("2026-02-17T08:00:00.000Z");
+    const dueDate = "2026-02-19T20:00:00.000Z";
+
+    const highConfidencePlan = generateWeeklyStudyPlan(
+      [
+        makeDeadline({
+          id: "effort-high",
+          task: "Effort scoped assignment",
+          priority: "medium",
+          dueDate,
+          effortHoursRemaining: 2,
+          effortConfidence: "high"
+        })
+      ],
+      [],
+      {
+        now,
+        horizonDays: 3,
+        minSessionMinutes: 30,
+        maxSessionMinutes: 60
+      }
+    );
+
+    const lowConfidencePlan = generateWeeklyStudyPlan(
+      [
+        makeDeadline({
+          id: "effort-low",
+          task: "Effort scoped assignment",
+          priority: "medium",
+          dueDate,
+          effortHoursRemaining: 2,
+          effortConfidence: "low"
+        })
+      ],
+      [],
+      {
+        now,
+        horizonDays: 3,
+        minSessionMinutes: 30,
+        maxSessionMinutes: 60
+      }
+    );
+
+    expect(highConfidencePlan.summary.totalPlannedMinutes).toBe(120);
+    expect(lowConfidencePlan.summary.totalPlannedMinutes).toBe(162);
+    expect(lowConfidencePlan.summary.totalPlannedMinutes).toBeGreaterThan(highConfidencePlan.summary.totalPlannedMinutes);
+  });
+
+  it("treats zero-hour effort estimates as already covered work", () => {
+    const now = new Date("2026-02-17T08:00:00.000Z");
+
+    const plan = generateWeeklyStudyPlan(
+      [
+        makeDeadline({
+          id: "effort-zero",
+          dueDate: "2026-02-20T23:59:00.000Z",
+          effortHoursRemaining: 0,
+          effortConfidence: "high"
+        })
+      ],
+      [],
+      {
+        now,
+        horizonDays: 7
+      }
+    );
+
+    expect(plan.sessions).toHaveLength(0);
+    expect(plan.unallocated).toHaveLength(0);
+    expect(plan.summary.deadlinesCovered).toBe(1);
   });
 
   it("handles no gaps and no deadlines edge cases", () => {

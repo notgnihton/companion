@@ -189,6 +189,8 @@ export class RuntimeStore {
         dueDate TEXT NOT NULL,
         priority TEXT NOT NULL,
         completed INTEGER NOT NULL,
+        effortHoursRemaining REAL,
+        effortConfidence TEXT,
         insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
       );
 
@@ -453,6 +455,14 @@ export class RuntimeStore {
     const hasCanvasAssignmentId = deadlineColumns.some((col) => col.name === "canvasAssignmentId");
     if (!hasCanvasAssignmentId) {
       this.db.prepare("ALTER TABLE deadlines ADD COLUMN canvasAssignmentId INTEGER").run();
+    }
+    const hasEffortHoursRemaining = deadlineColumns.some((col) => col.name === "effortHoursRemaining");
+    if (!hasEffortHoursRemaining) {
+      this.db.prepare("ALTER TABLE deadlines ADD COLUMN effortHoursRemaining REAL").run();
+    }
+    const hasEffortConfidence = deadlineColumns.some((col) => col.name === "effortConfidence");
+    if (!hasEffortConfidence) {
+      this.db.prepare("ALTER TABLE deadlines ADD COLUMN effortConfidence TEXT").run();
     }
 
     // Add Gmail messages and lastSyncedAt columns if they don't exist
@@ -1771,15 +1781,49 @@ export class RuntimeStore {
     return { created, updated, deleted };
   }
 
+  private normalizeDeadlineEffort(deadline: Deadline): Deadline {
+    const hasEffortInput = typeof deadline.effortHoursRemaining === "number" && Number.isFinite(deadline.effortHoursRemaining);
+    if (!hasEffortInput) {
+      return {
+        ...deadline,
+        effortHoursRemaining: undefined,
+        effortConfidence: undefined
+      };
+    }
+
+    const effortHoursRemaining = Math.max(0, Number(deadline.effortHoursRemaining));
+    const effortConfidence = deadline.effortConfidence ?? "medium";
+
+    return {
+      ...deadline,
+      effortHoursRemaining,
+      effortConfidence
+    };
+  }
+
   createDeadline(entry: Omit<Deadline, "id">): Deadline {
-    const deadline: Deadline = {
+    const deadline = this.normalizeDeadlineEffort({
       id: makeId("deadline"),
       ...entry
-    };
+    });
 
     this.db
-      .prepare("INSERT INTO deadlines (id, course, task, dueDate, priority, completed, canvasAssignmentId) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(deadline.id, deadline.course, deadline.task, deadline.dueDate, deadline.priority, deadline.completed ? 1 : 0, deadline.canvasAssignmentId ?? null);
+      .prepare(
+        `INSERT INTO deadlines (
+          id, course, task, dueDate, priority, completed, canvasAssignmentId, effortHoursRemaining, effortConfidence
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        deadline.id,
+        deadline.course,
+        deadline.task,
+        deadline.dueDate,
+        deadline.priority,
+        deadline.completed ? 1 : 0,
+        deadline.canvasAssignmentId ?? null,
+        deadline.effortHoursRemaining ?? null,
+        deadline.effortConfidence ?? null
+      );
 
     // Trim to maxDeadlines
     const count = (this.db.prepare("SELECT COUNT(*) as count FROM deadlines").get() as { count: number }).count;
@@ -1848,6 +1892,8 @@ export class RuntimeStore {
       priority: string;
       completed: number;
       canvasAssignmentId: number | null;
+      effortHoursRemaining: number | null;
+      effortConfidence: string | null;
     }>;
 
     return rows.map((row) => ({
@@ -1857,7 +1903,9 @@ export class RuntimeStore {
       dueDate: row.dueDate,
       priority: row.priority as Deadline["priority"],
       completed: Boolean(row.completed),
-      ...(row.canvasAssignmentId && { canvasAssignmentId: row.canvasAssignmentId })
+      ...(row.canvasAssignmentId && { canvasAssignmentId: row.canvasAssignmentId }),
+      ...(row.effortHoursRemaining !== null ? { effortHoursRemaining: row.effortHoursRemaining } : {}),
+      ...(row.effortConfidence ? { effortConfidence: row.effortConfidence as Deadline["effortConfidence"] } : {})
     })).map((deadline) => (applyEscalation ? this.applyDeadlinePriorityEscalation(deadline, referenceDate) : deadline));
   }
 
@@ -1871,6 +1919,8 @@ export class RuntimeStore {
           priority: string;
           completed: number;
           canvasAssignmentId: number | null;
+          effortHoursRemaining: number | null;
+          effortConfidence: string | null;
         }
       | undefined;
 
@@ -1885,7 +1935,9 @@ export class RuntimeStore {
       dueDate: row.dueDate,
       priority: row.priority as Deadline["priority"],
       completed: Boolean(row.completed),
-      ...(row.canvasAssignmentId && { canvasAssignmentId: row.canvasAssignmentId })
+      ...(row.canvasAssignmentId && { canvasAssignmentId: row.canvasAssignmentId }),
+      ...(row.effortHoursRemaining !== null ? { effortHoursRemaining: row.effortHoursRemaining } : {}),
+      ...(row.effortConfidence ? { effortConfidence: row.effortConfidence as Deadline["effortConfidence"] } : {})
     };
 
     return applyEscalation ? this.applyDeadlinePriorityEscalation(deadline, referenceDate) : deadline;
@@ -1898,14 +1950,29 @@ export class RuntimeStore {
       return null;
     }
 
-    const next: Deadline = {
+    const next = this.normalizeDeadlineEffort({
       ...existing,
       ...patch
-    };
+    });
 
     this.db
-      .prepare("UPDATE deadlines SET course = ?, task = ?, dueDate = ?, priority = ?, completed = ?, canvasAssignmentId = ? WHERE id = ?")
-      .run(next.course, next.task, next.dueDate, next.priority, next.completed ? 1 : 0, next.canvasAssignmentId ?? null, id);
+      .prepare(
+        `UPDATE deadlines SET
+          course = ?, task = ?, dueDate = ?, priority = ?, completed = ?,
+          canvasAssignmentId = ?, effortHoursRemaining = ?, effortConfidence = ?
+         WHERE id = ?`
+      )
+      .run(
+        next.course,
+        next.task,
+        next.dueDate,
+        next.priority,
+        next.completed ? 1 : 0,
+        next.canvasAssignmentId ?? null,
+        next.effortHoursRemaining ?? null,
+        next.effortConfidence ?? null,
+        id
+      );
 
     return this.applyDeadlinePriorityEscalation(next, new Date());
   }
@@ -3092,18 +3159,48 @@ export class RuntimeStore {
     if (data.deadlines && data.deadlines.length > 0) {
       for (const deadline of data.deadlines) {
         try {
+          const normalizedDeadline = this.normalizeDeadlineEffort(deadline);
           const existing = this.db.prepare("SELECT id FROM deadlines WHERE id = ?").get(deadline.id);
 
           if (existing) {
             // Update existing deadline
             this.db
-              .prepare("UPDATE deadlines SET course = ?, task = ?, dueDate = ?, priority = ?, completed = ?, canvasAssignmentId = ? WHERE id = ?")
-              .run(deadline.course, deadline.task, deadline.dueDate, deadline.priority, deadline.completed ? 1 : 0, deadline.canvasAssignmentId ?? null, deadline.id);
+              .prepare(
+                `UPDATE deadlines SET
+                  course = ?, task = ?, dueDate = ?, priority = ?, completed = ?,
+                  canvasAssignmentId = ?, effortHoursRemaining = ?, effortConfidence = ?
+                 WHERE id = ?`
+              )
+              .run(
+                normalizedDeadline.course,
+                normalizedDeadline.task,
+                normalizedDeadline.dueDate,
+                normalizedDeadline.priority,
+                normalizedDeadline.completed ? 1 : 0,
+                normalizedDeadline.canvasAssignmentId ?? null,
+                normalizedDeadline.effortHoursRemaining ?? null,
+                normalizedDeadline.effortConfidence ?? null,
+                normalizedDeadline.id
+              );
           } else {
             // Insert new deadline
             this.db
-              .prepare("INSERT INTO deadlines (id, course, task, dueDate, priority, completed, canvasAssignmentId) VALUES (?, ?, ?, ?, ?, ?, ?)")
-              .run(deadline.id, deadline.course, deadline.task, deadline.dueDate, deadline.priority, deadline.completed ? 1 : 0, deadline.canvasAssignmentId ?? null);
+              .prepare(
+                `INSERT INTO deadlines (
+                  id, course, task, dueDate, priority, completed, canvasAssignmentId, effortHoursRemaining, effortConfidence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              )
+              .run(
+                normalizedDeadline.id,
+                normalizedDeadline.course,
+                normalizedDeadline.task,
+                normalizedDeadline.dueDate,
+                normalizedDeadline.priority,
+                normalizedDeadline.completed ? 1 : 0,
+                normalizedDeadline.canvasAssignmentId ?? null,
+                normalizedDeadline.effortHoursRemaining ?? null,
+                normalizedDeadline.effortConfidence ?? null
+              );
           }
 
           result.imported.deadlines += 1;

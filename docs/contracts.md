@@ -574,6 +574,7 @@ Response:
 ### POST `/api/study-plan/generate`
 
 Generate a deterministic weekly study plan from upcoming deadlines and open schedule gaps.
+When deadlines contain `effortHoursRemaining`, allocation uses that estimate (scaled by `effortConfidence`) instead of the priority default.
 
 Request:
 

@@ -5,6 +5,7 @@ export type AgentName =
   | "orchestrator";
 
 export type Priority = "low" | "medium" | "high" | "critical";
+export type EffortConfidence = "low" | "medium" | "high";
 
 export interface AgentEvent<T = unknown> {
   id: string;
@@ -214,6 +215,8 @@ export interface Deadline {
   priority: Priority;
   completed: boolean;
   canvasAssignmentId?: number;
+  effortHoursRemaining?: number;
+  effortConfidence?: EffortConfidence;
 }
 
 export interface DeadlineReminderState {
