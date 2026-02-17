@@ -14,6 +14,10 @@ import {
   handleCreateGoal,
   handleDeleteGoal,
   handleGetNutritionSummary,
+  handleGetNutritionCustomFoods,
+  handleCreateNutritionCustomFood,
+  handleUpdateNutritionCustomFood,
+  handleDeleteNutritionCustomFood,
   handleLogMeal,
   handleDeleteMeal,
   handleGetMealPlan,
@@ -38,8 +42,8 @@ describe("gemini-tools", () => {
   });
 
   describe("functionDeclarations", () => {
-    it("should define 23 function declarations", () => {
-      expect(functionDeclarations).toHaveLength(23);
+    it("should define 27 function declarations", () => {
+      expect(functionDeclarations).toHaveLength(27);
     });
 
     it("should include getSchedule function", () => {
@@ -84,6 +88,10 @@ describe("gemini-tools", () => {
 
     it("should include nutrition functions", () => {
       expect(functionDeclarations.find((f) => f.name === "getNutritionSummary")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "getNutritionCustomFoods")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "createNutritionCustomFood")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "updateNutritionCustomFood")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "deleteNutritionCustomFood")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "logMeal")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "deleteMeal")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "getMealPlan")).toBeDefined();
@@ -461,6 +469,74 @@ describe("gemini-tools", () => {
       expect(deleted.deleted).toBe(true);
     });
 
+    it("creates, lists, updates, and deletes custom foods", () => {
+      const created = handleCreateNutritionCustomFood(store, {
+        name: "Whey isolate",
+        unitLabel: "scoop",
+        caloriesPerUnit: 110,
+        proteinGramsPerUnit: 25,
+        carbsGramsPerUnit: 2,
+        fatGramsPerUnit: 1
+      });
+
+      if ("error" in created) {
+        throw new Error(created.error);
+      }
+      expect(created.success).toBe(true);
+      expect(created.food.name).toBe("Whey isolate");
+
+      const listed = handleGetNutritionCustomFoods(store, { query: "whey" });
+      expect(listed.foods).toHaveLength(1);
+      expect(listed.foods[0]?.id).toBe(created.food.id);
+
+      const updated = handleUpdateNutritionCustomFood(store, {
+        customFoodId: created.food.id,
+        caloriesPerUnit: 115
+      });
+      if ("error" in updated) {
+        throw new Error(updated.error);
+      }
+      expect(updated.food.caloriesPerUnit).toBe(115);
+
+      const deleted = handleDeleteNutritionCustomFood(store, {
+        customFoodId: created.food.id
+      });
+      if ("error" in deleted) {
+        throw new Error(deleted.error);
+      }
+      expect(deleted.deleted).toBe(true);
+    });
+
+    it("logs meal from custom food with servings multiplier", () => {
+      const created = handleCreateNutritionCustomFood(store, {
+        name: "Greek yogurt",
+        unitLabel: "cup",
+        caloriesPerUnit: 150,
+        proteinGramsPerUnit: 20,
+        carbsGramsPerUnit: 9,
+        fatGramsPerUnit: 4
+      });
+      if ("error" in created) {
+        throw new Error(created.error);
+      }
+
+      const logged = handleLogMeal(store, {
+        customFoodId: created.food.id,
+        servings: 1.5,
+        mealType: "snack"
+      });
+      if ("error" in logged) {
+        throw new Error(logged.error);
+      }
+
+      expect(logged.success).toBe(true);
+      expect(logged.meal.name).toBe("Greek yogurt");
+      expect(logged.meal.calories).toBe(225);
+      expect(logged.meal.proteinGrams).toBe(30);
+      expect(logged.meal.carbsGrams).toBe(13.5);
+      expect(logged.meal.fatGrams).toBe(6);
+    });
+
     it("creates, lists, and removes meal plan blocks", () => {
       const upserted = handleUpsertMealPlanBlock(store, {
         title: "Post-workout meal",
@@ -803,6 +879,37 @@ describe("gemini-tools", () => {
 
       expect(result.name).toBe("getNutritionSummary");
       expect(result.response).toHaveProperty("totals");
+    });
+
+    it("should execute custom food nutrition functions", () => {
+      const created = executeFunctionCall(
+        "createNutritionCustomFood",
+        { name: "Banana", unitLabel: "piece", caloriesPerUnit: 105, carbsGramsPerUnit: 27 },
+        store
+      );
+      expect(created.name).toBe("createNutritionCustomFood");
+      expect(created.response).toHaveProperty("success", true);
+      const createdFoodId = (created.response as { food?: { id?: string } }).food?.id;
+      expect(createdFoodId).toBeDefined();
+      if (!createdFoodId) {
+        throw new Error("Expected created custom food id");
+      }
+
+      const listed = executeFunctionCall("getNutritionCustomFoods", { query: "banana" }, store);
+      expect(listed.name).toBe("getNutritionCustomFoods");
+      expect(listed.response).toHaveProperty("foods");
+
+      const updated = executeFunctionCall(
+        "updateNutritionCustomFood",
+        { customFoodId: createdFoodId, proteinGramsPerUnit: 1.3 },
+        store
+      );
+      expect(updated.name).toBe("updateNutritionCustomFood");
+      expect(updated.response).toHaveProperty("success", true);
+
+      const deleted = executeFunctionCall("deleteNutritionCustomFood", { customFoodId: createdFoodId }, store);
+      expect(deleted.name).toBe("deleteNutritionCustomFood");
+      expect(deleted.response).toHaveProperty("deleted", true);
     });
 
     it("should execute logMeal function", () => {

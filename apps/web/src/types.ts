@@ -276,6 +276,18 @@ export interface NutritionMealPlanBlock {
   updatedAt: string;
 }
 
+export interface NutritionCustomFood {
+  id: string;
+  name: string;
+  unitLabel: string;
+  caloriesPerUnit: number;
+  proteinGramsPerUnit: number;
+  carbsGramsPerUnit: number;
+  fatGramsPerUnit: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface NutritionTargetProfile {
   date: string;
   weightKg?: number;
@@ -394,6 +406,7 @@ export type ChatCitationType =
   | "goal"
   | "nutrition-meal"
   | "nutrition-meal-plan"
+  | "nutrition-custom-food"
   | "email"
   | "social-youtube"
   | "social-x"

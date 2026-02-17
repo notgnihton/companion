@@ -44,6 +44,7 @@ import type {
   DailyJournalSummary,
   Goal,
   Habit,
+  NutritionCustomFood,
   NutritionMeal,
   NutritionMealPlanBlock,
   IntegrationSyncName,
@@ -983,6 +984,24 @@ const nutritionMealsQuerySchema = z.object({
 
 const nutritionSummaryQuerySchema = z.object({
   date: nutritionDateSchema.optional()
+});
+
+const nutritionCustomFoodCreateSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  unitLabel: z.string().trim().min(1).max(40).default("serving"),
+  caloriesPerUnit: z.number().min(0).max(10000),
+  proteinGramsPerUnit: z.number().min(0).max(1000).default(0),
+  carbsGramsPerUnit: z.number().min(0).max(1500).default(0),
+  fatGramsPerUnit: z.number().min(0).max(600).default(0)
+});
+
+const nutritionCustomFoodUpdateSchema = nutritionCustomFoodCreateSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, "At least one field is required");
+
+const nutritionCustomFoodsQuerySchema = z.object({
+  query: z.string().trim().min(1).max(80).optional(),
+  limit: z.coerce.number().int().min(1).max(2000).optional()
 });
 
 const nutritionTargetProfileUpsertSchema = z
@@ -1980,6 +1999,50 @@ app.get("/api/nutrition/summary", (req, res) => {
 
   const summary = store.getNutritionDailySummary(parsed.data.date ?? new Date());
   return res.json({ summary });
+});
+
+app.get("/api/nutrition/custom-foods", (req, res) => {
+  const parsed = nutritionCustomFoodsQuerySchema.safeParse(req.query ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid custom foods query", issues: parsed.error.issues });
+  }
+
+  const foods = store.getNutritionCustomFoods({
+    query: parsed.data.query,
+    limit: parsed.data.limit
+  });
+  return res.json({ foods });
+});
+
+app.post("/api/nutrition/custom-foods", (req, res) => {
+  const parsed = nutritionCustomFoodCreateSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid custom food payload", issues: parsed.error.issues });
+  }
+
+  const food: NutritionCustomFood = store.createNutritionCustomFood(parsed.data);
+  return res.status(201).json({ food });
+});
+
+app.patch("/api/nutrition/custom-foods/:id", (req, res) => {
+  const parsed = nutritionCustomFoodUpdateSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid custom food payload", issues: parsed.error.issues });
+  }
+
+  const food: NutritionCustomFood | null = store.updateNutritionCustomFood(req.params.id, parsed.data);
+  if (!food) {
+    return res.status(404).json({ error: "Custom food not found" });
+  }
+  return res.json({ food });
+});
+
+app.delete("/api/nutrition/custom-foods/:id", (req, res) => {
+  const deleted = store.deleteNutritionCustomFood(req.params.id);
+  if (!deleted) {
+    return res.status(404).json({ error: "Custom food not found" });
+  }
+  return res.status(204).send();
 });
 
 app.get("/api/nutrition/targets", (req, res) => {

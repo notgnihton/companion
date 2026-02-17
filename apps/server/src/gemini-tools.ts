@@ -11,6 +11,7 @@ import {
   JournalEntry,
   LectureEvent,
   NutritionDailySummary,
+  NutritionCustomFood,
   NutritionMeal,
   NutritionMealPlanBlock,
   NutritionMealType
@@ -268,15 +269,143 @@ export const functionDeclarations: FunctionDeclaration[] = [
     }
   },
   {
-    name: "logMeal",
+    name: "getNutritionCustomFoods",
     description:
-      "Log a meal with calories and macros (protein/carbs/fat). Use this when user asks to add or track what they ate.",
+      "Get saved custom foods for macro tracking. Returns per-unit calories/protein/carbs/fat values and identifiers.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        query: {
+          type: SchemaType.STRING,
+          description: "Optional name filter."
+        },
+        limit: {
+          type: SchemaType.NUMBER,
+          description: "Maximum number of foods to return (default: 20, max: 200)."
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "createNutritionCustomFood",
+    description:
+      "Create a reusable custom food with per-unit calories and macros.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
         name: {
           type: SchemaType.STRING,
-          description: "Meal name."
+          description: "Custom food name."
+        },
+        unitLabel: {
+          type: SchemaType.STRING,
+          description: "Unit label such as serving, scoop, piece, or 100g."
+        },
+        caloriesPerUnit: {
+          type: SchemaType.NUMBER,
+          description: "Calories per unit."
+        },
+        proteinGramsPerUnit: {
+          type: SchemaType.NUMBER,
+          description: "Protein grams per unit."
+        },
+        carbsGramsPerUnit: {
+          type: SchemaType.NUMBER,
+          description: "Carb grams per unit."
+        },
+        fatGramsPerUnit: {
+          type: SchemaType.NUMBER,
+          description: "Fat grams per unit."
+        }
+      },
+      required: ["name", "caloriesPerUnit"]
+    }
+  },
+  {
+    name: "updateNutritionCustomFood",
+    description:
+      "Update an existing custom food. Use customFoodId when possible; customFoodName can be used for matching.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        customFoodId: {
+          type: SchemaType.STRING,
+          description: "Custom food ID (preferred)."
+        },
+        customFoodName: {
+          type: SchemaType.STRING,
+          description: "Custom food name hint when ID is unknown."
+        },
+        name: {
+          type: SchemaType.STRING,
+          description: "Updated custom food name."
+        },
+        unitLabel: {
+          type: SchemaType.STRING,
+          description: "Updated unit label."
+        },
+        caloriesPerUnit: {
+          type: SchemaType.NUMBER,
+          description: "Updated calories per unit."
+        },
+        proteinGramsPerUnit: {
+          type: SchemaType.NUMBER,
+          description: "Updated protein grams per unit."
+        },
+        carbsGramsPerUnit: {
+          type: SchemaType.NUMBER,
+          description: "Updated carb grams per unit."
+        },
+        fatGramsPerUnit: {
+          type: SchemaType.NUMBER,
+          description: "Updated fat grams per unit."
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "deleteNutritionCustomFood",
+    description:
+      "Delete a custom food. Use customFoodId when possible; customFoodName can be used for matching.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        customFoodId: {
+          type: SchemaType.STRING,
+          description: "Custom food ID (preferred)."
+        },
+        customFoodName: {
+          type: SchemaType.STRING,
+          description: "Custom food name hint when ID is unknown."
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "logMeal",
+    description:
+      "Log a meal with calories and macros (protein/carbs/fat). You can either provide explicit macros or reference a saved custom food.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        customFoodId: {
+          type: SchemaType.STRING,
+          description: "Optional custom food ID to derive macros."
+        },
+        customFoodName: {
+          type: SchemaType.STRING,
+          description: "Optional custom food name hint when customFoodId is unknown."
+        },
+        servings: {
+          type: SchemaType.NUMBER,
+          description: "Multiplier for custom-food macros (default: 1)."
+        },
+        name: {
+          type: SchemaType.STRING,
+          description: "Meal name. Optional when custom food is provided."
         },
         mealType: {
           type: SchemaType.STRING,
@@ -307,7 +436,7 @@ export const functionDeclarations: FunctionDeclaration[] = [
           description: "Optional note."
         }
       },
-      required: ["name", "calories"]
+      required: []
     }
   },
   {
@@ -1118,34 +1247,239 @@ export function handleGetNutritionSummary(
   return store.getNutritionDailySummary(date ?? new Date());
 }
 
-export function handleLogMeal(
+function resolveNutritionCustomFoodTarget(
+  store: RuntimeStore,
+  args: Record<string, unknown>
+): NutritionCustomFood | { error: string } {
+  const customFoodId = asTrimmedString(args.customFoodId);
+  if (customFoodId) {
+    const byId = store.getNutritionCustomFoodById(customFoodId);
+    if (!byId) {
+      return { error: `Custom food not found: ${customFoodId}` };
+    }
+    return byId;
+  }
+
+  const customFoodName = asTrimmedString(args.customFoodName);
+  const foods = store.getNutritionCustomFoods({ limit: 500 });
+  if (foods.length === 0) {
+    return { error: "No custom foods are configured yet." };
+  }
+
+  if (!customFoodName) {
+    if (foods.length === 1) {
+      return foods[0]!;
+    }
+    return { error: "Provide customFoodId or customFoodName when multiple custom foods exist." };
+  }
+
+  const needle = normalizeSearchText(customFoodName);
+  const matches = foods.filter((food) => normalizeSearchText(food.name).includes(needle));
+  if (matches.length === 0) {
+    return { error: `No custom food matched "${customFoodName}".` };
+  }
+  if (matches.length > 1) {
+    return {
+      error: `Custom food name is ambiguous. Matches: ${matches
+        .slice(0, 4)
+        .map((food) => food.name)
+        .join(", ")}`
+    };
+  }
+  return matches[0]!;
+}
+
+export function handleGetNutritionCustomFoods(
   store: RuntimeStore,
   args: Record<string, unknown> = {}
-): { success: true; meal: NutritionMeal; message: string } | { error: string } {
+): { foods: NutritionCustomFood[]; total: number } {
+  const query = asTrimmedString(args.query) ?? undefined;
+  const limit = clampNumber(args.limit, 20, 1, 200);
+  const foods = store.getNutritionCustomFoods({
+    ...(query ? { query } : {}),
+    limit
+  });
+  return {
+    foods,
+    total: foods.length
+  };
+}
+
+export function handleCreateNutritionCustomFood(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): { success: true; food: NutritionCustomFood; message: string } | { error: string } {
   const name = asTrimmedString(args.name);
   if (!name) {
     return { error: "name is required." };
   }
 
-  if (typeof args.calories !== "number") {
-    return { error: "calories is required." };
+  if (typeof args.caloriesPerUnit !== "number") {
+    return { error: "caloriesPerUnit is required." };
   }
 
-  const meal = store.createNutritionMeal({
+  const food = store.createNutritionCustomFood({
     name,
+    unitLabel: asTrimmedString(args.unitLabel) ?? "serving",
+    caloriesPerUnit: clampFloat(args.caloriesPerUnit, 0, 0, 10000),
+    proteinGramsPerUnit: clampFloat(args.proteinGramsPerUnit, 0, 0, 1000),
+    carbsGramsPerUnit: clampFloat(args.carbsGramsPerUnit, 0, 0, 1500),
+    fatGramsPerUnit: clampFloat(args.fatGramsPerUnit, 0, 0, 600)
+  });
+
+  return {
+    success: true,
+    food,
+    message: `Created custom food "${food.name}".`
+  };
+}
+
+export function handleUpdateNutritionCustomFood(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): { success: true; food: NutritionCustomFood; message: string } | { error: string } {
+  const resolved = resolveNutritionCustomFoodTarget(store, args);
+  if ("error" in resolved) {
+    return resolved;
+  }
+
+  const patch: Partial<Omit<NutritionCustomFood, "id" | "createdAt" | "updatedAt">> = {};
+  const name = asTrimmedString(args.name);
+  const unitLabel = asTrimmedString(args.unitLabel);
+  if (name) {
+    patch.name = name;
+  }
+  if (unitLabel) {
+    patch.unitLabel = unitLabel;
+  }
+  if (typeof args.caloriesPerUnit === "number") {
+    patch.caloriesPerUnit = clampFloat(args.caloriesPerUnit, 0, 0, 10000);
+  }
+  if (typeof args.proteinGramsPerUnit === "number") {
+    patch.proteinGramsPerUnit = clampFloat(args.proteinGramsPerUnit, 0, 0, 1000);
+  }
+  if (typeof args.carbsGramsPerUnit === "number") {
+    patch.carbsGramsPerUnit = clampFloat(args.carbsGramsPerUnit, 0, 0, 1500);
+  }
+  if (typeof args.fatGramsPerUnit === "number") {
+    patch.fatGramsPerUnit = clampFloat(args.fatGramsPerUnit, 0, 0, 600);
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return {
+      error:
+        "Provide at least one field to update: name, unitLabel, caloriesPerUnit, proteinGramsPerUnit, carbsGramsPerUnit, or fatGramsPerUnit."
+    };
+  }
+
+  const updated = store.updateNutritionCustomFood(resolved.id, patch);
+  if (!updated) {
+    return { error: "Unable to update custom food." };
+  }
+
+  return {
+    success: true,
+    food: updated,
+    message: `Updated custom food "${updated.name}".`
+  };
+}
+
+export function handleDeleteNutritionCustomFood(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+):
+  | {
+      success: true;
+      deleted: boolean;
+      customFoodId?: string;
+      customFoodName?: string;
+      message: string;
+    }
+  | { error: string } {
+  const foods = store.getNutritionCustomFoods({ limit: 500 });
+  if (foods.length === 0) {
+    return {
+      success: true,
+      deleted: false,
+      message: "No custom foods exist yet."
+    };
+  }
+
+  const resolved = resolveNutritionCustomFoodTarget(store, args);
+  if ("error" in resolved) {
+    return resolved;
+  }
+
+  const deleted = store.deleteNutritionCustomFood(resolved.id);
+  if (!deleted) {
+    return { error: "Unable to delete custom food." };
+  }
+
+  return {
+    success: true,
+    deleted: true,
+    customFoodId: resolved.id,
+    customFoodName: resolved.name,
+    message: `Deleted custom food "${resolved.name}".`
+  };
+}
+
+export function handleLogMeal(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): { success: true; meal: NutritionMeal; message: string } | { error: string } {
+  const customFoodId = asTrimmedString(args.customFoodId);
+  const customFoodName = asTrimmedString(args.customFoodName);
+
+  let mealName = asTrimmedString(args.name);
+  let calories: number | null = typeof args.calories === "number" ? clampFloat(args.calories, 0, 0, 10000) : null;
+  let proteinGrams: number = clampFloat(args.proteinGrams, 0, 0, 1000);
+  let carbsGrams: number = clampFloat(args.carbsGrams, 0, 0, 1500);
+  let fatGrams: number = clampFloat(args.fatGrams, 0, 0, 600);
+  let customFoodMeta: NutritionCustomFood | null = null;
+  const servings = typeof args.servings === "number" ? clampFloat(args.servings, 1, 0.1, 100) : 1;
+
+  if (customFoodId || customFoodName) {
+    const resolved = resolveNutritionCustomFoodTarget(store, { customFoodId, customFoodName });
+    if ("error" in resolved) {
+      return resolved;
+    }
+
+    customFoodMeta = resolved;
+    mealName = mealName ?? resolved.name;
+    calories = Math.round(resolved.caloriesPerUnit * servings * 10) / 10;
+    proteinGrams = Math.round(resolved.proteinGramsPerUnit * servings * 10) / 10;
+    carbsGrams = Math.round(resolved.carbsGramsPerUnit * servings * 10) / 10;
+    fatGrams = Math.round(resolved.fatGramsPerUnit * servings * 10) / 10;
+  }
+
+  if (!mealName) {
+    return { error: "name is required (or provide customFoodId/customFoodName)." };
+  }
+  if (calories === null) {
+    return { error: "calories is required (or provide customFoodId/customFoodName)." };
+  }
+
+  const note = asTrimmedString(args.notes);
+  const autoNote = customFoodMeta ? `${servings} ${customFoodMeta.unitLabel}` : null;
+
+  const meal = store.createNutritionMeal({
+    name: mealName,
     mealType: parseMealType(args.mealType),
     consumedAt: asTrimmedString(args.consumedAt) ?? new Date().toISOString(),
-    calories: clampFloat(args.calories, 0, 0, 10000),
-    proteinGrams: clampFloat(args.proteinGrams, 0, 0, 1000),
-    carbsGrams: clampFloat(args.carbsGrams, 0, 0, 1500),
-    fatGrams: clampFloat(args.fatGrams, 0, 0, 600),
-    ...(asTrimmedString(args.notes) ? { notes: asTrimmedString(args.notes)! } : {})
+    calories,
+    proteinGrams,
+    carbsGrams,
+    fatGrams,
+    ...((note ?? autoNote) ? { notes: note ?? autoNote ?? undefined } : {})
   });
 
   return {
     success: true,
     meal,
-    message: `Logged meal "${meal.name}".`
+    message: customFoodMeta
+      ? `Logged meal "${meal.name}" from custom food "${customFoodMeta.name}".`
+      : `Logged meal "${meal.name}".`
   };
 }
 
@@ -1941,6 +2275,18 @@ export function executeFunctionCall(
       break;
     case "getNutritionSummary":
       response = handleGetNutritionSummary(store, args);
+      break;
+    case "getNutritionCustomFoods":
+      response = handleGetNutritionCustomFoods(store, args);
+      break;
+    case "createNutritionCustomFood":
+      response = handleCreateNutritionCustomFood(store, args);
+      break;
+    case "updateNutritionCustomFood":
+      response = handleUpdateNutritionCustomFood(store, args);
+      break;
+    case "deleteNutritionCustomFood":
+      response = handleDeleteNutritionCustomFood(store, args);
       break;
     case "logMeal":
       response = handleLogMeal(store, args);

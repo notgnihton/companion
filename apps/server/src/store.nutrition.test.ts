@@ -159,4 +159,35 @@ describe("RuntimeStore - nutrition", () => {
     expect(summary.remainingToTarget?.carbsGrams).toBeCloseTo(396.7, 1);
     expect(summary.remainingToTarget?.fatGrams).toBeCloseTo(54.4, 1);
   });
+
+  it("supports custom foods CRUD and query filtering", () => {
+    const created = store.createNutritionCustomFood({
+      name: "Jasmine rice",
+      unitLabel: "100g",
+      caloriesPerUnit: 130,
+      proteinGramsPerUnit: 2.7,
+      carbsGramsPerUnit: 28,
+      fatGramsPerUnit: 0.3
+    });
+
+    expect(created.id).toContain("custom-food");
+    expect(created.name).toBe("Jasmine rice");
+
+    const fetched = store.getNutritionCustomFoodById(created.id);
+    expect(fetched).not.toBeNull();
+    expect(fetched?.unitLabel).toBe("100g");
+
+    const filtered = store.getNutritionCustomFoods({ query: "rice", limit: 10 });
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0]?.id).toBe(created.id);
+
+    const updated = store.updateNutritionCustomFood(created.id, {
+      caloriesPerUnit: 132
+    });
+    expect(updated).not.toBeNull();
+    expect(updated?.caloriesPerUnit).toBe(132);
+
+    expect(store.deleteNutritionCustomFood(created.id)).toBe(true);
+    expect(store.getNutritionCustomFoodById(created.id)).toBeNull();
+  });
 });

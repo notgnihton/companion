@@ -13,6 +13,7 @@ import {
   StudyPlanGeneratePayload,
   Goal,
   Habit,
+  NutritionCustomFood,
   NutritionDailySummary,
   NutritionMeal,
   NutritionMealPlanBlock,
@@ -915,6 +916,24 @@ export interface NutritionMealCreatePayload {
   notes?: string;
 }
 
+export interface NutritionCustomFoodCreatePayload {
+  name: string;
+  unitLabel?: string;
+  caloriesPerUnit: number;
+  proteinGramsPerUnit?: number;
+  carbsGramsPerUnit?: number;
+  fatGramsPerUnit?: number;
+}
+
+export interface NutritionCustomFoodUpdatePayload {
+  name?: string;
+  unitLabel?: string;
+  caloriesPerUnit?: number;
+  proteinGramsPerUnit?: number;
+  carbsGramsPerUnit?: number;
+  fatGramsPerUnit?: number;
+}
+
 export interface NutritionMealPlanUpsertPayload {
   title: string;
   scheduledFor: string;
@@ -981,6 +1000,64 @@ export async function upsertNutritionTargetProfile(
     return response.profile;
   } catch {
     return null;
+  }
+}
+
+export async function getNutritionCustomFoods(options: {
+  query?: string;
+  limit?: number;
+} = {}): Promise<NutritionCustomFood[]> {
+  const params = new URLSearchParams();
+  if (options.query) params.set("query", options.query);
+  if (typeof options.limit === "number") params.set("limit", String(Math.round(options.limit)));
+  const query = params.toString();
+  const endpoint = query ? `/api/nutrition/custom-foods?${query}` : "/api/nutrition/custom-foods";
+
+  try {
+    const response = await jsonOrThrow<{ foods: NutritionCustomFood[] }>(endpoint);
+    return response.foods;
+  } catch {
+    return [];
+  }
+}
+
+export async function createNutritionCustomFood(
+  payload: NutritionCustomFoodCreatePayload
+): Promise<NutritionCustomFood | null> {
+  try {
+    const response = await jsonOrThrow<{ food: NutritionCustomFood }>("/api/nutrition/custom-foods", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    return response.food;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateNutritionCustomFood(
+  foodId: string,
+  payload: NutritionCustomFoodUpdatePayload
+): Promise<NutritionCustomFood | null> {
+  try {
+    const response = await jsonOrThrow<{ food: NutritionCustomFood }>(`/api/nutrition/custom-foods/${foodId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    });
+    return response.food;
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteNutritionCustomFood(foodId: string): Promise<boolean> {
+  try {
+    const response = await fetch(apiUrl(`/api/nutrition/custom-foods/${foodId}`), {
+      method: "DELETE"
+    });
+    return response.ok;
+  } catch {
+    return false;
   }
 }
 

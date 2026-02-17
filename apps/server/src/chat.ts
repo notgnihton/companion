@@ -717,7 +717,7 @@ function buildIntentGuidance(intent: ChatIntent): string {
     case "journal":
       return "Intent hint: journal. Prefer searchJournal before answering memory/reflection questions.";
     case "nutrition":
-      return "Intent hint: nutrition. Prefer getNutritionSummary/getMealPlan for status and logMeal/deleteMeal/upsertMealPlanBlock/removeMealPlanBlock for requested updates.";
+      return "Intent hint: nutrition. Prefer getNutritionSummary/getMealPlan/getNutritionCustomFoods for status and logMeal/deleteMeal/upsertMealPlanBlock/removeMealPlanBlock/createNutritionCustomFood/updateNutritionCustomFood/deleteNutritionCustomFood for requested updates.";
     case "emails":
       return "Intent hint: emails. Prefer getEmails for inbox-related requests.";
     case "social":
@@ -1227,6 +1227,34 @@ function buildMealPlanFallbackSection(response: unknown): string | null {
   return lines.join("\n");
 }
 
+function buildNutritionCustomFoodsFallbackSection(response: unknown): string | null {
+  const payload = asRecord(response);
+  if (!payload) {
+    return null;
+  }
+
+  const foods = Array.isArray(payload.foods) ? payload.foods : [];
+  if (foods.length === 0) {
+    return "Custom foods: none found.";
+  }
+
+  const lines: string[] = [`Custom foods (${foods.length}):`];
+  foods.slice(0, 4).forEach((value) => {
+    const food = asRecord(value);
+    if (!food) {
+      return;
+    }
+    const name = asNonEmptyString(food.name) ?? "Custom food";
+    const unitLabel = asNonEmptyString(food.unitLabel) ?? "serving";
+    const calories = typeof food.caloriesPerUnit === "number" ? food.caloriesPerUnit : 0;
+    lines.push(`- ${name}: ${calories} kcal/${unitLabel}`);
+  });
+  if (foods.length > 4) {
+    lines.push(`- +${foods.length - 4} more`);
+  }
+  return lines.join("\n");
+}
+
 function buildNutritionMutationFallbackSection(response: unknown): string | null {
   const payload = asRecord(response);
   if (!payload) {
@@ -1334,10 +1362,16 @@ function buildToolDataFallbackReply(
       case "getNutritionSummary":
         section = buildNutritionSummaryFallbackSection(result.rawResponse);
         break;
+      case "getNutritionCustomFoods":
+        section = buildNutritionCustomFoodsFallbackSection(result.rawResponse);
+        break;
       case "logMeal":
       case "deleteMeal":
       case "upsertMealPlanBlock":
       case "removeMealPlanBlock":
+      case "createNutritionCustomFood":
+      case "updateNutritionCustomFood":
+      case "deleteNutritionCustomFood":
         section = buildNutritionMutationFallbackSection(result.rawResponse);
         break;
       case "getMealPlan":
@@ -1807,6 +1841,34 @@ function compactMealPlanForModel(response: unknown): unknown {
   };
 }
 
+function compactNutritionCustomFoodsForModel(response: unknown): unknown {
+  const payload = asRecord(response);
+  if (!payload) {
+    return compactGenericValue(response);
+  }
+
+  const foods = Array.isArray(payload.foods) ? payload.foods : [];
+  return {
+    total: typeof payload.total === "number" ? payload.total : foods.length,
+    foods: foods.slice(0, TOOL_RESULT_ITEM_LIMIT).map((value) => {
+      const food = asRecord(value);
+      if (!food) {
+        return {};
+      }
+      return {
+        id: asNonEmptyString(food.id) ?? "",
+        name: compactTextValue(asNonEmptyString(food.name) ?? "", 100),
+        unitLabel: asNonEmptyString(food.unitLabel) ?? "serving",
+        caloriesPerUnit: typeof food.caloriesPerUnit === "number" ? food.caloriesPerUnit : 0,
+        proteinGramsPerUnit: typeof food.proteinGramsPerUnit === "number" ? food.proteinGramsPerUnit : 0,
+        carbsGramsPerUnit: typeof food.carbsGramsPerUnit === "number" ? food.carbsGramsPerUnit : 0,
+        fatGramsPerUnit: typeof food.fatGramsPerUnit === "number" ? food.fatGramsPerUnit : 0
+      };
+    }),
+    truncated: foods.length > TOOL_RESULT_ITEM_LIMIT
+  };
+}
+
 function compactNutritionMutationForModel(response: unknown): unknown {
   const payload = asRecord(response);
   if (!payload) {
@@ -1822,6 +1884,7 @@ function compactNutritionMutationForModel(response: unknown): unknown {
 
   const meal = asRecord(payload.meal);
   const block = asRecord(payload.block);
+  const food = asRecord(payload.food);
   return {
     success: Boolean(payload.success),
     created: typeof payload.created === "boolean" ? payload.created : undefined,
@@ -1839,6 +1902,13 @@ function compactNutritionMutationForModel(response: unknown): unknown {
           id: asNonEmptyString(block.id) ?? "",
           title: compactTextValue(asNonEmptyString(block.title) ?? "", 100),
           scheduledFor: asNonEmptyString(block.scheduledFor) ?? null
+        }
+      : null,
+    food: food
+      ? {
+          id: asNonEmptyString(food.id) ?? "",
+          name: compactTextValue(asNonEmptyString(food.name) ?? "", 100),
+          unitLabel: asNonEmptyString(food.unitLabel) ?? "serving"
         }
       : null
   };
@@ -1901,10 +1971,15 @@ function compactFunctionResponseForModel(functionName: string, response: unknown
       return compactGoalUpdateForModel(response);
     case "getNutritionSummary":
       return compactNutritionSummaryForModel(response);
+    case "getNutritionCustomFoods":
+      return compactNutritionCustomFoodsForModel(response);
     case "logMeal":
     case "deleteMeal":
     case "upsertMealPlanBlock":
     case "removeMealPlanBlock":
+    case "createNutritionCustomFood":
+    case "updateNutritionCustomFood":
+    case "deleteNutritionCustomFood":
       return compactNutritionMutationForModel(response);
     case "getMealPlan":
       return compactMealPlanForModel(response);
@@ -2266,6 +2341,29 @@ function collectToolCitations(
     return next;
   }
 
+  if (functionName === "getNutritionCustomFoods") {
+    const payload = asRecord(response);
+    const foods = Array.isArray(payload?.foods) ? payload.foods : [];
+    const next: ChatCitation[] = [];
+    foods.forEach((value) => {
+      const food = asRecord(value);
+      if (!food) {
+        return;
+      }
+      const id = asNonEmptyString(food.id);
+      const name = asNonEmptyString(food.name);
+      if (!id || !name) {
+        return;
+      }
+      next.push({
+        id,
+        type: "nutrition-custom-food",
+        label: name
+      });
+    });
+    return next;
+  }
+
   if (functionName === "logMeal") {
     const payload = asRecord(response);
     const meal = asRecord(payload?.meal);
@@ -2357,6 +2455,39 @@ function collectToolCitations(
         id,
         type: "nutrition-meal-plan",
         label: title
+      }
+    ];
+  }
+
+  if (functionName === "createNutritionCustomFood" || functionName === "updateNutritionCustomFood") {
+    const payload = asRecord(response);
+    const food = asRecord(payload?.food);
+    const id = asNonEmptyString(food?.id);
+    const name = asNonEmptyString(food?.name);
+    if (!id || !name) {
+      return [];
+    }
+    return [
+      {
+        id,
+        type: "nutrition-custom-food",
+        label: name
+      }
+    ];
+  }
+
+  if (functionName === "deleteNutritionCustomFood") {
+    const payload = asRecord(response);
+    const id = asNonEmptyString(payload?.customFoodId);
+    const name = asNonEmptyString(payload?.customFoodName);
+    if (!id || !name) {
+      return [];
+    }
+    return [
+      {
+        id,
+        type: "nutrition-custom-food",
+        label: name
       }
     ];
   }

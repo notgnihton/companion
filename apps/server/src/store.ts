@@ -37,6 +37,7 @@ import {
   GoalCheckIn,
   GoalWithStatus,
   NutritionDailySummary,
+  NutritionCustomFood,
   NutritionMeal,
   NutritionMealPlanBlock,
   NutritionTargetProfile,
@@ -99,6 +100,7 @@ export class RuntimeStore {
   private readonly maxGoals = 100;
   private readonly maxNutritionMeals = 5000;
   private readonly maxNutritionMealPlanBlocks = 600;
+  private readonly maxNutritionCustomFoods = 1200;
   private readonly maxNutritionTargetProfiles = 4000;
   private readonly maxContextHistory = 500;
   private readonly maxCheckInsPerItem = 400;
@@ -325,6 +327,22 @@ export class RuntimeStore {
 
       CREATE INDEX IF NOT EXISTS idx_nutrition_meal_plan_blocks_scheduledFor
         ON nutrition_meal_plan_blocks(scheduledFor DESC);
+
+      CREATE TABLE IF NOT EXISTS nutrition_custom_foods (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        unitLabel TEXT NOT NULL,
+        caloriesPerUnit REAL NOT NULL,
+        proteinGramsPerUnit REAL NOT NULL,
+        carbsGramsPerUnit REAL NOT NULL,
+        fatGramsPerUnit REAL NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_nutrition_custom_foods_name
+        ON nutrition_custom_foods(name COLLATE NOCASE);
 
       CREATE TABLE IF NOT EXISTS nutrition_target_profiles (
         dateKey TEXT PRIMARY KEY,
@@ -3002,6 +3020,181 @@ export class RuntimeStore {
     return result.changes > 0;
   }
 
+  createNutritionCustomFood(
+    entry: Omit<NutritionCustomFood, "id" | "createdAt" | "updatedAt"> &
+      Partial<Pick<NutritionCustomFood, "createdAt" | "updatedAt">>
+  ): NutritionCustomFood {
+    const timestamp = nowIso();
+    const food: NutritionCustomFood = {
+      id: makeId("custom-food"),
+      name: entry.name.trim(),
+      unitLabel: entry.unitLabel.trim(),
+      caloriesPerUnit: this.clampNutritionMetric(entry.caloriesPerUnit, 0, 10000),
+      proteinGramsPerUnit: this.clampNutritionMetric(entry.proteinGramsPerUnit, 0, 1000),
+      carbsGramsPerUnit: this.clampNutritionMetric(entry.carbsGramsPerUnit, 0, 1500),
+      fatGramsPerUnit: this.clampNutritionMetric(entry.fatGramsPerUnit, 0, 600),
+      createdAt: this.normalizeIsoOrNow(entry.createdAt ?? timestamp),
+      updatedAt: this.normalizeIsoOrNow(entry.updatedAt ?? timestamp)
+    };
+
+    this.db
+      .prepare(
+        `INSERT INTO nutrition_custom_foods (
+          id, name, unitLabel, caloriesPerUnit, proteinGramsPerUnit, carbsGramsPerUnit, fatGramsPerUnit, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        food.id,
+        food.name,
+        food.unitLabel,
+        food.caloriesPerUnit,
+        food.proteinGramsPerUnit,
+        food.carbsGramsPerUnit,
+        food.fatGramsPerUnit,
+        food.createdAt,
+        food.updatedAt
+      );
+
+    this.trimNutritionCustomFoods();
+    return food;
+  }
+
+  getNutritionCustomFoodById(id: string): NutritionCustomFood | null {
+    const row = this.db.prepare("SELECT * FROM nutrition_custom_foods WHERE id = ?").get(id) as
+      | {
+          id: string;
+          name: string;
+          unitLabel: string;
+          caloriesPerUnit: number;
+          proteinGramsPerUnit: number;
+          carbsGramsPerUnit: number;
+          fatGramsPerUnit: number;
+          createdAt: string;
+          updatedAt: string;
+        }
+      | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      name: row.name,
+      unitLabel: row.unitLabel,
+      caloriesPerUnit: this.clampNutritionMetric(row.caloriesPerUnit, 0, 10000),
+      proteinGramsPerUnit: this.clampNutritionMetric(row.proteinGramsPerUnit, 0, 1000),
+      carbsGramsPerUnit: this.clampNutritionMetric(row.carbsGramsPerUnit, 0, 1500),
+      fatGramsPerUnit: this.clampNutritionMetric(row.fatGramsPerUnit, 0, 600),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt
+    };
+  }
+
+  getNutritionCustomFoods(options: { query?: string; limit?: number } = {}): NutritionCustomFood[] {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+
+    if (typeof options.query === "string" && options.query.trim().length > 0) {
+      clauses.push("name LIKE ? COLLATE NOCASE");
+      params.push(`%${options.query.trim()}%`);
+    }
+
+    let query = "SELECT * FROM nutrition_custom_foods";
+    if (clauses.length > 0) {
+      query += ` WHERE ${clauses.join(" AND ")}`;
+    }
+    query += " ORDER BY updatedAt DESC, insertOrder DESC";
+
+    const limit = typeof options.limit === "number" ? Math.min(Math.max(Math.round(options.limit), 1), 2000) : null;
+    if (limit !== null) {
+      query += " LIMIT ?";
+      params.push(limit);
+    }
+
+    const rows = this.db.prepare(query).all(...params) as Array<{
+      id: string;
+      name: string;
+      unitLabel: string;
+      caloriesPerUnit: number;
+      proteinGramsPerUnit: number;
+      carbsGramsPerUnit: number;
+      fatGramsPerUnit: number;
+      createdAt: string;
+      updatedAt: string;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      unitLabel: row.unitLabel,
+      caloriesPerUnit: this.clampNutritionMetric(row.caloriesPerUnit, 0, 10000),
+      proteinGramsPerUnit: this.clampNutritionMetric(row.proteinGramsPerUnit, 0, 1000),
+      carbsGramsPerUnit: this.clampNutritionMetric(row.carbsGramsPerUnit, 0, 1500),
+      fatGramsPerUnit: this.clampNutritionMetric(row.fatGramsPerUnit, 0, 600),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt
+    }));
+  }
+
+  updateNutritionCustomFood(
+    id: string,
+    patch: Partial<Omit<NutritionCustomFood, "id" | "createdAt" | "updatedAt">>
+  ): NutritionCustomFood | null {
+    const existing = this.getNutritionCustomFoodById(id);
+    if (!existing) {
+      return null;
+    }
+
+    const next: NutritionCustomFood = {
+      ...existing,
+      ...patch,
+      name: typeof patch.name === "string" ? patch.name.trim() : existing.name,
+      unitLabel: typeof patch.unitLabel === "string" ? patch.unitLabel.trim() : existing.unitLabel,
+      caloriesPerUnit:
+        typeof patch.caloriesPerUnit === "number"
+          ? this.clampNutritionMetric(patch.caloriesPerUnit, 0, 10000)
+          : existing.caloriesPerUnit,
+      proteinGramsPerUnit:
+        typeof patch.proteinGramsPerUnit === "number"
+          ? this.clampNutritionMetric(patch.proteinGramsPerUnit, 0, 1000)
+          : existing.proteinGramsPerUnit,
+      carbsGramsPerUnit:
+        typeof patch.carbsGramsPerUnit === "number"
+          ? this.clampNutritionMetric(patch.carbsGramsPerUnit, 0, 1500)
+          : existing.carbsGramsPerUnit,
+      fatGramsPerUnit:
+        typeof patch.fatGramsPerUnit === "number"
+          ? this.clampNutritionMetric(patch.fatGramsPerUnit, 0, 600)
+          : existing.fatGramsPerUnit,
+      updatedAt: nowIso()
+    };
+
+    this.db
+      .prepare(
+        `UPDATE nutrition_custom_foods SET
+          name = ?, unitLabel = ?, caloriesPerUnit = ?, proteinGramsPerUnit = ?, carbsGramsPerUnit = ?, fatGramsPerUnit = ?, updatedAt = ?
+         WHERE id = ?`
+      )
+      .run(
+        next.name,
+        next.unitLabel,
+        next.caloriesPerUnit,
+        next.proteinGramsPerUnit,
+        next.carbsGramsPerUnit,
+        next.fatGramsPerUnit,
+        next.updatedAt,
+        id
+      );
+
+    return next;
+  }
+
+  deleteNutritionCustomFood(id: string): boolean {
+    const result = this.db.prepare("DELETE FROM nutrition_custom_foods WHERE id = ?").run(id);
+    return result.changes > 0;
+  }
+
   upsertNutritionMealPlanBlock(
     entry: Omit<NutritionMealPlanBlock, "id" | "createdAt" | "updatedAt"> &
       Partial<Pick<NutritionMealPlanBlock, "id" | "createdAt" | "updatedAt">>
@@ -4764,6 +4957,23 @@ export class RuntimeStore {
         )`
       )
       .run(count - this.maxNutritionMealPlanBlocks);
+  }
+
+  private trimNutritionCustomFoods(): void {
+    const count = (
+      this.db.prepare("SELECT COUNT(*) as count FROM nutrition_custom_foods").get() as { count: number }
+    ).count;
+    if (count <= this.maxNutritionCustomFoods) {
+      return;
+    }
+
+    this.db
+      .prepare(
+        `DELETE FROM nutrition_custom_foods WHERE id IN (
+          SELECT id FROM nutrition_custom_foods ORDER BY insertOrder ASC LIMIT ?
+        )`
+      )
+      .run(count - this.maxNutritionCustomFoods);
   }
 
   private trimNutritionTargetProfiles(): void {
