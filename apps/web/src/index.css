@@ -3235,7 +3235,7 @@ body.keyboard-open .chat-input-container {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--keyboard-gap);
   z-index: 6;
   padding: 4px 6px 2px;
   border-top: 1px solid var(--border-soft);
@@ -3243,7 +3243,7 @@ body.keyboard-open .chat-input-container {
 }
 
 body.keyboard-open .chat-messages {
-  padding: 8px 8px 62px;
+  padding: 8px 8px calc(72px + var(--keyboard-gap));
   background: #091019;
 }
 
@@ -4220,7 +4220,7 @@ body.keyboard-open .pull-to-refresh-container {
   }
 
   body.keyboard-open .chat-input-container {
-    bottom: 0;
+    bottom: var(--keyboard-gap);
     padding-bottom: 2px;
   }
 }
