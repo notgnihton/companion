@@ -19,28 +19,32 @@ describe("config", () => {
       expect(config.PORT).toBe(8787);
     });
 
-    it("should use default AXIS_TIMEZONE when not provided", async () => {
+    it("should use default TIMEZONE when not provided", async () => {
+      delete process.env.TIMEZONE;
       delete process.env.AXIS_TIMEZONE;
       const { config } = await import("./config.js");
-      expect(config.AXIS_TIMEZONE).toBe("America/New_York");
+      expect(config.TIMEZONE).toBe("America/New_York");
     });
 
-    it("should use default AXIS_USER_NAME when not provided", async () => {
+    it("should use default USER_NAME when not provided", async () => {
+      delete process.env.USER_NAME;
       delete process.env.AXIS_USER_NAME;
       const { config } = await import("./config.js");
-      expect(config.AXIS_USER_NAME).toBe("friend");
+      expect(config.USER_NAME).toBe("friend");
     });
 
-    it("should use default AXIS_FALLBACK_EMAIL when not provided", async () => {
+    it("should use default FALLBACK_EMAIL when not provided", async () => {
+      delete process.env.FALLBACK_EMAIL;
       delete process.env.AXIS_FALLBACK_EMAIL;
       const { config } = await import("./config.js");
-      expect(config.AXIS_FALLBACK_EMAIL).toBe("user@example.com");
+      expect(config.FALLBACK_EMAIL).toBe("user@example.com");
     });
 
-    it("should use default AXIS_VAPID_SUBJECT when not provided", async () => {
+    it("should use default VAPID_SUBJECT when not provided", async () => {
+      delete process.env.VAPID_SUBJECT;
       delete process.env.AXIS_VAPID_SUBJECT;
       const { config } = await import("./config.js");
-      expect(config.AXIS_VAPID_SUBJECT).toBe("mailto:companion@example.com");
+      expect(config.VAPID_SUBJECT).toBe("mailto:companion@example.com");
     });
 
     it("should use default integration date window values", async () => {
@@ -67,26 +71,42 @@ describe("config", () => {
       expect(config.PORT).toBe(3000);
     });
 
-    it("should parse AXIS_TIMEZONE from environment", async () => {
-      process.env.AXIS_TIMEZONE = "Europe/London";
+    it("should parse TIMEZONE from environment", async () => {
+      process.env.TIMEZONE = "Europe/London";
       const { config } = await import("./config.js");
-      expect(config.AXIS_TIMEZONE).toBe("Europe/London");
+      expect(config.TIMEZONE).toBe("Europe/London");
     });
 
-    it("should parse AXIS_USER_NAME from environment", async () => {
-      process.env.AXIS_USER_NAME = "Alice";
+    it("should parse USER_NAME from environment", async () => {
+      process.env.USER_NAME = "Alice";
       const { config } = await import("./config.js");
-      expect(config.AXIS_USER_NAME).toBe("Alice");
+      expect(config.USER_NAME).toBe("Alice");
+    });
+
+    it("should parse provider env vars", async () => {
+      process.env.NOTES_PROVIDER = "local";
+      process.env.ASSIGNMENT_PROVIDER = "manual";
+      process.env.FOOD_PROVIDER = "manual";
+      process.env.SOCIAL_PROVIDER = "manual";
+      process.env.VIDEO_PROVIDER = "manual";
+
+      const { config } = await import("./config.js");
+
+      expect(config.NOTES_PROVIDER).toBe("local");
+      expect(config.ASSIGNMENT_PROVIDER).toBe("manual");
+      expect(config.FOOD_PROVIDER).toBe("manual");
+      expect(config.SOCIAL_PROVIDER).toBe("manual");
+      expect(config.VIDEO_PROVIDER).toBe("manual");
     });
 
     it("should handle all custom values at once", async () => {
       process.env.PORT = "5000";
-      process.env.AXIS_TIMEZONE = "Asia/Tokyo";
-      process.env.AXIS_USER_NAME = "Bob";
-      process.env.AXIS_VAPID_PUBLIC_KEY = "public-key";
-      process.env.AXIS_VAPID_PRIVATE_KEY = "private-key";
-      process.env.AXIS_VAPID_SUBJECT = "mailto:bob@example.com";
-      process.env.AXIS_FALLBACK_EMAIL = "bob@example.com";
+      process.env.TIMEZONE = "Asia/Tokyo";
+      process.env.USER_NAME = "Bob";
+      process.env.VAPID_PUBLIC_KEY = "public-key";
+      process.env.VAPID_PRIVATE_KEY = "private-key";
+      process.env.VAPID_SUBJECT = "mailto:bob@example.com";
+      process.env.FALLBACK_EMAIL = "bob@example.com";
       process.env.INTEGRATION_WINDOW_PAST_DAYS = "14";
       process.env.INTEGRATION_WINDOW_FUTURE_DAYS = "120";
       process.env.NOTIFICATION_DIGEST_MORNING_HOUR = "7";
@@ -95,16 +115,54 @@ describe("config", () => {
       const { config } = await import("./config.js");
 
       expect(config.PORT).toBe(5000);
-      expect(config.AXIS_TIMEZONE).toBe("Asia/Tokyo");
-      expect(config.AXIS_USER_NAME).toBe("Bob");
-      expect(config.AXIS_VAPID_PUBLIC_KEY).toBe("public-key");
-      expect(config.AXIS_VAPID_PRIVATE_KEY).toBe("private-key");
-      expect(config.AXIS_VAPID_SUBJECT).toBe("mailto:bob@example.com");
-      expect(config.AXIS_FALLBACK_EMAIL).toBe("bob@example.com");
+      expect(config.TIMEZONE).toBe("Asia/Tokyo");
+      expect(config.USER_NAME).toBe("Bob");
+      expect(config.VAPID_PUBLIC_KEY).toBe("public-key");
+      expect(config.VAPID_PRIVATE_KEY).toBe("private-key");
+      expect(config.VAPID_SUBJECT).toBe("mailto:bob@example.com");
+      expect(config.FALLBACK_EMAIL).toBe("bob@example.com");
       expect(config.INTEGRATION_WINDOW_PAST_DAYS).toBe(14);
       expect(config.INTEGRATION_WINDOW_FUTURE_DAYS).toBe(120);
       expect(config.NOTIFICATION_DIGEST_MORNING_HOUR).toBe(7);
       expect(config.NOTIFICATION_DIGEST_EVENING_HOUR).toBe(19);
+    });
+  });
+
+  describe("legacy AXIS_ compatibility", () => {
+    it("should parse legacy AXIS_* variables when canonical names are missing", async () => {
+      process.env.AXIS_TIMEZONE = "Europe/Oslo";
+      process.env.AXIS_USER_NAME = "Legacy User";
+      process.env.AXIS_VAPID_PUBLIC_KEY = "legacy-public";
+      process.env.AXIS_VAPID_PRIVATE_KEY = "legacy-private";
+      process.env.AXIS_VAPID_SUBJECT = "mailto:legacy@example.com";
+      process.env.AXIS_FALLBACK_EMAIL = "legacy@example.com";
+      process.env.AXIS_NOTES_PROVIDER = "local";
+      process.env.AXIS_ASSIGNMENT_PROVIDER = "manual";
+      process.env.AXIS_FOOD_PROVIDER = "manual";
+      process.env.AXIS_SOCIAL_PROVIDER = "manual";
+      process.env.AXIS_VIDEO_PROVIDER = "manual";
+
+      const { config } = await import("./config.js");
+
+      expect(config.TIMEZONE).toBe("Europe/Oslo");
+      expect(config.USER_NAME).toBe("Legacy User");
+      expect(config.VAPID_PUBLIC_KEY).toBe("legacy-public");
+      expect(config.VAPID_PRIVATE_KEY).toBe("legacy-private");
+      expect(config.VAPID_SUBJECT).toBe("mailto:legacy@example.com");
+      expect(config.FALLBACK_EMAIL).toBe("legacy@example.com");
+      expect(config.NOTES_PROVIDER).toBe("local");
+      expect(config.ASSIGNMENT_PROVIDER).toBe("manual");
+      expect(config.FOOD_PROVIDER).toBe("manual");
+      expect(config.SOCIAL_PROVIDER).toBe("manual");
+      expect(config.VIDEO_PROVIDER).toBe("manual");
+    });
+
+    it("should prefer canonical names over legacy AXIS_* aliases", async () => {
+      process.env.TIMEZONE = "America/Los_Angeles";
+      process.env.AXIS_TIMEZONE = "Europe/Berlin";
+
+      const { config } = await import("./config.js");
+      expect(config.TIMEZONE).toBe("America/Los_Angeles");
     });
   });
 
@@ -131,16 +189,16 @@ describe("config", () => {
       }).rejects.toThrow();
     });
 
-    it("should accept empty string for AXIS_TIMEZONE", async () => {
-      process.env.AXIS_TIMEZONE = "";
+    it("should accept empty string for TIMEZONE", async () => {
+      process.env.TIMEZONE = "";
       const { config } = await import("./config.js");
-      expect(config.AXIS_TIMEZONE).toBe("");
+      expect(config.TIMEZONE).toBe("");
     });
 
-    it("should accept empty string for AXIS_USER_NAME", async () => {
-      process.env.AXIS_USER_NAME = "";
+    it("should accept empty string for USER_NAME", async () => {
+      process.env.USER_NAME = "";
       const { config } = await import("./config.js");
-      expect(config.AXIS_USER_NAME).toBe("");
+      expect(config.USER_NAME).toBe("");
     });
   });
 });

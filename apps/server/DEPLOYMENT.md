@@ -34,18 +34,20 @@ In the Railway project dashboard:
 2. Add the required environment variables (see [ENV.md](./ENV.md)):
 
 **Required:**
-- `AXIS_TIMEZONE=America/New_York`
-- `AXIS_USER_NAME=Lucy`
+- `TIMEZONE=America/New_York`
+- `USER_NAME=Lucy`
 - `GEMINI_API_KEY=your-gemini-api-key`
+
+Legacy `AXIS_*` aliases still work, but canonical names above are preferred.
 
 **For push notifications (generate keys):**
 ```bash
 npx web-push generate-vapid-keys
 ```
 Then set:
-- `AXIS_VAPID_PUBLIC_KEY=...`
-- `AXIS_VAPID_PRIVATE_KEY=...`
-- `AXIS_VAPID_SUBJECT=mailto:companion@example.com`
+- `VAPID_PUBLIC_KEY=...`
+- `VAPID_PRIVATE_KEY=...`
+- `VAPID_SUBJECT=mailto:companion@example.com`
 
 **Optional integrations:**
 - `CANVAS_API_TOKEN=...` (Canvas LMS sync)

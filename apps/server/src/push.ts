@@ -3,19 +3,19 @@ import { config } from "./config.js";
 import { Notification, PushSubscriptionRecord } from "./types.js";
 
 const hasConfiguredVapidKeys =
-  typeof config.AXIS_VAPID_PUBLIC_KEY === "string" &&
-  config.AXIS_VAPID_PUBLIC_KEY.length > 0 &&
-  typeof config.AXIS_VAPID_PRIVATE_KEY === "string" &&
-  config.AXIS_VAPID_PRIVATE_KEY.length > 0;
+  typeof config.VAPID_PUBLIC_KEY === "string" &&
+  config.VAPID_PUBLIC_KEY.length > 0 &&
+  typeof config.VAPID_PRIVATE_KEY === "string" &&
+  config.VAPID_PRIVATE_KEY.length > 0;
 
 const vapidKeys: { publicKey: string; privateKey: string } = hasConfiguredVapidKeys
   ? {
-      publicKey: config.AXIS_VAPID_PUBLIC_KEY!,
-      privateKey: config.AXIS_VAPID_PRIVATE_KEY!
+      publicKey: config.VAPID_PUBLIC_KEY!,
+      privateKey: config.VAPID_PRIVATE_KEY!
     }
   : webpush.generateVAPIDKeys();
 
-webpush.setVapidDetails(config.AXIS_VAPID_SUBJECT, vapidKeys.publicKey, vapidKeys.privateKey);
+webpush.setVapidDetails(config.VAPID_SUBJECT, vapidKeys.publicKey, vapidKeys.privateKey);
 
 export interface PushSendResult {
   delivered: boolean;

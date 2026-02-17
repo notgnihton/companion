@@ -2,6 +2,8 @@
 
 This file documents all environment variables required to run the Companion server in production.
 
+`AXIS_*` environment variable aliases are still accepted for backward compatibility, but canonical names below are preferred.
+
 ## Required Variables
 
 ### Server Configuration
@@ -9,20 +11,20 @@ This file documents all environment variables required to run the Companion serv
 - `NODE_ENV` (recommended: "production") — Node.js environment
 
 ### User Configuration
-- `AXIS_TIMEZONE` (required) — User's timezone (e.g., "America/New_York")
-- `AXIS_USER_NAME` (required) — User's name for personalized responses
+- `TIMEZONE` (required) — User's timezone (e.g., "America/New_York")
+- `USER_NAME` (required) — User's name for personalized responses
 
 ### Feature Flags / Providers
-- `AXIS_NOTES_PROVIDER` (default: "local") — Journal provider
-- `AXIS_ASSIGNMENT_PROVIDER` (default: "manual") — Assignment provider
-- `AXIS_FOOD_PROVIDER` (default: "manual") — Food tracking provider
-- `AXIS_SOCIAL_PROVIDER` (default: "manual") — Social media provider
-- `AXIS_VIDEO_PROVIDER` (default: "manual") — Video provider
+- `NOTES_PROVIDER` (default: "local") — Journal provider
+- `ASSIGNMENT_PROVIDER` (default: "manual") — Assignment provider
+- `FOOD_PROVIDER` (default: "manual") — Food tracking provider
+- `SOCIAL_PROVIDER` (default: "manual") — Social media provider
+- `VIDEO_PROVIDER` (default: "manual") — Video provider
 
 ### Push Notifications (Web Push)
-- `AXIS_VAPID_PUBLIC_KEY` (required for push) — VAPID public key
-- `AXIS_VAPID_PRIVATE_KEY` (required for push) — VAPID private key
-- `AXIS_VAPID_SUBJECT` (required for push) — VAPID subject (e.g., "mailto:companion@example.com")
+- `VAPID_PUBLIC_KEY` (required for push) — VAPID public key
+- `VAPID_PRIVATE_KEY` (required for push) — VAPID private key
+- `VAPID_SUBJECT` (required for push) — VAPID subject (e.g., "mailto:companion@example.com")
 
 > Generate VAPID keys: `npx web-push generate-vapid-keys`
 
@@ -63,9 +65,9 @@ This file documents all environment variables required to run the Companion serv
 
 ## Deployment Checklist
 
-1. **Set required variables**: `AXIS_TIMEZONE`, `AXIS_USER_NAME`, `GEMINI_API_KEY`
+1. **Set required variables**: `TIMEZONE`, `USER_NAME`, `GEMINI_API_KEY`
 2. **Generate VAPID keys**: `npx web-push generate-vapid-keys`
-3. **Set VAPID keys**: `AXIS_VAPID_PUBLIC_KEY`, `AXIS_VAPID_PRIVATE_KEY`, `AXIS_VAPID_SUBJECT`
+3. **Set VAPID keys**: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
 4. **Optional integrations**: Set Canvas, GitHub, YouTube, X keys if needed
 5. **Set production port**: `PORT=8787` (or Railway's auto-assigned port)
 6. **Verify health check**: `curl http://<server-url>/api/health` should return `{"status":"ok"}`
@@ -78,20 +80,20 @@ PORT=8787
 NODE_ENV=production
 
 # User config
-AXIS_TIMEZONE=America/New_York
-AXIS_USER_NAME=Lucy
+TIMEZONE=America/New_York
+USER_NAME=Lucy
 
 # Providers
-AXIS_NOTES_PROVIDER=local
-AXIS_ASSIGNMENT_PROVIDER=manual
-AXIS_FOOD_PROVIDER=manual
-AXIS_SOCIAL_PROVIDER=manual
-AXIS_VIDEO_PROVIDER=manual
+NOTES_PROVIDER=local
+ASSIGNMENT_PROVIDER=manual
+FOOD_PROVIDER=manual
+SOCIAL_PROVIDER=manual
+VIDEO_PROVIDER=manual
 
 # VAPID (Web Push)
-AXIS_VAPID_PUBLIC_KEY=your-vapid-public-key
-AXIS_VAPID_PRIVATE_KEY=your-vapid-private-key
-AXIS_VAPID_SUBJECT=mailto:companion@example.com
+VAPID_PUBLIC_KEY=your-vapid-public-key
+VAPID_PRIVATE_KEY=your-vapid-private-key
+VAPID_SUBJECT=mailto:companion@example.com
 
 # AI
 GEMINI_API_KEY=your-gemini-api-key
