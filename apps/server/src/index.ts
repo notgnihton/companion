@@ -705,6 +705,7 @@ const journalImportSchema = z.object({
 const lectureImportSchema = z.object({
   id: z.string().min(1),
   title: z.string().trim().min(1).max(200),
+  location: z.string().trim().min(1).max(120).optional(),
   startTime: z.string().datetime(),
   durationMinutes: z.number().int().positive().max(24 * 60),
   workload: z.enum(["low", "medium", "high"]),
@@ -872,6 +873,7 @@ const calendarImportSchema = z
 
 const scheduleCreateSchema = z.object({
   title: z.string().trim().min(1).max(200),
+  location: z.string().trim().min(1).max(120).optional(),
   startTime: z.string().datetime(),
   durationMinutes: z.number().int().positive().max(24 * 60),
   workload: z.enum(["low", "medium", "high"]),

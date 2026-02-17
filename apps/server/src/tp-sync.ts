@@ -79,6 +79,7 @@ export function convertTPEventToLecture(event: ImportedCalendarEvent): Omit<Lect
 
   return {
     title: event.summary,
+    ...(event.location ? { location: event.location } : {}),
     startTime: event.startTime,
     durationMinutes,
     workload
@@ -132,13 +133,15 @@ export function diffScheduleEvents(
 
       if (
         existing.durationMinutes !== converted.durationMinutes ||
-        existing.workload !== converted.workload
+        existing.workload !== converted.workload ||
+        (existing.location ?? null) !== (converted.location ?? null)
       ) {
         toUpdate.push({
           id: existing.id,
           event: {
             durationMinutes: converted.durationMinutes,
-            workload: converted.workload
+            workload: converted.workload,
+            ...(converted.location ? { location: converted.location } : { location: undefined })
           }
         });
       }

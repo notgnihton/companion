@@ -229,6 +229,7 @@ export class RuntimeStore {
       CREATE TABLE IF NOT EXISTS schedule_events (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
+        location TEXT,
         startTime TEXT NOT NULL,
         durationMinutes INTEGER NOT NULL,
         workload TEXT NOT NULL,
@@ -565,6 +566,12 @@ export class RuntimeStore {
     const hasPhotosColumn = journalColumns.some((col) => col.name === "photos");
     if (!hasPhotosColumn) {
       this.db.prepare("ALTER TABLE journal_entries ADD COLUMN photos TEXT NOT NULL DEFAULT '[]'").run();
+    }
+
+    const scheduleColumns = this.db.prepare("PRAGMA table_info(schedule_events)").all() as Array<{ name: string }>;
+    const hasLocationColumn = scheduleColumns.some((col) => col.name === "location");
+    if (!hasLocationColumn) {
+      this.db.prepare("ALTER TABLE schedule_events ADD COLUMN location TEXT").run();
     }
 
     // Add canvasAssignmentId column if it doesn't exist
@@ -1988,16 +1995,29 @@ export class RuntimeStore {
   }
 
   createLectureEvent(entry: Omit<LectureEvent, "id">): LectureEvent {
+    const location = typeof entry.location === "string" && entry.location.trim().length > 0
+      ? entry.location.trim()
+      : undefined;
     const lectureEvent: LectureEvent = {
       id: makeId("lecture"),
-      ...entry
+      ...entry,
+      ...(location ? { location } : {})
     };
 
     const recurrenceJson = lectureEvent.recurrence ? JSON.stringify(lectureEvent.recurrence) : null;
 
     this.db
-      .prepare("INSERT INTO schedule_events (id, title, startTime, durationMinutes, workload, recurrence, recurrenceParentId) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(lectureEvent.id, lectureEvent.title, lectureEvent.startTime, lectureEvent.durationMinutes, lectureEvent.workload, recurrenceJson, lectureEvent.recurrenceParentId ?? null);
+      .prepare("INSERT INTO schedule_events (id, title, location, startTime, durationMinutes, workload, recurrence, recurrenceParentId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(
+        lectureEvent.id,
+        lectureEvent.title,
+        lectureEvent.location ?? null,
+        lectureEvent.startTime,
+        lectureEvent.durationMinutes,
+        lectureEvent.workload,
+        recurrenceJson,
+        lectureEvent.recurrenceParentId ?? null
+      );
 
     // Trim to maxScheduleEvents
     const count = (this.db.prepare("SELECT COUNT(*) as count FROM schedule_events").get() as { count: number }).count;
@@ -2018,6 +2038,7 @@ export class RuntimeStore {
     const rows = this.db.prepare("SELECT * FROM schedule_events ORDER BY startTime DESC").all() as Array<{
       id: string;
       title: string;
+      location: string | null;
       startTime: string;
       durationMinutes: number;
       workload: string;
@@ -2028,6 +2049,7 @@ export class RuntimeStore {
     return rows.map((row) => ({
       id: row.id,
       title: row.title,
+      ...(row.location ? { location: row.location } : {}),
       startTime: row.startTime,
       durationMinutes: row.durationMinutes,
       workload: row.workload as LectureEvent["workload"],
@@ -2041,6 +2063,7 @@ export class RuntimeStore {
       | {
           id: string;
           title: string;
+          location: string | null;
           startTime: string;
           durationMinutes: number;
           workload: string;
@@ -2056,6 +2079,7 @@ export class RuntimeStore {
     return {
       id: row.id,
       title: row.title,
+      ...(row.location ? { location: row.location } : {}),
       startTime: row.startTime,
       durationMinutes: row.durationMinutes,
       workload: row.workload as LectureEvent["workload"],
@@ -2079,8 +2103,17 @@ export class RuntimeStore {
     const recurrenceJson = next.recurrence ? JSON.stringify(next.recurrence) : null;
 
     this.db
-      .prepare("UPDATE schedule_events SET title = ?, startTime = ?, durationMinutes = ?, workload = ?, recurrence = ?, recurrenceParentId = ? WHERE id = ?")
-      .run(next.title, next.startTime, next.durationMinutes, next.workload, recurrenceJson, next.recurrenceParentId ?? null, id);
+      .prepare("UPDATE schedule_events SET title = ?, location = ?, startTime = ?, durationMinutes = ?, workload = ?, recurrence = ?, recurrenceParentId = ? WHERE id = ?")
+      .run(
+        next.title,
+        typeof next.location === "string" && next.location.trim().length > 0 ? next.location.trim() : null,
+        next.startTime,
+        next.durationMinutes,
+        next.workload,
+        recurrenceJson,
+        next.recurrenceParentId ?? null,
+        id
+      );
 
     return next;
   }

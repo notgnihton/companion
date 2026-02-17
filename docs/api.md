@@ -568,6 +568,7 @@ Response `201`:
   "lecture": {
     "id": "lecture-1739570000000-2",
     "title": "Algorithms",
+    "location": "KE-101",
     "startTime": "2026-02-16T10:00:00.000Z",
     "durationMinutes": 90,
     "workload": "high",
@@ -590,6 +591,7 @@ Response `200`:
     {
       "id": "lecture-1739570000000-2",
       "title": "Algorithms",
+      "location": "KE-101",
       "startTime": "2026-02-16T10:00:00.000Z",
       "durationMinutes": 90,
       "workload": "high"
@@ -607,6 +609,7 @@ Response `200`:
   "lecture": {
     "id": "lecture-1739570000000-2",
     "title": "Algorithms",
+    "location": "KE-101",
     "startTime": "2026-02-16T10:00:00.000Z",
     "durationMinutes": 90,
     "workload": "high"

@@ -93,6 +93,29 @@ function formatLectureTitle(value: string): string {
     .trim();
 }
 
+function formatRoomLabel(location: string | undefined): string | null {
+  if (!location || location.trim().length === 0) {
+    return null;
+  }
+
+  const compact = location.replace(/\r\n/g, " ").replace(/\s+/g, " ").trim();
+  const segment = compact.split(/[,;|]/).map((value) => value.trim()).filter(Boolean).pop() ?? compact;
+
+  const sectionPattern = /^([A-Za-z]{2,})\s+[A-Za-z]-?(\d{2,4}[A-Za-z]?)$/;
+  const sectionMatch = segment.match(sectionPattern);
+  if (sectionMatch) {
+    return `${sectionMatch[1]}-${sectionMatch[2]}`.toUpperCase();
+  }
+
+  const buildingPattern = /^([A-Za-z]{2,})\s+(\d{2,4}[A-Za-z]?)$/;
+  const buildingMatch = segment.match(buildingPattern);
+  if (buildingMatch) {
+    return `${buildingMatch[1]}-${buildingMatch[2]}`.toUpperCase();
+  }
+
+  return segment.replace(/\s*-\s*/g, "-");
+}
+
 function suggestGapActivity(
   gapStart: Date,
   gapDurationMinutes: number,
@@ -102,20 +125,20 @@ function suggestGapActivity(
   const hour = gapStart.getHours();
 
   if (hour < 9) {
-    return "Suggested: Morning routine (gym, breakfast, planning)";
+    return "Morning routine (gym, breakfast, planning)";
   }
 
   if (consumedDeadlineIndex.value < deadlineSuggestions.length) {
     const suggestion = deadlineSuggestions[consumedDeadlineIndex.value]!;
     consumedDeadlineIndex.value += 1;
-    return `Suggested: ${suggestion}`;
+    return suggestion;
   }
 
   if (gapDurationMinutes >= 90) {
-    return "Suggested: Focus block for assignments or revision";
+    return "Focus block for assignments or revision";
   }
 
-  return "Suggested: Buffer, review notes, or take a short reset";
+  return "Buffer, review notes, or take a short reset";
 }
 
 function allocatePlannedBlocks(
@@ -359,7 +382,7 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
       <header className="panel-header">
         <h2>Schedule</h2>
         <div className="panel-header-actions">
-          <span className="schedule-count">{schedule.length} blocks</span>
+          <span className="schedule-count">{todayBlocks.length} today</span>
           <button type="button" onClick={() => void handleRefresh()} disabled={refreshing || !isOnline}>
             {refreshing ? "Refreshing..." : "Refresh"}
           </button>
@@ -399,7 +422,7 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
                 <p className="day-timeline-item-label">
                   {segment.type === "event"
                     ? formatLectureTitle(segment.event?.title ?? "Scheduled block")
-                    : segment.suggestion ?? "Suggested: Focus block"}
+                    : segment.suggestion ?? "Focus block"}
                 </p>
               </li>
             ))}
@@ -435,11 +458,12 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
             isRefreshing={isRefreshing}
           />
         )}
-        {sortedSchedule.length > 0 ? (
+        {todayBlocks.length > 0 ? (
           <ul className="schedule-list">
-            {sortedSchedule.map((lecture) => {
+            {todayBlocks.map((lecture) => {
               const minutesUntil = getMinutesUntil(lecture.startTime);
               const isUpcoming = minutesUntil >= 0 && minutesUntil < 120;
+              const roomLabel = formatRoomLabel(lecture.location);
               
               return (
                 <li 
@@ -458,6 +482,12 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
                     <span className="schedule-time">{formatTime(lecture.startTime)}</span>
                     <span className="schedule-separator">•</span>
                     <span className="schedule-duration">{lecture.durationMinutes}min</span>
+                    {roomLabel && (
+                      <>
+                        <span className="schedule-separator">•</span>
+                        <span className="schedule-location">{roomLabel}</span>
+                      </>
+                    )}
                     {isUpcoming && (
                       <>
                         <span className="schedule-separator">•</span>
@@ -470,7 +500,7 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
             })}
           </ul>
         ) : (
-          <p className="schedule-empty">No schedule blocks yet. Add your lecture plan or ask Gemini to create routines.</p>
+          <p className="schedule-empty">No schedule blocks for today.</p>
         )}
       </div>
     </section>

@@ -237,6 +237,7 @@ export interface RecurrenceRule {
 export interface LectureEvent {
   id: string;
   title: string;
+  location?: string;
   startTime: string;
   durationMinutes: number;
   workload: "low" | "medium" | "high";

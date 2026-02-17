@@ -6,6 +6,7 @@ export interface ImportedCalendarEvent {
   startTime: string;
   endTime?: string;
   description?: string;
+  location?: string;
 }
 
 export interface CalendarImportResult {
@@ -43,7 +44,8 @@ export function parseICS(icsContent: string): ImportedCalendarEvent[] {
           summary: current.summary,
           startTime: current.startTime,
           endTime: current.endTime,
-          description: current.description
+          description: current.description,
+          ...(current.location ? { location: current.location } : {})
         });
       }
       current = null;
@@ -61,6 +63,8 @@ export function parseICS(icsContent: string): ImportedCalendarEvent[] {
       current.summary = normalizeCalendarSummary(decodeICSText(value));
     } else if (keyWithParams.startsWith("DESCRIPTION")) {
       current.description = normalizeCalendarDescription(decodeICSText(value));
+    } else if (keyWithParams.startsWith("LOCATION")) {
+      current.location = normalizeCalendarLocation(decodeICSText(value));
     } else if (keyWithParams.startsWith("DTSTART")) {
       const parsed = parseICSTimestamp(value);
       if (parsed) {
@@ -164,6 +168,7 @@ export function buildCalendarImportPreview(importedEvents: ImportedCalendarEvent
 
     lectures.push({
       title: event.summary,
+      ...(event.location ? { location: event.location } : {}),
       startTime: event.startTime,
       durationMinutes: toDurationMinutes(event.startTime, event.endTime),
       workload: inferWorkload(event)
@@ -237,6 +242,12 @@ function normalizeCalendarDescription(value: string): string {
   return value
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeCalendarLocation(value: string): string {
+  return value
     .replace(/\s+/g, " ")
     .trim();
 }

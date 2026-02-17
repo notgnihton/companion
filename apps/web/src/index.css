@@ -941,6 +941,11 @@ button:disabled {
   font-weight: 500;
 }
 
+.schedule-location {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .schedule-empty {
   margin: 0;
   padding: 20px;
