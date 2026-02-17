@@ -397,11 +397,22 @@ Response:
     "status": "ok",
     "tweetsProcessed": 85
   },
-  "twitch": {
-    "lastSyncAt": "2026-02-14T14:45:00.000Z",
-    "status": "ok",
-    "followedChannels": 12,
-    "currentlyLive": 1
+  "autoHealing": {
+    "tp": {
+      "integration": "tp",
+      "consecutiveFailures": 0,
+      "lastSuccessAt": "2026-02-17T16:20:00.000Z",
+      "lastFailureAt": null,
+      "lastError": null,
+      "backoffUntil": null,
+      "circuitOpenUntil": null,
+      "nextAttemptAt": null,
+      "lastBackoffMs": 0,
+      "skipCounts": {
+        "backoff": 0,
+        "circuitOpen": 0
+      }
+    }
   }
 }
 ```

@@ -3,6 +3,7 @@ import { CanvasClient } from "./canvas-client.js";
 import { filterCanvasAssignmentsByDateWindow } from "./integration-date-window.js";
 import { CanvasData } from "./types.js";
 import { CanvasDeadlineBridge, CanvasDeadlineBridgeResult } from "./canvas-deadline-bridge.js";
+import { SyncAutoHealingPolicy, SyncAutoHealingState } from "./sync-auto-healing.js";
 
 export interface CanvasSyncResult {
   success: boolean;
@@ -46,6 +47,16 @@ export class CanvasSyncService {
   private readonly client: CanvasClient;
   private readonly deadlineBridge: CanvasDeadlineBridge;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
+  private retryTimeout: ReturnType<typeof setTimeout> | null = null;
+  private autoSyncInProgress = false;
+  private autoSyncIntervalMs = 30 * 60 * 1000;
+  private readonly autoHealing = new SyncAutoHealingPolicy({
+    integration: "canvas",
+    baseBackoffMs: 30_000,
+    maxBackoffMs: 60 * 60 * 1000,
+    circuitFailureThreshold: 4,
+    circuitOpenMs: 20 * 60 * 1000
+  });
 
   constructor(store: RuntimeStore, client?: CanvasClient) {
     this.store = store;
@@ -61,12 +72,14 @@ export class CanvasSyncService {
       return;
     }
 
+    this.autoSyncIntervalMs = intervalMs;
+
     // Sync immediately on start
-    void this.sync();
+    void this.runAutoSync();
 
     // Then sync periodically
     this.syncInterval = setInterval(() => {
-      void this.sync();
+      void this.runAutoSync();
     }, intervalMs);
   }
 
@@ -77,6 +90,10 @@ export class CanvasSyncService {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
+    }
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = null;
     }
   }
 
@@ -143,5 +160,55 @@ export class CanvasSyncService {
    */
   async triggerSync(): Promise<CanvasSyncResult> {
     return this.sync();
+  }
+
+  getAutoHealingStatus(): SyncAutoHealingState {
+    return this.autoHealing.getState();
+  }
+
+  private scheduleAutoRetry(): void {
+    if (!this.syncInterval || this.retryTimeout) {
+      return;
+    }
+
+    const nextAttemptAt = this.autoHealing.getState().nextAttemptAt;
+    if (!nextAttemptAt) {
+      return;
+    }
+
+    const delay = Date.parse(nextAttemptAt) - Date.now();
+    if (!Number.isFinite(delay) || delay <= 0 || delay >= this.autoSyncIntervalMs) {
+      return;
+    }
+
+    this.retryTimeout = setTimeout(() => {
+      this.retryTimeout = null;
+      void this.runAutoSync();
+    }, delay);
+  }
+
+  private async runAutoSync(): Promise<void> {
+    if (this.autoSyncInProgress) {
+      return;
+    }
+
+    const decision = this.autoHealing.canAttempt();
+    if (!decision.allowed) {
+      this.autoHealing.recordSkip(decision.reason ?? "backoff");
+      return;
+    }
+
+    this.autoSyncInProgress = true;
+    try {
+      const result = await this.sync();
+      if (result.success) {
+        this.autoHealing.recordSuccess();
+      } else {
+        this.autoHealing.recordFailure(result.error);
+        this.scheduleAutoRetry();
+      }
+    } finally {
+      this.autoSyncInProgress = false;
+    }
   }
 }

@@ -2,6 +2,7 @@ import { RuntimeStore } from "./store.js";
 import { YouTubeClient, YouTubeChannel } from "./youtube-client.js";
 import { config } from "./config.js";
 import { YouTubeData } from "./types.js";
+import { SyncAutoHealingPolicy, SyncAutoHealingState } from "./sync-auto-healing.js";
 
 export interface YouTubeSyncResult {
   success: boolean;
@@ -40,6 +41,16 @@ export class YouTubeSyncService {
   private readonly store: RuntimeStore;
   private readonly client: YouTubeClient;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
+  private retryTimeout: ReturnType<typeof setTimeout> | null = null;
+  private autoSyncInProgress = false;
+  private autoSyncIntervalMs = 6 * 60 * 60 * 1000;
+  private readonly autoHealing = new SyncAutoHealingPolicy({
+    integration: "youtube",
+    baseBackoffMs: 45_000,
+    maxBackoffMs: 3 * 60 * 60 * 1000,
+    circuitFailureThreshold: 4,
+    circuitOpenMs: 30 * 60 * 1000
+  });
 
   constructor(store: RuntimeStore, client?: YouTubeClient) {
     this.store = store;
@@ -54,15 +65,17 @@ export class YouTubeSyncService {
       return;
     }
 
+    this.autoSyncIntervalMs = intervalMs;
+
     // Sync immediately on start (only if configured)
     if (this.client.isConfigured()) {
-      void this.sync();
+      void this.runAutoSync();
     }
 
     // Then sync periodically
     this.syncInterval = setInterval(() => {
       if (this.client.isConfigured()) {
-        void this.sync();
+        void this.runAutoSync();
       }
     }, intervalMs);
   }
@@ -74,6 +87,10 @@ export class YouTubeSyncService {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
+    }
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = null;
     }
   }
 
@@ -216,5 +233,55 @@ export class YouTubeSyncService {
    */
   getQuotaStatus() {
     return this.client.getQuotaStatus();
+  }
+
+  getAutoHealingStatus(): SyncAutoHealingState {
+    return this.autoHealing.getState();
+  }
+
+  private scheduleAutoRetry(): void {
+    if (!this.syncInterval || this.retryTimeout) {
+      return;
+    }
+
+    const nextAttemptAt = this.autoHealing.getState().nextAttemptAt;
+    if (!nextAttemptAt) {
+      return;
+    }
+
+    const delay = Date.parse(nextAttemptAt) - Date.now();
+    if (!Number.isFinite(delay) || delay <= 0 || delay >= this.autoSyncIntervalMs) {
+      return;
+    }
+
+    this.retryTimeout = setTimeout(() => {
+      this.retryTimeout = null;
+      void this.runAutoSync();
+    }, delay);
+  }
+
+  private async runAutoSync(): Promise<void> {
+    if (!this.client.isConfigured() || this.autoSyncInProgress) {
+      return;
+    }
+
+    const decision = this.autoHealing.canAttempt();
+    if (!decision.allowed) {
+      this.autoHealing.recordSkip(decision.reason ?? "backoff");
+      return;
+    }
+
+    this.autoSyncInProgress = true;
+    try {
+      const result = await this.sync();
+      if (result.success) {
+        this.autoHealing.recordSuccess();
+      } else {
+        this.autoHealing.recordFailure(result.error);
+        this.scheduleAutoRetry();
+      }
+    } finally {
+      this.autoSyncInProgress = false;
+    }
   }
 }

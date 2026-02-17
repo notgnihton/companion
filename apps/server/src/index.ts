@@ -1613,6 +1613,14 @@ app.get("/api/sync/status", (_req, res) => {
       tokenBootstrap: gmailTokenBootstrap,
       hasRefreshToken: gmailHasRefreshToken,
       hasAccessToken: gmailHasAccessToken
+    },
+    autoHealing: {
+      tp: tpSyncService.getAutoHealingStatus(),
+      canvas: canvasSyncService.getAutoHealingStatus(),
+      github: githubCourseSyncService.getAutoHealingStatus(),
+      youtube: youtubeSyncService.getAutoHealingStatus(),
+      x: xSyncService.getAutoHealingStatus(),
+      gmail: gmailSyncService.getAutoHealingStatus()
     }
   });
 });

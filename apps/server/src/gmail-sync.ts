@@ -2,6 +2,7 @@ import { google } from "googleapis";
 import { RuntimeStore } from "./store.js";
 import { GmailMessage, GmailSyncResult } from "./types.js";
 import { GmailOAuthService } from "./gmail-oauth.js";
+import { SyncAutoHealingPolicy, SyncAutoHealingState } from "./sync-auto-healing.js";
 
 export interface GmailSyncOptions {
   maxResults?: number;
@@ -12,6 +13,16 @@ export class GmailSyncService {
   private readonly store: RuntimeStore;
   private readonly gmailOAuth: GmailOAuthService;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
+  private retryTimeout: ReturnType<typeof setTimeout> | null = null;
+  private autoSyncInProgress = false;
+  private autoSyncIntervalMs = 30 * 60 * 1000;
+  private readonly autoHealing = new SyncAutoHealingPolicy({
+    integration: "gmail",
+    baseBackoffMs: 30_000,
+    maxBackoffMs: 60 * 60 * 1000,
+    circuitFailureThreshold: 4,
+    circuitOpenMs: 20 * 60 * 1000
+  });
 
   constructor(store: RuntimeStore, gmailOAuth?: GmailOAuthService) {
     this.store = store;
@@ -26,12 +37,14 @@ export class GmailSyncService {
       return;
     }
 
+    this.autoSyncIntervalMs = intervalMs;
+
     // Sync immediately on start (if connected)
-    void this.sync();
+    void this.runAutoSync();
 
     // Then sync periodically
     this.syncInterval = setInterval(() => {
-      void this.sync();
+      void this.runAutoSync();
     }, intervalMs);
   }
 
@@ -42,6 +55,10 @@ export class GmailSyncService {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
+    }
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = null;
     }
   }
 
@@ -163,5 +180,55 @@ export class GmailSyncService {
    */
   getData(): { messages: GmailMessage[]; lastSyncedAt: string | null } {
     return this.store.getGmailData();
+  }
+
+  getAutoHealingStatus(): SyncAutoHealingState {
+    return this.autoHealing.getState();
+  }
+
+  private scheduleAutoRetry(): void {
+    if (!this.syncInterval || this.retryTimeout) {
+      return;
+    }
+
+    const nextAttemptAt = this.autoHealing.getState().nextAttemptAt;
+    if (!nextAttemptAt) {
+      return;
+    }
+
+    const delay = Date.parse(nextAttemptAt) - Date.now();
+    if (!Number.isFinite(delay) || delay <= 0 || delay >= this.autoSyncIntervalMs) {
+      return;
+    }
+
+    this.retryTimeout = setTimeout(() => {
+      this.retryTimeout = null;
+      void this.runAutoSync();
+    }, delay);
+  }
+
+  private async runAutoSync(): Promise<void> {
+    if (!this.gmailOAuth.isConnected() || this.autoSyncInProgress) {
+      return;
+    }
+
+    const decision = this.autoHealing.canAttempt();
+    if (!decision.allowed) {
+      this.autoHealing.recordSkip(decision.reason ?? "backoff");
+      return;
+    }
+
+    this.autoSyncInProgress = true;
+    try {
+      const result = await this.sync();
+      if (result.success) {
+        this.autoHealing.recordSuccess();
+      } else {
+        this.autoHealing.recordFailure(result.error);
+        this.scheduleAutoRetry();
+      }
+    } finally {
+      this.autoSyncInProgress = false;
+    }
   }
 }
