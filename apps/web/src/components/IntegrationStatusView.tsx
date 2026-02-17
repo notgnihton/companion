@@ -32,7 +32,8 @@ export function IntegrationStatusView(): JSX.Element {
   const [geminiStatus, setGeminiStatus] = useState<GeminiStatus>({
     apiConfigured: false,
     model: "unknown",
-    rateLimitRemaining: 0,
+    rateLimitRemaining: null,
+    rateLimitSource: "provider",
     lastRequestAt: null
   });
 
@@ -79,6 +80,10 @@ export function IntegrationStatusView(): JSX.Element {
 
   const geminiStatusLabel = geminiStatus.apiConfigured ? "Configured" : "Not configured";
   const geminiStatusClass = geminiStatus.apiConfigured ? "status-running" : "status-idle";
+  const geminiRateLimitLabel =
+    geminiStatus.rateLimitRemaining === null
+      ? "Provider-managed"
+      : String(geminiStatus.rateLimitRemaining);
 
   return (
     <section id="integration-status-panel" className="panel">
@@ -146,8 +151,8 @@ export function IntegrationStatusView(): JSX.Element {
               <strong>{formatRelative(geminiStatus.lastRequestAt)}</strong>
             </div>
             <div>
-              <p className="muted">Rate limit remaining</p>
-              <strong>{geminiStatus.rateLimitRemaining}</strong>
+              <p className="muted">Rate limit</p>
+              <strong>{geminiRateLimitLabel}</strong>
             </div>
           </div>
 

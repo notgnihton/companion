@@ -430,7 +430,8 @@ export interface IntegrationScopePreview {
 export interface GeminiStatus {
   apiConfigured: boolean;
   model: string;
-  rateLimitRemaining: number;
+  rateLimitRemaining: number | null;
+  rateLimitSource?: "provider";
   lastRequestAt: string | null;
   error?: string;
 }

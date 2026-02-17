@@ -49,24 +49,6 @@ describe("GeminiClient", () => {
     });
   });
 
-  describe("rate limiting", () => {
-    it("should track rate limit status", () => {
-      const client = new GeminiClient("test-api-key", 15);
-      const status = client.getRateLimitStatus();
-
-      expect(status.requestCount).toBe(0);
-      expect(status.limit).toBe(15);
-    });
-
-    it("should reset rate limiter", () => {
-      const client = new GeminiClient("test-api-key", 15);
-      client.resetRateLimiter();
-
-      const status = client.getRateLimitStatus();
-      expect(status.requestCount).toBe(0);
-    });
-  });
-
   describe("error handling", () => {
     it("should create GeminiError with status code", () => {
       const error = new GeminiError("Test error", 500);
@@ -78,6 +60,13 @@ describe("GeminiClient", () => {
     it("should create RateLimitError", () => {
       const error = new RateLimitError();
       expect(error.message).toContain("rate limit");
+      expect(error.statusCode).toBe(429);
+      expect(error.name).toBe("RateLimitError");
+    });
+
+    it("should allow custom RateLimitError message", () => {
+      const error = new RateLimitError("Gemini API rate limit exceeded: provider says too many requests");
+      expect(error.message).toContain("provider says too many requests");
       expect(error.statusCode).toBe(429);
       expect(error.name).toBe("RateLimitError");
     });

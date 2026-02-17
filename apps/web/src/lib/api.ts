@@ -696,7 +696,8 @@ export async function getGeminiStatus(): Promise<GeminiStatus> {
     return {
       apiConfigured: false,
       model: "unknown",
-      rateLimitRemaining: 0,
+      rateLimitRemaining: null,
+      rateLimitSource: "provider",
       lastRequestAt: null,
       error: "Could not load Gemini status."
     };

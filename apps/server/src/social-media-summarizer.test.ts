@@ -10,9 +10,7 @@ describe("SocialMediaSummarizer", () => {
   beforeEach(() => {
     mockGeminiClient = {
       generateChatResponse: vi.fn(),
-      isConfigured: vi.fn().mockReturnValue(true),
-      getRateLimitStatus: vi.fn().mockReturnValue({ requestCount: 0, limit: 15 }),
-      resetRateLimiter: vi.fn()
+      isConfigured: vi.fn().mockReturnValue(true)
     } as unknown as GeminiClient;
 
     summarizer = new SocialMediaSummarizer(mockGeminiClient);

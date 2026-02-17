@@ -1362,7 +1362,6 @@ app.get("/api/sync/status", (_req, res) => {
   const youtubeData = store.getYouTubeData();
   const gmailData = store.getGmailData();
   const geminiClient = getGeminiClient();
-  const rateLimitStatus = geminiClient.getRateLimitStatus();
   const gmailConnection = gmailOAuthService.getConnectionInfo();
 
   return res.json({
@@ -1386,8 +1385,9 @@ app.get("/api/sync/status", (_req, res) => {
     gemini: {
       status: geminiClient.isConfigured() ? "ok" : "not_configured",
       model: "gemini-2.0-flash",
-      requestsToday: rateLimitStatus.requestCount,
-      dailyLimit: rateLimitStatus.limit
+      requestsToday: null,
+      dailyLimit: null,
+      rateLimitSource: "provider"
     },
     youtube: {
       lastSyncAt: youtubeData?.lastSyncedAt ?? null,
@@ -1665,7 +1665,6 @@ app.post("/api/social-media/sync", async (_req, res) => {
 app.get("/api/gemini/status", (_req, res) => {
   const geminiClient = getGeminiClient();
   const isConfigured = geminiClient.isConfigured();
-  const rateLimitStatus = geminiClient.getRateLimitStatus();
   const chatHistory = store.getChatHistory({ page: 1, pageSize: 1 });
   const lastRequestAt = chatHistory.messages.length > 0 
     ? chatHistory.messages[0]?.timestamp ?? null
@@ -1674,7 +1673,8 @@ app.get("/api/gemini/status", (_req, res) => {
   return res.json({
     apiConfigured: isConfigured,
     model: isConfigured ? "gemini-2.0-flash" : "unknown",
-    rateLimitRemaining: rateLimitStatus.limit - rateLimitStatus.requestCount,
+    rateLimitRemaining: null,
+    rateLimitSource: "provider",
     lastRequestAt,
     error: isConfigured ? undefined : "Gemini API key not configured"
   });

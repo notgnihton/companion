@@ -44,48 +44,18 @@ export class GeminiError extends Error {
 }
 
 export class RateLimitError extends GeminiError {
-  constructor(message = "Gemini API rate limit exceeded (15 RPM free tier)") {
-    super(message, 429);
+  constructor(message = "Gemini API rate limit exceeded", cause?: unknown) {
+    super(message, 429, cause);
     this.name = "RateLimitError";
-  }
-}
-
-class RateLimiter {
-  private requestTimestamps: number[] = [];
-  private readonly maxRequestsPerMinute: number;
-  private readonly windowMs: number = 60000;
-
-  constructor(maxRequestsPerMinute = 15) {
-    this.maxRequestsPerMinute = maxRequestsPerMinute;
-  }
-
-  recordRequest(timestamp: number = Date.now()): void {
-    this.requestTimestamps = this.requestTimestamps.filter((ts) => timestamp - ts < this.windowMs);
-    this.requestTimestamps.push(timestamp);
-  }
-
-  getRequestCount(): number {
-    const now = Date.now();
-    this.requestTimestamps = this.requestTimestamps.filter((ts) => now - ts < this.windowMs);
-    return this.requestTimestamps.length;
-  }
-
-  getLimit(): number {
-    return this.maxRequestsPerMinute;
-  }
-
-  reset(): void {
-    this.requestTimestamps = [];
   }
 }
 
 export class GeminiClient {
   private client: GoogleGenerativeAI | null = null;
   private model: GenerativeModel | null = null;
-  private rateLimiter: RateLimiter;
   private readonly modelName = "gemini-2.0-flash";
 
-  constructor(apiKey?: string, maxRequestsPerMinute = 15) {
+  constructor(apiKey?: string) {
     const key = apiKey ?? config.GEMINI_API_KEY;
 
     if (key) {
@@ -93,20 +63,39 @@ export class GeminiClient {
       // Model instance will be created per-request to support tools configuration
       this.model = this.client.getGenerativeModel({ model: this.modelName });
     }
-
-    this.rateLimiter = new RateLimiter(maxRequestsPerMinute);
   }
 
   isConfigured(): boolean {
     return this.client !== null && this.model !== null;
   }
 
+  private extractStatusCode(error: unknown): number | undefined {
+    if (typeof error === "object" && error !== null) {
+      const maybeError = error as { status?: unknown; statusCode?: unknown; code?: unknown };
+      for (const value of [maybeError.status, maybeError.statusCode, maybeError.code]) {
+        if (typeof value === "number" && Number.isInteger(value) && value >= 400 && value <= 599) {
+          return value;
+        }
+        if (typeof value === "string" && /^[45]\d{2}$/.test(value)) {
+          return Number.parseInt(value, 10);
+        }
+      }
+    }
+
+    if (error instanceof Error) {
+      const match = error.message.match(/\b([45]\d{2})\b/);
+      if (match) {
+        return Number.parseInt(match[1], 10);
+      }
+    }
+
+    return undefined;
+  }
+
   async generateChatResponse(request: GeminiChatRequest): Promise<GeminiChatResponse> {
     if (!this.isConfigured()) {
       throw new GeminiError("Gemini API key not configured. Set GEMINI_API_KEY environment variable.");
     }
-
-    this.rateLimiter.recordRequest();
 
     try {
       // Create model with or without tools
@@ -155,14 +144,23 @@ export class GeminiClient {
         functionCalls: functionCalls && functionCalls.length > 0 ? functionCalls : undefined
       };
     } catch (error) {
-      if (error instanceof Error) {
-        const errorMessage = error.message.toLowerCase();
+      const statusCode = this.extractStatusCode(error);
 
-        if (errorMessage.includes("rate") || errorMessage.includes("quota") || errorMessage.includes("429")) {
-          throw new RateLimitError();
+      if (statusCode === 429) {
+        const providerMessage = error instanceof Error ? error.message : "Too many requests";
+        throw new RateLimitError(`Gemini API rate limit exceeded: ${providerMessage}`, error);
+      }
+
+      if (statusCode === 401 || statusCode === 403) {
+        throw new GeminiError("Invalid Gemini API key", statusCode, error);
+      }
+
+      if (error instanceof Error) {
+        if (statusCode !== undefined) {
+          throw new GeminiError(`Gemini API error (${statusCode}): ${error.message}`, statusCode, error);
         }
 
-        if (errorMessage.includes("api key") || errorMessage.includes("401") || errorMessage.includes("403")) {
+        if (error.message.toLowerCase().includes("api key")) {
           throw new GeminiError("Invalid Gemini API key", 401, error);
         }
 
@@ -171,17 +169,6 @@ export class GeminiClient {
 
       throw new GeminiError("Unknown Gemini API error", undefined, error);
     }
-  }
-
-  getRateLimitStatus(): { requestCount: number; limit: number } {
-    return {
-      requestCount: this.rateLimiter.getRequestCount(),
-      limit: this.rateLimiter.getLimit()
-    };
-  }
-
-  resetRateLimiter(): void {
-    this.rateLimiter.reset();
   }
 }
 
