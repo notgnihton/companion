@@ -373,4 +373,5 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `study-session-energy-ui` | frontend-engineer | Add quick post-session check-in UI (1-tap energy/focus scale + optional note) in Study Plan view, optimized for iPhone thumb reach and minimal friction. |
 | ✅ done | `deadline-effort-budgeting` | backend-engineer | Add per-deadline effort estimates (hours remaining + confidence) and use them as constraints in weekly plan generation to avoid under/over-allocation. |
 | ✅ done | `deadline-effort-editor-ui` | frontend-engineer | Add effort-estimate controls on deadline cards with sensible defaults and inline validation, and surface “hours remaining” context in schedule/planning views. |
+| ✅ done | `pwa-custom-icon-assets` | frontend-engineer | Add production PWA icon assets (192/512/maskable + Apple touch icon) and wire manifest/index metadata so iOS Home Screen installs show Companion branding. |
 | ⬜ todo | `integration-health-log-api` | backend-engineer | Persist TP/Canvas/Gmail sync attempt history (success/failure, latency, root-cause category) and expose an API for troubleshooting and reliability analytics. |
