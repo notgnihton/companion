@@ -17,6 +17,21 @@ export class GmailOAuthService {
     return Boolean(config.GMAIL_CLIENT_ID && config.GMAIL_CLIENT_SECRET);
   }
 
+  private extractAccessToken(value: unknown): string | null {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+
+    if (value && typeof value === "object") {
+      const record = value as { token?: unknown };
+      if (typeof record.token === "string" && record.token.trim().length > 0) {
+        return record.token;
+      }
+    }
+
+    return null;
+  }
+
   private bootstrapTokensFromEnvironment(): void {
     const envAccessToken = config.GMAIL_ACCESS_TOKEN?.trim();
     const envRefreshToken = config.GMAIL_REFRESH_TOKEN?.trim();
@@ -102,24 +117,64 @@ export class GmailOAuthService {
     }
 
     const oauth2Client = this.getOAuth2Client();
-    oauth2Client.setCredentials({
-      refresh_token: tokens.refreshToken,
-      access_token: tokens.accessToken
-    });
+    const persistTokens = (nextTokens: { refresh_token?: string | null; access_token?: string | null }): void => {
+      const nextRefreshToken = nextTokens.refresh_token ?? undefined;
+      const nextAccessToken = nextTokens.access_token ?? undefined;
 
-    oauth2Client.on("tokens", (nextTokens) => {
-      if (!nextTokens.refresh_token && !nextTokens.access_token) {
+      if (!nextRefreshToken && !nextAccessToken) {
         return;
       }
 
       const latest = this.store.getGmailTokens();
       this.store.setGmailTokens({
-        refreshToken: nextTokens.refresh_token ?? latest?.refreshToken,
-        accessToken: nextTokens.access_token ?? latest?.accessToken,
-        email: latest?.email ?? "unknown",
-        connectedAt: latest?.connectedAt ?? new Date().toISOString(),
-        source: latest?.source ?? "unknown"
+        refreshToken: nextRefreshToken ?? latest?.refreshToken,
+        accessToken: nextAccessToken ?? latest?.accessToken,
+        email: latest?.email ?? tokens.email ?? "unknown",
+        connectedAt: latest?.connectedAt ?? tokens.connectedAt ?? new Date().toISOString(),
+        source: latest?.source ?? tokens.source ?? "unknown"
       });
+    };
+
+    oauth2Client.on("tokens", (nextTokens) => {
+      persistTokens(nextTokens);
+    });
+
+    if (tokens.refreshToken) {
+      oauth2Client.setCredentials({
+        refresh_token: tokens.refreshToken
+      });
+
+      try {
+        const refreshedTokenResponse = await oauth2Client.getAccessToken();
+        const refreshedAccessToken = this.extractAccessToken(refreshedTokenResponse);
+        if (refreshedAccessToken) {
+          persistTokens({ access_token: refreshedAccessToken });
+          oauth2Client.setCredentials({
+            refresh_token: tokens.refreshToken,
+            access_token: refreshedAccessToken
+          });
+          return oauth2Client;
+        }
+      } catch (error) {
+        if (!tokens.accessToken) {
+          const message = error instanceof Error ? error.message : "unknown error";
+          throw new Error(`Failed to refresh Gmail access token: ${message}`);
+        }
+      }
+
+      if (tokens.accessToken) {
+        oauth2Client.setCredentials({
+          refresh_token: tokens.refreshToken,
+          access_token: tokens.accessToken
+        });
+        return oauth2Client;
+      }
+
+      throw new Error("Failed to refresh Gmail access token: no usable token available");
+    }
+
+    oauth2Client.setCredentials({
+      access_token: tokens.accessToken
     });
 
     return oauth2Client;
