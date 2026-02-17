@@ -1,4 +1,5 @@
 import { ChatView } from "./ChatView";
+import { ContentRecommendationsPanel } from "./ContentRecommendationsPanel";
 
 interface ChatTabProps {
   todayFocus: string;
@@ -29,6 +30,8 @@ export function ChatTab(props: ChatTabProps): JSX.Element {
           <p>{props.journalStreak} days</p>
         </article>
       </div>
+
+      <ContentRecommendationsPanel context="chat" limit={3} />
       
       {/* Chat interface */}
       <ChatView />

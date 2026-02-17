@@ -405,3 +405,44 @@ export interface SocialMediaSyncResult {
   x: SocialMediaSyncStatus;
   syncedAt: string;
 }
+
+export interface ContentRecommendationTarget {
+  type: "deadline" | "lecture";
+  id: string;
+  course: string;
+  title: string;
+  dueDate?: string;
+  startTime?: string;
+  priority?: Priority;
+}
+
+export interface ContentRecommendationItem {
+  platform: "youtube" | "x";
+  id: string;
+  title: string;
+  description: string;
+  author: string;
+  url: string;
+  publishedAt: string;
+  engagement: number;
+}
+
+export interface ContentRecommendation {
+  id: string;
+  target: ContentRecommendationTarget;
+  content: ContentRecommendationItem;
+  score: number;
+  matchedKeywords: string[];
+  reason: string;
+}
+
+export interface ContentRecommendationsResponse {
+  generatedAt: string;
+  horizonDays: number;
+  summary: {
+    targetsConsidered: number;
+    candidatesConsidered: number;
+    recommendationsReturned: number;
+  };
+  recommendations: ContentRecommendation[];
+}

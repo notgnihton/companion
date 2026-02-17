@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getSocialMediaFeed, syncSocialMediaFeed } from "../lib/api";
 import type { SocialMediaFeed, SocialTweet, SocialVideo } from "../types";
+import { ContentRecommendationsPanel } from "./ContentRecommendationsPanel";
 
 type SocialFilter = "all" | "youtube" | "x";
 
@@ -145,6 +146,8 @@ export function SocialMediaView(): JSX.Element {
           X {feed.x.lastSyncedAt ? ` ${formatRelativeTime(feed.x.lastSyncedAt)}` : " never"}
         </p>
       )}
+
+      <ContentRecommendationsPanel context="social" limit={6} />
 
       <div className="social-media-content-grid">
         {filteredVideos.map((video) => (

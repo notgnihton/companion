@@ -24,7 +24,8 @@ import {
   CanvasStatus,
   CanvasSyncResult,
   SocialMediaFeed,
-  SocialMediaSyncResult
+  SocialMediaSyncResult,
+  ContentRecommendationsResponse
 } from "../types";
 import {
   JournalQueueItem,
@@ -616,6 +617,23 @@ export async function syncSocialMediaFeed(): Promise<SocialMediaSyncResult> {
   return await jsonOrThrow<SocialMediaSyncResult>("/api/social-media/sync", {
     method: "POST"
   });
+}
+
+export async function getContentRecommendations(options?: {
+  horizonDays?: number;
+  limit?: number;
+}): Promise<ContentRecommendationsResponse> {
+  const params = new URLSearchParams();
+  if (options?.horizonDays !== undefined) {
+    params.set("horizonDays", String(options.horizonDays));
+  }
+  if (options?.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+
+  const query = params.toString();
+  const endpoint = query ? `/api/recommendations/content?${query}` : "/api/recommendations/content";
+  return await jsonOrThrow<ContentRecommendationsResponse>(endpoint);
 }
 
 export async function sendChatMessage(message: string): Promise<ChatMessage> {
