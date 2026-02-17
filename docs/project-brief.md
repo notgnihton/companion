@@ -172,7 +172,7 @@ This is more powerful (the AI decides what data it needs) but requires more impl
 
 ### Course GitHub Organizations
 - **Organizations**: `dat520-2026` (Distributed Systems), `dat560-2026` (Generative AI)
-- **Auth**: Personal access token (`GITHUB_PAT` preferred, `COURSE_GITHUB_PAT` legacy alias) for `lucyscript` account — needed for private repos
+- **Auth**: Personal access token (`GITHUB_PAT` env var) for `lucyscript` account — needed for private repos
 - **Key repos**:
   - `dat520-2026/assignments` — Lab descriptions with deadlines (Go, 8 labs, graded via QuickFeed)
   - `dat520-2026/lucyscript-labs` — Personal lab submission repo
@@ -311,7 +311,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `canvas-sync-api` | backend-engineer | Add Canvas LMS integration: config for `CANVAS_API_TOKEN` + `CANVAS_BASE_URL`, sync service that fetches courses, assignments (with due dates, submission status, points), modules, and announcements. Store in RuntimeStore. Sync every 30 min via cron. |
 | ✅ done | `canvas-deadlines-bridge` | backend-engineer | Bridge Canvas assignments into the existing deadline system — auto-create/update deadlines from Canvas assignments, detect new assignments, mark completed when submitted. Avoid duplicating manually-created deadlines. |
 | ✅ done | `tp-schedule-sync` | backend-engineer | Add TP EduCloud schedule sync: fetch iCal feed from `https://tp.educloud.no/uis/timeplan/ical.php?type=courseact&sem=26v&id[]=DAT520,1&id[]=DAT560,1&id[]=DAT600,1` (public, no auth), parse with existing `parseICS()` from `calendar-import.ts`, diff against stored schedule, and upsert changes. Weekly cron + manual trigger via POST /api/sync/tp. No API key needed. |
-| ✅ done | `github-course-sync` | backend-engineer | Add GitHub course sync service: fetch lab/course READMEs from `dat520-2026/assignments` and `dat560-2026/info` repos via GitHub API, parse deadline tables from markdown, auto-create/update deadlines, and extract syllabus/course-info docs for assistant context. Config: `GITHUB_PAT` (preferred) with `COURSE_GITHUB_PAT` legacy alias. Sync daily. |
+| ✅ done | `github-course-sync` | backend-engineer | Add GitHub course sync service: fetch lab/course READMEs from `dat520-2026/assignments` and `dat560-2026/info` repos via GitHub API, parse deadline tables from markdown, auto-create/update deadlines, and extract syllabus/course-info docs for assistant context. Config: `GITHUB_PAT` env var. Sync daily. |
 | ✅ done | `canvas-sync-ui` | frontend-engineer | Add Canvas connection settings in the app: token input, base URL, sync status indicator, last-synced timestamp, manual sync trigger button, and list of synced courses. |
 | ✅ done | `chat-context-builder` | backend-engineer | Build intelligent context window for Gemini calls: include today's schedule, upcoming deadlines (next 7 days), recent journal entries (last 3), current energy/stress state, Canvas announcements, and conversation history. Stay within token limits. |
 | ✅ done | `proactive-chat-triggers` | backend-engineer | Generate proactive AI messages based on triggers: morning briefing (8am), schedule gap detected, deadline approaching (<48h), post-lecture check-in, evening reflection prompt. Queue as push notifications with "tap to chat" action. |
@@ -377,5 +377,5 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `deadline-effort-editor-ui` | frontend-engineer | Add effort-estimate controls on deadline cards with sensible defaults and inline validation, and surface “hours remaining” context in schedule/planning views. |
 | ✅ done | `pwa-custom-icon-assets` | frontend-engineer | Add production PWA icon assets (192/512/maskable + Apple touch icon) and wire manifest/index metadata so iOS Home Screen installs show Companion branding. |
 | ✅ done | `chat-agent-indicator-cleanup` | frontend-engineer | Remove irrelevant agent-running status from chat surface so top context cards stay focused on user-facing planning signals. |
-| ✅ done | `github-pat-syllabus-sync` | backend-engineer | Support private GitHub course ingestion with `GITHUB_PAT` fallback aliasing, expose `/api/sync/github` + `/api/github/course-content`, and persist extracted syllabus/course-info docs for chat context. |
+| ✅ done | `github-pat-syllabus-sync` | backend-engineer | Support private GitHub course ingestion with `GITHUB_PAT`, expose `/api/sync/github` + `/api/github/course-content`, and persist extracted syllabus/course-info docs for chat context. |
 | ⬜ todo | `integration-health-log-api` | backend-engineer | Persist TP/Canvas/Gmail sync attempt history (success/failure, latency, root-cause category) and expose an API for troubleshooting and reliability analytics. |

@@ -20,7 +20,7 @@ export class GitHubCourseClient {
   private readonly baseUrl = "https://api.github.com";
 
   constructor(token?: string) {
-    this.token = token ?? config.GITHUB_PAT ?? config.COURSE_GITHUB_PAT;
+    this.token = token ?? config.GITHUB_PAT;
   }
 
   isConfigured(): boolean {
@@ -38,7 +38,7 @@ export class GitHubCourseClient {
 
   private async fetch<T>(endpoint: string): Promise<T> {
     if (!this.token) {
-      throw new Error("GitHub PAT not configured (set GITHUB_PAT or COURSE_GITHUB_PAT)");
+      throw new Error("GitHub PAT not configured (set GITHUB_PAT)");
     }
 
     const url = `${this.baseUrl}${endpoint}`;
