@@ -22,6 +22,7 @@ export interface GitHubCourseSyncResult {
 
 // Define the course repositories to sync
 const COURSE_REPOS: CourseRepo[] = [
+  { owner: "dat520-2026", repo: "info", courseCode: "DAT520" },
   { owner: "dat520-2026", repo: "assignments", courseCode: "DAT520" },
   { owner: "dat560-2026", repo: "info", courseCode: "DAT560" }
 ];
@@ -110,7 +111,8 @@ export class GitHubCourseSyncService {
 
     const lines = markdown.split("\n");
     let inTable = false;
-    let headerIndices: { deadline?: number; task?: number } = {};
+    let headerIndices: { deadline?: number; task?: number; lab?: number; topic?: number } = {};
+    let tableLooksLikeDeliverables = false;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -119,6 +121,7 @@ export class GitHubCourseSyncService {
       if (!line.startsWith("|")) {
         inTable = false;
         headerIndices = {};
+        tableLooksLikeDeliverables = false;
         continue;
       }
 
@@ -137,10 +140,15 @@ export class GitHubCourseSyncService {
         const hasDeadlineHeader = cells.some(cell =>
           /deadline|due.*date|date/i.test(cell)
         );
-        const hasTaskHeader = cells.some((cell) => /assignment|exam|task|deliverable|activity/i.test(cell));
+        const hasTaskHeader = cells.some((cell) =>
+          /assignment|exam|task|deliverable|activity|topic|lab/i.test(cell)
+        );
 
         if (hasDeadlineHeader && hasTaskHeader) {
           inTable = true;
+          tableLooksLikeDeliverables = cells.some((cell) =>
+            /assignment|exam|deliverable|activity|lab/i.test(cell)
+          );
 
           // Map column indices
           cells.forEach((cell, idx) => {
@@ -150,20 +158,26 @@ export class GitHubCourseSyncService {
             if (/assignment|exam|task|deliverable|activity/i.test(cell)) {
               headerIndices.task = idx;
             }
+            if (/lab/i.test(cell)) {
+              headerIndices.lab = idx;
+            }
+            if (/topic/i.test(cell)) {
+              headerIndices.topic = idx;
+            }
           });
           continue;
         }
       }
 
       // Parse data rows
-      if (inTable && headerIndices.deadline !== undefined && headerIndices.task !== undefined) {
-        const taskCell = cells[headerIndices.task];
+      if (inTable && headerIndices.deadline !== undefined) {
+        const taskCell = this.resolveTaskCell(cells, headerIndices, tableLooksLikeDeliverables);
         const deadlineCell = cells[headerIndices.deadline];
 
         if (!taskCell || !deadlineCell) continue;
 
         // Skip empty/header-like rows and rows that are not assignment/exam-like work items.
-        if (/^(assignment|exam|task|deadline)$/i.test(taskCell)) continue;
+        if (/^(assignment|exam|task|deadline|lab|topic)$/i.test(taskCell)) continue;
         if (!this.isAssignmentOrExamTask(taskCell)) continue;
 
         // Parse the deadline date
@@ -200,6 +214,12 @@ export class GitHubCourseSyncService {
       return cleaned;
     }
 
+    // Month + day without explicit year (e.g., "January 15", "Feb 12").
+    const monthDay = this.parseMonthDayWithoutYear(cleaned);
+    if (monthDay) {
+      return monthDay;
+    }
+
     // Try parsing other common formats
     const date = new Date(cleaned);
 
@@ -208,6 +228,109 @@ export class GitHubCourseSyncService {
       const month = `${date.getMonth() + 1}`.padStart(2, "0");
       const day = `${date.getDate()}`.padStart(2, "0");
       return `${year}-${month}-${day}`;
+    }
+
+    return null;
+  }
+
+  private parseMonthDayWithoutYear(raw: string): string | null {
+    const normalized = raw.replace(/\./g, "").replace(/\s+/g, " ").trim();
+    const monthMap: Record<string, number> = {
+      jan: 1,
+      january: 1,
+      feb: 2,
+      february: 2,
+      mar: 3,
+      march: 3,
+      apr: 4,
+      april: 4,
+      may: 5,
+      jun: 6,
+      june: 6,
+      jul: 7,
+      july: 7,
+      aug: 8,
+      august: 8,
+      sep: 9,
+      sept: 9,
+      september: 9,
+      oct: 10,
+      october: 10,
+      nov: 11,
+      november: 11,
+      dec: 12,
+      december: 12
+    };
+
+    const monthDayMatch = normalized.match(/^([A-Za-z]+)\s+(\d{1,2})$/);
+    if (monthDayMatch) {
+      const month = monthMap[monthDayMatch[1].toLowerCase()];
+      const day = Number(monthDayMatch[2]);
+      if (!month || day < 1 || day > 31) {
+        return null;
+      }
+      const year = new Date().getUTCFullYear();
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+
+    const dayMonthMatch = normalized.match(/^(\d{1,2})\s+([A-Za-z]+)$/);
+    if (dayMonthMatch) {
+      const day = Number(dayMonthMatch[1]);
+      const month = monthMap[dayMonthMatch[2].toLowerCase()];
+      if (!month || day < 1 || day > 31) {
+        return null;
+      }
+      const year = new Date().getUTCFullYear();
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+
+    return null;
+  }
+
+  private stripMarkdownInline(text: string): string {
+    return text
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+      .replace(/\[([^\]]+)\]\[[^\]]+\]/g, "$1")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\*([^*]+)\*/g, "$1")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  private resolveTaskCell(
+    cells: string[],
+    headerIndices: { deadline?: number; task?: number; lab?: number; topic?: number },
+    tableLooksLikeDeliverables: boolean
+  ): string | null {
+    const taskCell = headerIndices.task !== undefined ? cells[headerIndices.task] : "";
+    const labCell = headerIndices.lab !== undefined ? cells[headerIndices.lab] : "";
+    const topicCell = headerIndices.topic !== undefined ? cells[headerIndices.topic] : "";
+
+    const normalizedTask = this.stripMarkdownInline(taskCell ?? "");
+    const normalizedLab = this.stripMarkdownInline(labCell ?? "");
+    const normalizedTopic = this.stripMarkdownInline(topicCell ?? "");
+
+    if (normalizedTask.length > 0) {
+      if (this.isAssignmentOrExamTask(normalizedTask)) {
+        return normalizedTask;
+      }
+
+      if (tableLooksLikeDeliverables) {
+        return `Assignment: ${normalizedTask}`;
+      }
+    }
+
+    if (normalizedLab.length > 0 && normalizedTopic.length > 0) {
+      return `Assignment Lab ${normalizedLab}: ${normalizedTopic}`;
+    }
+
+    if (normalizedLab.length > 0) {
+      return `Assignment Lab ${normalizedLab}`;
+    }
+
+    if (normalizedTopic.length > 0 && tableLooksLikeDeliverables) {
+      return `Assignment: ${normalizedTopic}`;
     }
 
     return null;

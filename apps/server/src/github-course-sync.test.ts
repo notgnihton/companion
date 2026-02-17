@@ -140,6 +140,33 @@ describe("GitHubCourseSyncService", () => {
 
       expect(deadlines).toHaveLength(0);
     });
+
+    it("should parse DAT520 lab-plan rows with Lab/Topic/Deadline headers", () => {
+      const markdown = `
+# Lab Plan for 2026
+
+|  Lab  | Topic                                         | Deadline    |
+| :---: | --------------------------------------------- | ----------- |
+|   1   | [Getting Started with Network Programming][1] | January 15  |
+|   2   | [Network Programming with gRPC][2]            | February 12 |
+`;
+
+      const service = new GitHubCourseSyncService(store);
+      const deadlines = service.parseDeadlines(markdown, "DAT520");
+      const year = new Date().getUTCFullYear();
+
+      expect(deadlines).toHaveLength(2);
+      expect(deadlines[0]).toMatchObject({
+        course: "DAT520",
+        task: "Assignment Lab 1: Getting Started with Network Programming",
+        dueDate: `${year}-01-15`
+      });
+      expect(deadlines[1]).toMatchObject({
+        course: "DAT520",
+        task: "Assignment Lab 2: Network Programming with gRPC",
+        dueDate: `${year}-02-12`
+      });
+    });
   });
 
   describe("sync", () => {
@@ -158,13 +185,16 @@ describe("GitHubCourseSyncService", () => {
         getReadme: async (owner: string, repo: string) => {
           getReadmeCallCount++;
           // Mock both course repos
+          if (owner === "dat520-2026" && repo === "info") {
+            return "";
+          }
           if (owner === "dat520-2026" && repo === "assignments") {
             return mockReadme;
           }
           if (owner === "dat560-2026" && repo === "info") {
             return ""; // No deadlines for DAT560
           }
-          throw new Error("Unknown repo");
+          return "";
         }
       } as unknown as GitHubCourseClient;
 
@@ -181,8 +211,8 @@ describe("GitHubCourseSyncService", () => {
 
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
-      expect(getReadmeCallCount).toBe(2); // Should call for both repos
-      expect(result.reposProcessed).toBe(2);
+      expect(getReadmeCallCount).toBe(3); // DAT520 info + DAT520 assignments + DAT560 info
+      expect(result.reposProcessed).toBe(3);
       expect(result.deadlinesCreated).toBe(1);
       expect(result.courseDocsSynced).toBeGreaterThan(0);
 
@@ -195,7 +225,7 @@ describe("GitHubCourseSyncService", () => {
       const githubData = freshStore.getGitHubCourseData();
       expect(githubData).not.toBeNull();
       expect(githubData?.documents.length).toBeGreaterThan(0);
-      expect(githubData?.repositories).toHaveLength(2);
+      expect(githubData?.repositories).toHaveLength(3);
     });
 
     it("should update existing deadlines if date changes", async () => {
@@ -218,6 +248,9 @@ describe("GitHubCourseSyncService", () => {
         getReadme: async (owner: string, repo: string) => {
           if (owner === "dat520-2026" && repo === "assignments") {
             return mockReadme;
+          }
+          if (owner === "dat520-2026" && repo === "info") {
+            return "";
           }
           return "";
         }
@@ -253,6 +286,9 @@ describe("GitHubCourseSyncService", () => {
         getReadme: async (owner: string, repo: string) => {
           if (owner === "dat520-2026" && repo === "assignments") {
             return mockReadme;
+          }
+          if (owner === "dat520-2026" && repo === "info") {
+            return "";
           }
           return "";
         }
