@@ -204,6 +204,9 @@ export function ChatView(): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const lastSpokenAssistantIdRef = useRef<string | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const scrollTimeoutRef = useRef<number | null>(null);
+  const pendingTopMessageIdRef = useRef<string | null>(null);
 
   const recognitionCtor = getSpeechRecognitionCtor();
   const speechRecognitionSupported = Boolean(recognitionCtor);
@@ -218,8 +221,86 @@ export function ChatView(): JSX.Element {
     messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
+  const scheduleScrollToBottom = (behavior: ScrollBehavior = "auto"): void => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (scrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollFrameRef.current);
+      scrollFrameRef.current = null;
+    }
+
+    if (scrollTimeoutRef.current !== null) {
+      window.clearTimeout(scrollTimeoutRef.current);
+      scrollTimeoutRef.current = null;
+    }
+
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollToBottom(behavior);
+      scrollFrameRef.current = null;
+
+      // Run a second pass after layout settles (mobile keyboard + viewport resize).
+      scrollTimeoutRef.current = window.setTimeout(() => {
+        scrollToBottom("auto");
+        scrollTimeoutRef.current = null;
+      }, 120);
+    });
+  };
+
+  const scrollMessageToTop = (messageId: string, behavior: ScrollBehavior = "auto"): void => {
+    const container = messagesContainerRef.current;
+    if (!container) {
+      scheduleScrollToBottom(behavior);
+      return;
+    }
+
+    const messageElement = container.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
+    if (!messageElement) {
+      scheduleScrollToBottom(behavior);
+      return;
+    }
+
+    container.scrollTo({
+      top: Math.max(0, messageElement.offsetTop - 8),
+      behavior
+    });
+  };
+
+  const scheduleScrollMessageToTop = (messageId: string): void => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (scrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollFrameRef.current);
+      scrollFrameRef.current = null;
+    }
+
+    if (scrollTimeoutRef.current !== null) {
+      window.clearTimeout(scrollTimeoutRef.current);
+      scrollTimeoutRef.current = null;
+    }
+
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollMessageToTop(messageId, "auto");
+      scrollFrameRef.current = null;
+
+      // Run a second pass after layout settles (mobile keyboard + viewport resize).
+      scrollTimeoutRef.current = window.setTimeout(() => {
+        scrollMessageToTop(messageId, "auto");
+        scrollTimeoutRef.current = null;
+      }, 120);
+    });
+  };
+
   useEffect(() => {
-    window.requestAnimationFrame(() => scrollToBottom("auto"));
+    if (pendingTopMessageIdRef.current) {
+      scheduleScrollMessageToTop(pendingTopMessageIdRef.current);
+      return;
+    }
+
+    scheduleScrollToBottom("auto");
   }, [messages]);
 
   // Load chat history on mount
@@ -230,7 +311,7 @@ export function ChatView(): JSX.Element {
         setMessages(response.history.messages);
         const latestAssistant = latestAssistantMessage(response.history.messages);
         lastSpokenAssistantIdRef.current = latestAssistant?.id ?? null;
-        window.requestAnimationFrame(() => scrollToBottom("auto"));
+        scheduleScrollToBottom("auto");
       } catch (err) {
         setError("Failed to load chat history");
         console.error(err);
@@ -247,8 +328,35 @@ export function ChatView(): JSX.Element {
       if (speechSynthesisSupported) {
         window.speechSynthesis.cancel();
       }
+
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+
+      if (scrollTimeoutRef.current !== null) {
+        window.clearTimeout(scrollTimeoutRef.current);
+        scrollTimeoutRef.current = null;
+      }
     };
   }, [speechSynthesisSupported]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.visualViewport) {
+      return;
+    }
+
+    const handleViewportResize = (): void => {
+      if (document.activeElement === inputRef.current) {
+        scheduleScrollToBottom("auto");
+      }
+    };
+
+    window.visualViewport.addEventListener("resize", handleViewportResize);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", handleViewportResize);
+    };
+  }, []);
 
   useEffect(() => {
     if (!talkModeEnabled || !speechSynthesisSupported) {
@@ -365,7 +473,7 @@ export function ChatView(): JSX.Element {
 
     // Add user message immediately
     setMessages((prev) => [...prev, userMessage]);
-    window.requestAnimationFrame(() => scrollToBottom("auto"));
+    pendingTopMessageIdRef.current = userMessage.id;
     setInputText("");
     setPendingAttachments([]);
     setIsSending(true);
@@ -380,7 +488,10 @@ export function ChatView(): JSX.Element {
       streaming: true
     };
     setMessages((prev) => [...prev, assistantPlaceholder]);
-    window.requestAnimationFrame(() => scrollToBottom("auto"));
+    scheduleScrollMessageToTop(userMessage.id);
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches) {
+      window.requestAnimationFrame(() => inputRef.current?.blur());
+    }
 
     try {
       const response = await sendChatMessage(trimmedText, attachmentsToSend);
@@ -390,13 +501,13 @@ export function ChatView(): JSX.Element {
           msg.streaming ? { ...response, streaming: false } : msg
         )
       );
-      window.requestAnimationFrame(() => scrollToBottom("auto"));
     } catch (err) {
       setError("Failed to send message. Please try again.");
       console.error(err);
       // Remove placeholder on error
       setMessages((prev) => prev.filter((msg) => !msg.streaming));
     } finally {
+      pendingTopMessageIdRef.current = null;
       setIsSending(false);
     }
   };
@@ -553,7 +664,7 @@ export function ChatView(): JSX.Element {
           const hasAttachments = attachments.length > 0;
 
           return (
-            <div key={msg.id} className={`chat-bubble chat-bubble-${msg.role}`}>
+            <div key={msg.id} data-message-id={msg.id} className={`chat-bubble chat-bubble-${msg.role}`}>
               <div className="chat-bubble-content">
                 {msg.streaming && msg.content === "" ? (
                   <div className="chat-typing">
@@ -673,6 +784,7 @@ export function ChatView(): JSX.Element {
             placeholder="Ask me anything..."
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
+            onFocus={() => scheduleScrollToBottom("auto")}
             onKeyPress={handleKeyPress}
             disabled={isSending}
           />
