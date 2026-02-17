@@ -301,12 +301,33 @@ export interface SyncQueueStatus {
   recentItems: ServerSyncQueueItem[];
 }
 
+export type ChatCitationType =
+  | "schedule"
+  | "deadline"
+  | "journal"
+  | "email"
+  | "social-youtube"
+  | "social-x";
+
+export interface ChatCitation {
+  id: string;
+  type: ChatCitationType;
+  label: string;
+  timestamp?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ChatMessageMetadata {
+  citations?: ChatCitation[];
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: string;
   streaming?: boolean;
+  metadata?: ChatMessageMetadata;
 }
 
 export interface SendChatMessageRequest {
@@ -315,6 +336,7 @@ export interface SendChatMessageRequest {
 
 export interface SendChatMessageResponse {
   message: ChatMessage;
+  citations?: ChatCitation[];
 }
 
 export interface GetChatHistoryResponse {

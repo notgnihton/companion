@@ -12,7 +12,14 @@ import { Part } from "@google/generative-ai";
 import { functionDeclarations, executeFunctionCall, executePendingChatAction } from "./gemini-tools.js";
 import { generateContentRecommendations } from "./content-recommendations.js";
 import { RuntimeStore } from "./store.js";
-import { ChatHistoryPage, ChatMessage, ChatMessageMetadata, ChatPendingAction, UserContext } from "./types.js";
+import {
+  ChatCitation,
+  ChatHistoryPage,
+  ChatMessage,
+  ChatMessageMetadata,
+  ChatPendingAction,
+  UserContext
+} from "./types.js";
 
 interface ChatContextResult {
   contextWindow: string;
@@ -350,12 +357,229 @@ function buildPendingActionFallbackReply(actions: ChatPendingAction[]): string {
   return lines.join("\n");
 }
 
+const MAX_CHAT_CITATIONS = 8;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function asNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function textSnippet(value: string, maxLength = 80): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+}
+
+function citationKey(citation: ChatCitation): string {
+  return `${citation.type}:${citation.id}`;
+}
+
+function addCitation(citations: Map<string, ChatCitation>, citation: ChatCitation): void {
+  if (!citation.id || !citation.label) {
+    return;
+  }
+  const key = citationKey(citation);
+  if (!citations.has(key)) {
+    citations.set(key, citation);
+  }
+}
+
+function collectToolCitations(
+  store: RuntimeStore,
+  functionName: string,
+  response: unknown
+): ChatCitation[] {
+  if (functionName === "getSchedule" && Array.isArray(response)) {
+    const next: ChatCitation[] = [];
+    response.forEach((value) => {
+      const record = asRecord(value);
+      if (!record) {
+        return;
+      }
+      const id = asNonEmptyString(record.id);
+      const title = asNonEmptyString(record.title);
+      const startTime = asNonEmptyString(record.startTime);
+      if (!id || !title) {
+        return;
+      }
+      next.push({
+        id,
+        type: "schedule",
+        label: startTime ? `${title} (${startTime})` : title,
+        timestamp: startTime ?? undefined
+      });
+    });
+    return next;
+  }
+
+  if (functionName === "getDeadlines" && Array.isArray(response)) {
+    const next: ChatCitation[] = [];
+    response.forEach((value) => {
+      const record = asRecord(value);
+      if (!record) {
+        return;
+      }
+      const id = asNonEmptyString(record.id);
+      const course = asNonEmptyString(record.course);
+      const task = asNonEmptyString(record.task);
+      const dueDate = asNonEmptyString(record.dueDate);
+      if (!id || !course || !task) {
+        return;
+      }
+      next.push({
+        id,
+        type: "deadline",
+        label: dueDate ? `${course} ${task} (due ${dueDate})` : `${course} ${task}`,
+        timestamp: dueDate ?? undefined
+      });
+    });
+    return next;
+  }
+
+  if (functionName === "searchJournal" && Array.isArray(response)) {
+    const next: ChatCitation[] = [];
+    response.forEach((value) => {
+      const record = asRecord(value);
+      if (!record) {
+        return;
+      }
+      const id = asNonEmptyString(record.id);
+      const content = asNonEmptyString(record.content);
+      const timestamp = asNonEmptyString(record.timestamp);
+      if (!id || !content) {
+        return;
+      }
+      next.push({
+        id,
+        type: "journal",
+        label: textSnippet(content),
+        timestamp: timestamp ?? undefined
+      });
+    });
+    return next;
+  }
+
+  if (functionName === "getEmails" && Array.isArray(response)) {
+    const next: ChatCitation[] = [];
+    response.forEach((value) => {
+      const record = asRecord(value);
+      if (!record) {
+        return;
+      }
+      const id = asNonEmptyString(record.id);
+      const subject = asNonEmptyString(record.subject);
+      const generatedAt = asNonEmptyString(record.generatedAt);
+      if (!id || !subject) {
+        return;
+      }
+      next.push({
+        id,
+        type: "email",
+        label: textSnippet(subject),
+        timestamp: generatedAt ?? undefined
+      });
+    });
+    return next;
+  }
+
+  if (functionName === "getSocialDigest") {
+    const payload = asRecord(response);
+    if (!payload) {
+      return [];
+    }
+
+    const next: ChatCitation[] = [];
+    const youtube = asRecord(payload.youtube);
+    const videos = youtube?.videos;
+    if (Array.isArray(videos)) {
+      videos.forEach((value) => {
+        const record = asRecord(value);
+        if (!record) {
+          return;
+        }
+        const id = asNonEmptyString(record.id);
+        const title = asNonEmptyString(record.title);
+        const channelTitle = asNonEmptyString(record.channelTitle);
+        const publishedAt = asNonEmptyString(record.publishedAt);
+        if (!id || !title) {
+          return;
+        }
+        next.push({
+          id,
+          type: "social-youtube",
+          label: channelTitle ? `${channelTitle}: ${title}` : title,
+          timestamp: publishedAt ?? undefined
+        });
+      });
+    }
+
+    const x = asRecord(payload.x);
+    const tweets = x?.tweets;
+    if (Array.isArray(tweets)) {
+      tweets.forEach((value) => {
+        const record = asRecord(value);
+        if (!record) {
+          return;
+        }
+        const id = asNonEmptyString(record.id);
+        const text = asNonEmptyString(record.text);
+        const authorUsername = asNonEmptyString(record.authorUsername);
+        const createdAt = asNonEmptyString(record.createdAt);
+        if (!id || !text) {
+          return;
+        }
+        const label = authorUsername
+          ? `@${authorUsername}: ${textSnippet(text)}`
+          : textSnippet(text);
+        next.push({
+          id,
+          type: "social-x",
+          label,
+          timestamp: createdAt ?? undefined
+        });
+      });
+    }
+
+    return next;
+  }
+
+  if (functionName === "queueDeadlineAction") {
+    const payload = asRecord(response);
+    const pendingAction = asRecord(payload?.pendingAction);
+    const actionPayload = asRecord(pendingAction?.payload);
+    const deadlineId = asNonEmptyString(actionPayload?.deadlineId);
+    if (!deadlineId) {
+      return [];
+    }
+    const deadline = store.getDeadlineById(deadlineId, false);
+    if (!deadline) {
+      return [];
+    }
+    return [
+      {
+        id: deadline.id,
+        type: "deadline",
+        label: `${deadline.course} ${deadline.task} (due ${deadline.dueDate})`,
+        timestamp: deadline.dueDate
+      }
+    ];
+  }
+
+  return [];
+}
+
 export interface SendChatResult {
   reply: string;
   userMessage: ChatMessage;
   assistantMessage: ChatMessage;
   finishReason?: string;
   usage?: ChatMessageMetadata["usage"];
+  citations: ChatCitation[];
   history: ChatHistoryPage;
 }
 
@@ -412,12 +636,14 @@ export async function sendChatMessage(
 
     const assistantMessage = store.recordChatMessage("assistant", assistantReply, assistantMetadata);
     const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
+    const citations = assistantMessage.metadata?.citations ?? [];
 
     return {
       reply: assistantMessage.content,
       userMessage,
       assistantMessage,
       finishReason: "stop",
+      citations,
       history: historyPage
     };
   }
@@ -456,12 +682,15 @@ Keep responses concise, encouraging, and conversational.`
       }
     : undefined;
   let pendingActionsFromTooling: ChatPendingAction[] = [];
+  const citations = new Map<string, ChatCitation>();
 
   // Handle function calls if present
   if (response.functionCalls && response.functionCalls.length > 0) {
     // Execute all function calls
     const functionResponses = response.functionCalls.map((fnCall) => {
       const result = executeFunctionCall(fnCall.name, fnCall.args as Record<string, unknown>, store);
+      const nextCitations = collectToolCitations(store, result.name, result.response);
+      nextCitations.forEach((citation) => addCitation(citations, citation));
       return {
         name: result.name,
         response: result.response
@@ -519,7 +748,8 @@ Keep responses concise, encouraging, and conversational.`
     contextWindow,
     finishReason: response.finishReason,
     usage: totalUsage,
-    ...(pendingActionsFromTooling.length > 0 ? { pendingActions: store.getPendingChatActions(now) } : {})
+    ...(pendingActionsFromTooling.length > 0 ? { pendingActions: store.getPendingChatActions(now) } : {}),
+    ...(citations.size > 0 ? { citations: Array.from(citations.values()).slice(0, MAX_CHAT_CITATIONS) } : {})
   };
 
   const assistantMessage = store.recordChatMessage("assistant", finalReply, assistantMetadata);
@@ -532,6 +762,7 @@ Keep responses concise, encouraging, and conversational.`
     assistantMessage,
     finishReason: response.finishReason,
     usage: assistantMetadata.usage,
+    citations: assistantMetadata.citations ?? [],
     history: historyPage
   };
 }
