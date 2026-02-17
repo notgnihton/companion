@@ -5,7 +5,9 @@ import {
   ChatPendingAction,
   Deadline,
   EmailDigest,
+  GoalWithStatus,
   GitHubCourseDocument,
+  HabitWithStatus,
   JournalEntry,
   LectureEvent
 } from "./types.js";
@@ -85,6 +87,62 @@ export const functionDeclarations: FunctionDeclaration[] = [
         daysBack: {
           type: SchemaType.NUMBER,
           description: "Number of days to look back for content (default: 3)"
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "getHabitsGoalsStatus",
+    description:
+      "Get current habits and goals progress. Returns streaks, completion rates, and whether today's check-ins are done.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: "updateHabitCheckIn",
+    description:
+      "Update a habit check-in for today. Use this when the user asks to check in or uncheck a specific habit.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        habitId: {
+          type: SchemaType.STRING,
+          description: "Habit ID (preferred when known)."
+        },
+        habitName: {
+          type: SchemaType.STRING,
+          description: "Habit name hint (for name-based matching when ID is unknown)."
+        },
+        completed: {
+          type: SchemaType.BOOLEAN,
+          description: "Set true to check in, false to uncheck. Defaults to toggle if omitted."
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "updateGoalCheckIn",
+    description:
+      "Update a goal check-in for today. Use this when the user asks to log or undo progress on a specific goal.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        goalId: {
+          type: SchemaType.STRING,
+          description: "Goal ID (preferred when known)."
+        },
+        goalTitle: {
+          type: SchemaType.STRING,
+          description: "Goal title hint (for name-based matching when ID is unknown)."
+        },
+        completed: {
+          type: SchemaType.BOOLEAN,
+          description: "Set true to log progress today, false to remove today's check-in. Defaults to toggle."
         }
       },
       required: []
@@ -287,6 +345,173 @@ export function handleGetSocialDigest(
       tweets: recentTweets.slice(0, 10),
       total: recentTweets.length
     }
+  };
+}
+
+export function handleGetHabitsGoalsStatus(
+  store: RuntimeStore
+): {
+  habits: HabitWithStatus[];
+  goals: GoalWithStatus[];
+  summary: {
+    habitsCompletedToday: number;
+    habitsTotal: number;
+    goalsCompletedToday: number;
+    goalsTotal: number;
+  };
+} {
+  const habits = store.getHabitsWithStatus();
+  const goals = store.getGoalsWithStatus();
+
+  return {
+    habits,
+    goals,
+    summary: {
+      habitsCompletedToday: habits.filter((habit) => habit.todayCompleted).length,
+      habitsTotal: habits.length,
+      goalsCompletedToday: goals.filter((goal) => goal.todayCompleted).length,
+      goalsTotal: goals.length
+    }
+  };
+}
+
+function normalizeSearchText(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function resolveHabitTarget(
+  store: RuntimeStore,
+  args: Record<string, unknown>
+): HabitWithStatus | { error: string } {
+  const habitId = asTrimmedString(args.habitId);
+  if (habitId) {
+    const byId = store.getHabitsWithStatus().find((habit) => habit.id === habitId);
+    if (!byId) {
+      return { error: `Habit not found: ${habitId}` };
+    }
+    return byId;
+  }
+
+  const habitName = asTrimmedString(args.habitName);
+  const habits = store.getHabitsWithStatus();
+  if (habits.length === 0) {
+    return { error: "No habits are configured yet." };
+  }
+
+  if (!habitName) {
+    if (habits.length === 1) {
+      return habits[0];
+    }
+    return { error: "Provide habitId or habitName when multiple habits exist." };
+  }
+
+  const needle = normalizeSearchText(habitName);
+  const matches = habits.filter((habit) => normalizeSearchText(habit.name).includes(needle));
+  if (matches.length === 0) {
+    return { error: `No habit matched "${habitName}".` };
+  }
+  if (matches.length > 1) {
+    return {
+      error: `Habit name is ambiguous. Matches: ${matches
+        .slice(0, 4)
+        .map((habit) => habit.name)
+        .join(", ")}`
+    };
+  }
+  return matches[0];
+}
+
+function resolveGoalTarget(
+  store: RuntimeStore,
+  args: Record<string, unknown>
+): GoalWithStatus | { error: string } {
+  const goalId = asTrimmedString(args.goalId);
+  if (goalId) {
+    const byId = store.getGoalsWithStatus().find((goal) => goal.id === goalId);
+    if (!byId) {
+      return { error: `Goal not found: ${goalId}` };
+    }
+    return byId;
+  }
+
+  const goalTitle = asTrimmedString(args.goalTitle);
+  const goals = store.getGoalsWithStatus();
+  if (goals.length === 0) {
+    return { error: "No goals are configured yet." };
+  }
+
+  if (!goalTitle) {
+    if (goals.length === 1) {
+      return goals[0];
+    }
+    return { error: "Provide goalId or goalTitle when multiple goals exist." };
+  }
+
+  const needle = normalizeSearchText(goalTitle);
+  const matches = goals.filter((goal) => normalizeSearchText(goal.title).includes(needle));
+  if (matches.length === 0) {
+    return { error: `No goal matched "${goalTitle}".` };
+  }
+  if (matches.length > 1) {
+    return {
+      error: `Goal title is ambiguous. Matches: ${matches
+        .slice(0, 4)
+        .map((goal) => goal.title)
+        .join(", ")}`
+    };
+  }
+  return matches[0];
+}
+
+export function handleUpdateHabitCheckIn(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): { success: true; habit: HabitWithStatus; message: string } | { error: string } {
+  const resolved = resolveHabitTarget(store, args);
+  if ("error" in resolved) {
+    return resolved;
+  }
+
+  const next = store.toggleHabitCheckIn(resolved.id, {
+    completed: typeof args.completed === "boolean" ? args.completed : undefined
+  });
+
+  if (!next) {
+    return { error: "Unable to update habit check-in." };
+  }
+
+  return {
+    success: true,
+    habit: next,
+    message: next.todayCompleted
+      ? `Checked in habit "${next.name}" for today.`
+      : `Removed today's check-in for habit "${next.name}".`
+  };
+}
+
+export function handleUpdateGoalCheckIn(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): { success: true; goal: GoalWithStatus; message: string } | { error: string } {
+  const resolved = resolveGoalTarget(store, args);
+  if ("error" in resolved) {
+    return resolved;
+  }
+
+  const next = store.toggleGoalCheckIn(resolved.id, {
+    completed: typeof args.completed === "boolean" ? args.completed : undefined
+  });
+
+  if (!next) {
+    return { error: "Unable to update goal check-in." };
+  }
+
+  return {
+    success: true,
+    goal: next,
+    message: next.todayCompleted
+      ? `Logged progress for goal "${next.title}" today.`
+      : `Removed today's goal progress for "${next.title}".`
   };
 }
 
@@ -687,6 +912,15 @@ export function executeFunctionCall(
       break;
     case "getSocialDigest":
       response = handleGetSocialDigest(store, args);
+      break;
+    case "getHabitsGoalsStatus":
+      response = handleGetHabitsGoalsStatus(store);
+      break;
+    case "updateHabitCheckIn":
+      response = handleUpdateHabitCheckIn(store, args);
+      break;
+    case "updateGoalCheckIn":
+      response = handleUpdateGoalCheckIn(store, args);
       break;
     case "getGitHubCourseContent":
       response = handleGetGitHubCourseContent(store, args);

@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatTab } from "./components/ChatTab";
 import { ScheduleTab } from "./components/ScheduleTab";
-import { FocusTimer } from "./components/FocusTimer";
 import { InstallPrompt } from "./components/InstallPrompt";
-import { JournalView } from "./components/JournalView";
 import { OnboardingFlow } from "./components/OnboardingFlow";
 import { SettingsView } from "./components/SettingsView";
 import { HabitsGoalsView } from "./components/HabitsGoalsView";
@@ -34,7 +32,6 @@ export default function App(): JSX.Element {
   const [activeTab, setActiveTab] = useState<TabId>(initialDeepLink.tab ?? "chat");
   const [focusDeadlineId, setFocusDeadlineId] = useState<string | null>(initialDeepLink.deadlineId);
   const [focusLectureId, setFocusLectureId] = useState<string | null>(initialDeepLink.lectureId);
-  const [focusJournalId, setFocusJournalId] = useState<string | null>(initialDeepLink.journalId);
   const [settingsSection, setSettingsSection] = useState<string | null>(initialDeepLink.section);
   const seenCriticalNotifications = useRef<Set<string>>(new Set());
 
@@ -167,7 +164,6 @@ export default function App(): JSX.Element {
     }
     setFocusDeadlineId(next.deadlineId);
     setFocusLectureId(next.lectureId);
-    setFocusJournalId(next.journalId);
     setSettingsSection(next.section);
   }, []);
 
@@ -261,9 +257,6 @@ export default function App(): JSX.Element {
       setFocusDeadlineId(null);
       setFocusLectureId(null);
     }
-    if (tab !== "journal") {
-      setFocusJournalId(null);
-    }
     if (tab !== "settings") {
       setSettingsSection(null);
     }
@@ -325,11 +318,9 @@ export default function App(): JSX.Element {
             {activeTab === "social" && (
               <SocialMediaView />
             )}
-            {activeTab === "journal" && (
-              <div className="journal-tab-container">
-                <JournalView focusJournalId={focusJournalId ?? undefined} />
+            {activeTab === "habits" && (
+              <div className="habits-tab-container">
                 <HabitsGoalsView />
-                <FocusTimer onUpdated={refresh} />
               </div>
             )}
             {activeTab === "analytics" && (

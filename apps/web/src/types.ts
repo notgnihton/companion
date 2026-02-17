@@ -335,6 +335,8 @@ export type ChatCitationType =
   | "schedule"
   | "deadline"
   | "journal"
+  | "habit"
+  | "goal"
   | "email"
   | "social-youtube"
   | "social-x"
@@ -348,8 +350,16 @@ export interface ChatCitation {
   metadata?: Record<string, unknown>;
 }
 
+export interface ChatImageAttachment {
+  id: string;
+  dataUrl: string;
+  mimeType?: string;
+  fileName?: string;
+}
+
 export interface ChatMessageMetadata {
   citations?: ChatCitation[];
+  attachments?: ChatImageAttachment[];
 }
 
 export interface ChatMessage {
@@ -363,6 +373,7 @@ export interface ChatMessage {
 
 export interface SendChatMessageRequest {
   message: string;
+  attachments?: ChatImageAttachment[];
 }
 
 export interface SendChatMessageResponse {
@@ -378,6 +389,15 @@ export interface GetChatHistoryResponse {
     total: number;
     hasMore: boolean;
   };
+}
+
+export interface DailyJournalSummary {
+  date: string;
+  generatedAt: string;
+  summary: string;
+  highlights: string[];
+  journalEntryCount: number;
+  chatMessageCount: number;
 }
 
 export interface CanvasCourse {

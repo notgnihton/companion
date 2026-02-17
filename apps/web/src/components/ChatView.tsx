@@ -1,6 +1,6 @@
 import { Fragment, ReactNode, useEffect, useRef, useState } from "react";
 import { sendChatMessage, getChatHistory, submitJournalEntry } from "../lib/api";
-import { ChatCitation, ChatMessage } from "../types";
+import { ChatCitation, ChatImageAttachment, ChatMessage } from "../types";
 import { loadTalkModeEnabled, saveTalkModeEnabled } from "../lib/storage";
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
@@ -21,10 +21,9 @@ function latestAssistantMessage(messages: ChatMessage[]): ChatMessage | null {
 }
 
 interface CitationLinkTarget {
-  tab: "schedule" | "journal" | "social" | "settings";
+  tab: "schedule" | "habits" | "social" | "settings";
   deadlineId?: string;
   lectureId?: string;
-  journalId?: string;
   section?: string;
 }
 
@@ -35,7 +34,10 @@ function toCitationTarget(citation: ChatCitation): CitationLinkTarget {
     case "schedule":
       return { tab: "schedule", lectureId: citation.id };
     case "journal":
-      return { tab: "journal", journalId: citation.id };
+      return { tab: "habits" };
+    case "habit":
+    case "goal":
+      return { tab: "habits" };
     case "email":
       return { tab: "settings", section: "integrations" };
     case "social-youtube":
@@ -142,9 +144,50 @@ function renderAssistantContent(content: string): ReactNode {
   return blocks;
 }
 
+const MAX_ATTACHMENTS = 3;
+
+async function toDataUrl(file: File): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Invalid file result"));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Unable to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderMessageAttachments(attachments: ChatImageAttachment[]): ReactNode {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="chat-attachments">
+      {attachments.map((attachment) => (
+        <a
+          key={attachment.id}
+          href={attachment.dataUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="chat-attachment-link"
+          title={attachment.fileName ?? "Open image"}
+        >
+          <img src={attachment.dataUrl} alt={attachment.fileName ?? "Chat attachment"} className="chat-attachment-image" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
 export function ChatView(): JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
+  const [pendingAttachments, setPendingAttachments] = useState<ChatImageAttachment[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
@@ -154,6 +197,7 @@ export function ChatView(): JSX.Element {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const lastSpokenAssistantIdRef = useRef<string | null>(null);
 
@@ -293,18 +337,27 @@ export function ChatView(): JSX.Element {
 
   const handleSend = async (): Promise<void> => {
     const trimmedText = inputText.trim();
-    if (!trimmedText || isSending) return;
+    const attachmentsToSend = pendingAttachments.slice(0, MAX_ATTACHMENTS);
+    if ((trimmedText.length === 0 && attachmentsToSend.length === 0) || isSending) return;
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
       content: trimmedText,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      ...(attachmentsToSend.length > 0
+        ? {
+            metadata: {
+              attachments: attachmentsToSend
+            }
+          }
+        : {})
     };
 
     // Add user message immediately
     setMessages((prev) => [...prev, userMessage]);
     setInputText("");
+    setPendingAttachments([]);
     setIsSending(true);
     setError(null);
 
@@ -319,7 +372,7 @@ export function ChatView(): JSX.Element {
     setMessages((prev) => [...prev, assistantPlaceholder]);
 
     try {
-      const response = await sendChatMessage(trimmedText);
+      const response = await sendChatMessage(trimmedText, attachmentsToSend);
       // Replace placeholder with actual response
       setMessages((prev) =>
         prev.map((msg) =>
@@ -348,6 +401,49 @@ export function ChatView(): JSX.Element {
     inputRef.current?.focus();
   };
 
+  const handleSelectAttachments = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+
+    const availableSlots = Math.max(0, MAX_ATTACHMENTS - pendingAttachments.length);
+    if (availableSlots === 0) {
+      setError(`You can attach up to ${MAX_ATTACHMENTS} images.`);
+      event.target.value = "";
+      return;
+    }
+
+    const nextFiles = files.slice(0, availableSlots);
+    try {
+      const nextAttachments = await Promise.all(
+        nextFiles.map(async (file) => {
+          const dataUrl = await toDataUrl(file);
+          return {
+            id: crypto.randomUUID(),
+            dataUrl,
+            mimeType: file.type || undefined,
+            fileName: file.name || undefined
+          } as ChatImageAttachment;
+        })
+      );
+      setPendingAttachments((prev) => [...prev, ...nextAttachments].slice(0, MAX_ATTACHMENTS));
+      setError(null);
+    } catch {
+      setError("Could not attach one or more images.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const removePendingAttachment = (attachmentId: string): void => {
+    setPendingAttachments((prev) => prev.filter((attachment) => attachment.id !== attachmentId));
+  };
+
+  const openAttachmentPicker = (): void => {
+    fileInputRef.current?.click();
+  };
+
   const ensureInputInView = (): void => {
     window.setTimeout(() => {
       inputRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -363,9 +459,6 @@ export function ChatView(): JSX.Element {
     }
     if (target.lectureId) {
       params.set("lectureId", target.lectureId);
-    }
-    if (target.journalId) {
-      params.set("journalId", target.journalId);
     }
     if (target.section) {
       params.set("section", target.section);
@@ -449,65 +542,112 @@ export function ChatView(): JSX.Element {
           </div>
         )}
 
-        {messages.map((msg) => (
-          <div key={msg.id} className={`chat-bubble chat-bubble-${msg.role}`}>
-            <div className="chat-bubble-content">
-              {msg.streaming && msg.content === "" ? (
-                <div className="chat-typing">
-                  <span></span>
-                  <span></span>
-                  <span></span>
+        {messages.map((msg) => {
+          const attachments = msg.metadata?.attachments ?? [];
+          const hasAttachments = attachments.length > 0;
+
+          return (
+            <div key={msg.id} className={`chat-bubble chat-bubble-${msg.role}`}>
+              <div className="chat-bubble-content">
+                {msg.streaming && msg.content === "" ? (
+                  <div className="chat-typing">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                ) : msg.role === "assistant" ? (
+                  renderAssistantContent(msg.content)
+                ) : msg.content.trim().length > 0 ? (
+                  msg.content
+                ) : hasAttachments ? (
+                  <em>Sent image</em>
+                ) : (
+                  ""
+                )}
+                {renderMessageAttachments(attachments)}
+              </div>
+              {msg.role === "assistant" && !msg.streaming && (msg.metadata?.citations?.length ?? 0) > 0 && (
+                <div className="chat-citation-list" role="list" aria-label="Message citations">
+                  {(msg.metadata?.citations ?? []).map((citation) => (
+                    <button
+                      key={`${citation.type}-${citation.id}`}
+                      type="button"
+                      className="chat-citation-chip"
+                      onClick={() => handleCitationClick(citation)}
+                      title={citation.label}
+                    >
+                      {formatCitationChipLabel(citation)}
+                    </button>
+                  ))}
                 </div>
-              ) : (
-                msg.role === "assistant" ? renderAssistantContent(msg.content) : msg.content
               )}
-            </div>
-            {msg.role === "assistant" && !msg.streaming && (msg.metadata?.citations?.length ?? 0) > 0 && (
-              <div className="chat-citation-list" role="list" aria-label="Message citations">
-                {(msg.metadata?.citations ?? []).map((citation) => (
+              <div className="chat-bubble-footer">
+                <div className="chat-bubble-timestamp">
+                  {new Date(msg.timestamp).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit"
+                  })}
+                </div>
+                {msg.role === "assistant" && !msg.streaming && (
                   <button
-                    key={`${citation.type}-${citation.id}`}
                     type="button"
-                    className="chat-citation-chip"
-                    onClick={() => handleCitationClick(citation)}
-                    title={citation.label}
+                    className="chat-save-to-journal-btn"
+                    onClick={() => handleSaveToJournal(msg)}
+                    disabled={savedMessageIds.has(msg.id) || savingMessageId === msg.id}
+                    title={savedMessageIds.has(msg.id) ? "Saved to journal" : "Save to journal"}
                   >
-                    {formatCitationChipLabel(citation)}
+                    {savingMessageId === msg.id
+                      ? "💾..."
+                      : savedMessageIds.has(msg.id)
+                      ? "✓ Saved"
+                      : "📔 Save to journal"}
                   </button>
-                ))}
+                )}
               </div>
-            )}
-            <div className="chat-bubble-footer">
-              <div className="chat-bubble-timestamp">
-                {new Date(msg.timestamp).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit"
-                })}
-              </div>
-              {msg.role === "assistant" && !msg.streaming && (
-                <button
-                  type="button"
-                  className="chat-save-to-journal-btn"
-                  onClick={() => handleSaveToJournal(msg)}
-                  disabled={savedMessageIds.has(msg.id) || savingMessageId === msg.id}
-                  title={savedMessageIds.has(msg.id) ? "Saved to journal" : "Save to journal"}
-                >
-                  {savingMessageId === msg.id
-                    ? "💾..."
-                    : savedMessageIds.has(msg.id)
-                    ? "✓ Saved"
-                    : "📔 Save to journal"}
-                </button>
-              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 
       {error && <div className="chat-error">{error}</div>}
 
       <div className="chat-input-container">
+        {pendingAttachments.length > 0 && (
+          <div className="chat-pending-attachments">
+            {pendingAttachments.map((attachment) => (
+              <div key={attachment.id} className="chat-pending-attachment">
+                <img src={attachment.dataUrl} alt={attachment.fileName ?? "Pending image"} className="chat-pending-thumb" />
+                <button
+                  type="button"
+                  className="chat-pending-remove"
+                  onClick={() => removePendingAttachment(attachment.id)}
+                  aria-label="Remove image attachment"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(event) => void handleSelectAttachments(event)}
+          className="chat-attach-input"
+        />
+        <button
+          type="button"
+          className="chat-attach-button"
+          onClick={openAttachmentPicker}
+          disabled={isSending || pendingAttachments.length >= MAX_ATTACHMENTS}
+          aria-label="Attach images"
+          title={pendingAttachments.length >= MAX_ATTACHMENTS ? `Max ${MAX_ATTACHMENTS} images` : "Attach images"}
+        >
+          📎
+        </button>
         <button
           type="button"
           className={`chat-voice-button ${isListening ? "chat-voice-button-listening" : ""}`}
@@ -533,7 +673,7 @@ export function ChatView(): JSX.Element {
           type="button"
           className="chat-send-button"
           onClick={() => void handleSend()}
-          disabled={isSending || !inputText.trim()}
+          disabled={isSending || (inputText.trim().length === 0 && pendingAttachments.length === 0)}
         >
           {isSending ? "..." : "➤"}
         </button>

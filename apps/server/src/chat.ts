@@ -15,6 +15,7 @@ import { RuntimeStore } from "./store.js";
 import {
   ChatCitation,
   ChatHistoryPage,
+  ChatImageAttachment,
   ChatMessage,
   ChatMessageMetadata,
   ChatPendingAction,
@@ -308,15 +309,71 @@ export function buildChatContext(store: RuntimeStore, now: Date = new Date(), hi
   return { contextWindow, history };
 }
 
-function toGeminiMessages(history: ChatMessage[], userInput: string): GeminiMessage[] {
-  const formatted: GeminiMessage[] = history.map((message) => ({
-    role: message.role === "assistant" ? "model" : "user",
-    parts: [{ text: message.content }]
-  }));
+function parseImageDataUrl(dataUrl: string): { mimeType: string; base64: string } | null {
+  const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([a-zA-Z0-9+/=\s]+)$/);
+  if (!match) {
+    return null;
+  }
+
+  const mimeType = match[1];
+  const base64 = match[2].replace(/\s+/g, "");
+  if (!mimeType || !base64) {
+    return null;
+  }
+
+  return { mimeType, base64 };
+}
+
+function toGeminiMessages(
+  history: ChatMessage[],
+  userInput: string,
+  attachments: ChatImageAttachment[] = []
+): GeminiMessage[] {
+  const formatted: GeminiMessage[] = history.map((message) => {
+    const parts: Part[] = [];
+
+    if (message.content.trim().length > 0) {
+      parts.push({ text: message.content });
+    }
+
+    const messageAttachments = message.metadata?.attachments ?? [];
+    if (messageAttachments.length > 0) {
+      parts.push({ text: `[Attached ${messageAttachments.length} image(s)]` });
+    }
+
+    if (parts.length === 0) {
+      parts.push({ text: " " });
+    }
+
+    return {
+      role: message.role === "assistant" ? "model" : "user",
+      parts
+    };
+  });
+
+  const userParts: Part[] = [];
+  if (userInput.trim().length > 0) {
+    userParts.push({ text: userInput });
+  } else {
+    userParts.push({ text: "[User sent image attachment(s)]" });
+  }
+
+  attachments.forEach((attachment) => {
+    const parsed = parseImageDataUrl(attachment.dataUrl);
+    if (!parsed) {
+      return;
+    }
+    userParts.push({
+      inlineData: {
+        mimeType: parsed.mimeType,
+        data: parsed.base64
+      }
+    });
+  });
 
   formatted.push({
     role: "user" as const,
-    parts: [{ text: userInput }]
+    parts: userParts
   });
 
   return formatted;
@@ -587,7 +644,7 @@ function buildIntentGuidance(intent: ChatIntent): string {
     case "social":
       return "Intent hint: social. Prefer getSocialDigest for YouTube/X requests.";
     case "habits-goals":
-      return "Intent hint: habits/goals. Answer with streak/check-in guidance and concrete next actions.";
+      return "Intent hint: habits/goals. Prefer getHabitsGoalsStatus first. For explicit check-in requests, use updateHabitCheckIn or updateGoalCheckIn.";
     case "notifications":
       return "Intent hint: notifications. Explain reminders/nudges and suggest direct follow-up actions.";
     case "integrations":
@@ -649,6 +706,12 @@ const INTENT_FEW_SHOT_EXAMPLES: IntentFewShotExample[] = [
     responseStyle: "Group by platform and mention most relevant items."
   },
   {
+    user: "Check in my study sprint habit for today.",
+    intent: "habits-goals",
+    toolPlan: "Call updateHabitCheckIn with habitName and completed=true.",
+    responseStyle: "Confirm the check-in and report the updated streak briefly."
+  },
+  {
     user: "Mark DAT520 Lab 5 as complete.",
     intent: "actions",
     toolPlan: "Use queueDeadlineAction, then require explicit confirm/cancel.",
@@ -690,6 +753,7 @@ function buildFunctionCallingSystemInstruction(userName: string, intent: ChatInt
 
 Core behavior:
 - For factual questions about schedule, deadlines, journal, email, social updates, or GitHub course materials, use tools before answering.
+- For habits and goals questions, call getHabitsGoalsStatus first; use updateHabitCheckIn/updateGoalCheckIn for explicit check-in actions.
 - Do not hallucinate user-specific data. If data is unavailable, say so explicitly and suggest the next sync step.
 - For mutating requests that change schedule/deadlines, use queue* action tools and require explicit user confirmation.
 - For journal-save requests, call createJournalEntry directly and do not ask for confirm/cancel commands.
@@ -912,6 +976,80 @@ function buildJournalCreateFallbackSection(response: unknown): string | null {
   return `${message}\n- ${textSnippet(content, 110)}`;
 }
 
+function buildHabitsGoalsFallbackSection(response: unknown): string | null {
+  const payload = asRecord(response);
+  if (!payload) {
+    return null;
+  }
+
+  const habits = Array.isArray(payload.habits) ? payload.habits : [];
+  const goals = Array.isArray(payload.goals) ? payload.goals : [];
+  const summary = asRecord(payload.summary);
+
+  const habitsTotal = typeof summary?.habitsTotal === "number" ? summary.habitsTotal : habits.length;
+  const habitsDone = typeof summary?.habitsCompletedToday === "number"
+    ? summary.habitsCompletedToday
+    : habits.filter((habit) => Boolean(asRecord(habit)?.todayCompleted)).length;
+  const goalsTotal = typeof summary?.goalsTotal === "number" ? summary.goalsTotal : goals.length;
+  const goalsDone = typeof summary?.goalsCompletedToday === "number"
+    ? summary.goalsCompletedToday
+    : goals.filter((goal) => Boolean(asRecord(goal)?.todayCompleted)).length;
+
+  const lines: string[] = [
+    `Habits & goals: ${habitsDone}/${habitsTotal} habits checked in, ${goalsDone}/${goalsTotal} goals logged today.`
+  ];
+
+  if (habits.length > 0) {
+    const habitNames = habits
+      .slice(0, 3)
+      .map((habit) => asNonEmptyString(asRecord(habit)?.name))
+      .filter((value): value is string => Boolean(value));
+    if (habitNames.length > 0) {
+      lines.push(`Habits: ${habitNames.join(", ")}${habits.length > 3 ? ", ..." : ""}`);
+    }
+  }
+
+  if (goals.length > 0) {
+    const goalNames = goals
+      .slice(0, 3)
+      .map((goal) => asNonEmptyString(asRecord(goal)?.title))
+      .filter((value): value is string => Boolean(value));
+    if (goalNames.length > 0) {
+      lines.push(`Goals: ${goalNames.join(", ")}${goals.length > 3 ? ", ..." : ""}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function buildHabitUpdateFallbackSection(response: unknown): string | null {
+  const payload = asRecord(response);
+  if (!payload) {
+    return null;
+  }
+  if (typeof payload.error === "string") {
+    return `Habit update failed: ${payload.error}`;
+  }
+  if (typeof payload.message === "string") {
+    return payload.message;
+  }
+  return null;
+}
+
+function buildGoalUpdateFallbackSection(response: unknown): string | null {
+  const payload = asRecord(response);
+  if (!payload) {
+    return null;
+  }
+  if (typeof payload.error === "string") {
+    return `Goal update failed: ${payload.error}`;
+  }
+  if (typeof payload.message === "string") {
+    return payload.message;
+  }
+  return null;
+}
+
 function buildGitHubCourseFallbackSection(response: unknown): string | null {
   if (!Array.isArray(response)) {
     return null;
@@ -984,6 +1122,15 @@ function buildToolDataFallbackReply(
         break;
       case "createJournalEntry":
         section = buildJournalCreateFallbackSection(result.rawResponse);
+        break;
+      case "getHabitsGoalsStatus":
+        section = buildHabitsGoalsFallbackSection(result.rawResponse);
+        break;
+      case "updateHabitCheckIn":
+        section = buildHabitUpdateFallbackSection(result.rawResponse);
+        break;
+      case "updateGoalCheckIn":
+        section = buildGoalUpdateFallbackSection(result.rawResponse);
         break;
       case "getGitHubCourseContent":
         section = buildGitHubCourseFallbackSection(result.rawResponse);
@@ -1259,6 +1406,112 @@ function compactSocialDigestForModel(response: unknown): unknown {
   };
 }
 
+function compactHabitsGoalsForModel(response: unknown): unknown {
+  const payload = asRecord(response);
+  if (!payload) {
+    return compactGenericValue(response);
+  }
+
+  const habits = Array.isArray(payload.habits) ? payload.habits : [];
+  const goals = Array.isArray(payload.goals) ? payload.goals : [];
+  const summary = asRecord(payload.summary);
+
+  return {
+    summary: {
+      habitsCompletedToday: typeof summary?.habitsCompletedToday === "number" ? summary.habitsCompletedToday : 0,
+      habitsTotal: typeof summary?.habitsTotal === "number" ? summary.habitsTotal : habits.length,
+      goalsCompletedToday: typeof summary?.goalsCompletedToday === "number" ? summary.goalsCompletedToday : 0,
+      goalsTotal: typeof summary?.goalsTotal === "number" ? summary.goalsTotal : goals.length
+    },
+    habits: habits.slice(0, TOOL_RESULT_ITEM_LIMIT).map((value) => {
+      const record = asRecord(value);
+      if (!record) {
+        return {};
+      }
+      return {
+        id: asNonEmptyString(record.id) ?? "",
+        name: compactTextValue(asNonEmptyString(record.name) ?? "", 80),
+        todayCompleted: Boolean(record.todayCompleted),
+        streak: typeof record.streak === "number" ? record.streak : 0,
+        completionRate7d: typeof record.completionRate7d === "number" ? record.completionRate7d : 0
+      };
+    }),
+    goals: goals.slice(0, TOOL_RESULT_ITEM_LIMIT).map((value) => {
+      const record = asRecord(value);
+      if (!record) {
+        return {};
+      }
+      return {
+        id: asNonEmptyString(record.id) ?? "",
+        title: compactTextValue(asNonEmptyString(record.title) ?? "", 100),
+        todayCompleted: Boolean(record.todayCompleted),
+        progressCount: typeof record.progressCount === "number" ? record.progressCount : 0,
+        targetCount: typeof record.targetCount === "number" ? record.targetCount : 0,
+        remaining: typeof record.remaining === "number" ? record.remaining : 0
+      };
+    })
+  };
+}
+
+function compactHabitUpdateForModel(response: unknown): unknown {
+  const payload = asRecord(response);
+  if (!payload) {
+    return compactGenericValue(response);
+  }
+
+  if (payload.error) {
+    return {
+      success: false,
+      error: compactTextValue(payload.error, 180)
+    };
+  }
+
+  const habit = asRecord(payload.habit);
+  return {
+    success: Boolean(payload.success),
+    message: asNonEmptyString(payload.message) ?? null,
+    habit: habit
+      ? {
+          id: asNonEmptyString(habit.id) ?? "",
+          name: compactTextValue(asNonEmptyString(habit.name) ?? "", 80),
+          todayCompleted: Boolean(habit.todayCompleted),
+          streak: typeof habit.streak === "number" ? habit.streak : 0,
+          completionRate7d: typeof habit.completionRate7d === "number" ? habit.completionRate7d : 0
+        }
+      : null
+  };
+}
+
+function compactGoalUpdateForModel(response: unknown): unknown {
+  const payload = asRecord(response);
+  if (!payload) {
+    return compactGenericValue(response);
+  }
+
+  if (payload.error) {
+    return {
+      success: false,
+      error: compactTextValue(payload.error, 180)
+    };
+  }
+
+  const goal = asRecord(payload.goal);
+  return {
+    success: Boolean(payload.success),
+    message: asNonEmptyString(payload.message) ?? null,
+    goal: goal
+      ? {
+          id: asNonEmptyString(goal.id) ?? "",
+          title: compactTextValue(asNonEmptyString(goal.title) ?? "", 100),
+          todayCompleted: Boolean(goal.todayCompleted),
+          progressCount: typeof goal.progressCount === "number" ? goal.progressCount : 0,
+          targetCount: typeof goal.targetCount === "number" ? goal.targetCount : 0,
+          remaining: typeof goal.remaining === "number" ? goal.remaining : 0
+        }
+      : null
+  };
+}
+
 function compactGitHubCourseContentForModel(response: unknown): unknown {
   if (!Array.isArray(response)) {
     return compactGenericValue(response);
@@ -1302,6 +1555,12 @@ function compactFunctionResponseForModel(functionName: string, response: unknown
       return compactEmailsForModel(response);
     case "getSocialDigest":
       return compactSocialDigestForModel(response);
+    case "getHabitsGoalsStatus":
+      return compactHabitsGoalsForModel(response);
+    case "updateHabitCheckIn":
+      return compactHabitUpdateForModel(response);
+    case "updateGoalCheckIn":
+      return compactGoalUpdateForModel(response);
     case "getGitHubCourseContent":
       return compactGitHubCourseContentForModel(response);
     default:
@@ -1489,6 +1748,93 @@ function collectToolCitations(
     return next;
   }
 
+  if (functionName === "getHabitsGoalsStatus") {
+    const payload = asRecord(response);
+    if (!payload) {
+      return [];
+    }
+
+    const next: ChatCitation[] = [];
+    const habits = Array.isArray(payload.habits) ? payload.habits : [];
+    habits.forEach((value) => {
+      const record = asRecord(value);
+      if (!record) {
+        return;
+      }
+      const id = asNonEmptyString(record.id);
+      const name = asNonEmptyString(record.name);
+      if (!id || !name) {
+        return;
+      }
+      const streak = typeof record.streak === "number" ? ` (${record.streak} day streak)` : "";
+      next.push({
+        id,
+        type: "habit",
+        label: `${name}${streak}`
+      });
+    });
+
+    const goals = Array.isArray(payload.goals) ? payload.goals : [];
+    goals.forEach((value) => {
+      const record = asRecord(value);
+      if (!record) {
+        return;
+      }
+      const id = asNonEmptyString(record.id);
+      const title = asNonEmptyString(record.title);
+      if (!id || !title) {
+        return;
+      }
+      const progressCount = typeof record.progressCount === "number" ? record.progressCount : null;
+      const targetCount = typeof record.targetCount === "number" ? record.targetCount : null;
+      const progressSuffix =
+        progressCount !== null && targetCount !== null ? ` (${progressCount}/${targetCount})` : "";
+      next.push({
+        id,
+        type: "goal",
+        label: `${title}${progressSuffix}`
+      });
+    });
+
+    return next;
+  }
+
+  if (functionName === "updateHabitCheckIn") {
+    const payload = asRecord(response);
+    const habit = asRecord(payload?.habit);
+    const id = asNonEmptyString(habit?.id);
+    const name = asNonEmptyString(habit?.name);
+    if (!id || !name) {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        type: "habit",
+        label: name
+      }
+    ];
+  }
+
+  if (functionName === "updateGoalCheckIn") {
+    const payload = asRecord(response);
+    const goal = asRecord(payload?.goal);
+    const id = asNonEmptyString(goal?.id);
+    const title = asNonEmptyString(goal?.title);
+    if (!id || !title) {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        type: "goal",
+        label: title
+      }
+    ];
+  }
+
   if (functionName === "getGitHubCourseContent" && Array.isArray(response)) {
     const next: ChatCitation[] = [];
     response.forEach((value) => {
@@ -1566,17 +1912,31 @@ export interface SendChatResult {
   history: ChatHistoryPage;
 }
 
+interface SendChatOptions {
+  now?: Date;
+  geminiClient?: GeminiClient;
+  useFunctionCalling?: boolean;
+  attachments?: ChatImageAttachment[];
+}
+
 export async function sendChatMessage(
   store: RuntimeStore,
   userInput: string,
-  options: { now?: Date; geminiClient?: GeminiClient; useFunctionCalling?: boolean } = {}
+  options: SendChatOptions = {}
 ): Promise<SendChatResult> {
   const now = options.now ?? new Date();
+  const attachments = (options.attachments ?? []).slice(0, 3);
+  const userMetadata: ChatMessageMetadata | undefined =
+    attachments.length > 0
+      ? {
+          attachments
+        }
+      : undefined;
   const pendingActionsAtStart = store.getPendingChatActions(now);
   const actionCommand = parseActionCommand(userInput, pendingActionsAtStart);
 
   if (!actionCommand && pendingActionsAtStart.length > 1 && isImplicitActionSignal(userInput)) {
-    const userMessage = store.recordChatMessage("user", userInput);
+    const userMessage = store.recordChatMessage("user", userInput, userMetadata);
     const lines = ["Multiple pending actions found. Please confirm with a specific action ID:"];
     pendingActionsAtStart.forEach((action) => {
       lines.push(`- ${action.summary}`);
@@ -1601,7 +1961,7 @@ export async function sendChatMessage(
   }
 
   if (actionCommand) {
-    const userMessage = store.recordChatMessage("user", userInput);
+    const userMessage = store.recordChatMessage("user", userInput, userMetadata);
     const pendingAction = store.getPendingChatActionById(actionCommand.actionId, now);
 
     let assistantReply: string;
@@ -1670,7 +2030,7 @@ export async function sendChatMessage(
     ? buildFunctionCallingSystemInstruction(config.USER_NAME, intent)
     : buildSystemPrompt(config.USER_NAME, contextWindow);
 
-  const messages = toGeminiMessages(history, userInput);
+  const messages = toGeminiMessages(history, userInput, attachments);
 
   // First request with function calling enabled
   let response = await gemini.generateChatResponse({
@@ -1679,7 +2039,7 @@ export async function sendChatMessage(
     tools: useFunctionCalling ? functionDeclarations : undefined
   });
 
-  const userMessage = store.recordChatMessage("user", userInput);
+  const userMessage = store.recordChatMessage("user", userInput, userMetadata);
   let totalUsage = response.usageMetadata
     ? {
         promptTokens: response.usageMetadata.promptTokenCount,

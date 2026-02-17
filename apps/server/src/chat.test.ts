@@ -656,6 +656,18 @@ describe("chat service", () => {
     expect(firstRequest.systemInstruction).toContain("Prefer searchJournal");
   });
 
+  it("injects habits/goals intent guidance with tool hints", async () => {
+    await sendChatMessage(store, "Can you check in my study sprint habit today?", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    const firstRequest = generateChatResponse.mock.calls[0][0] as { systemInstruction: string };
+    expect(firstRequest.systemInstruction).toContain("Detected intent: habits-goals");
+    expect(firstRequest.systemInstruction).toContain("getHabitsGoalsStatus");
+    expect(firstRequest.systemInstruction).toContain("updateHabitCheckIn");
+  });
+
   it("falls back to general intent when no specific domain keywords are present", async () => {
     await sendChatMessage(store, "Hello there", {
       geminiClient: fakeGemini,
@@ -941,5 +953,81 @@ describe("chat service", () => {
     expect(result.assistantMessage.metadata?.pendingActions ?? []).toHaveLength(0);
     expect(result.reply).toContain("Saved your journal entry.");
     expect(store.searchJournalEntries({ query: "First conversation with my AI assistant.", limit: 5 }).length).toBe(1);
+  });
+
+  it("adds habit/goal citations when getHabitsGoalsStatus tool is used", async () => {
+    const habit = store.createHabit({
+      name: "Study sprint",
+      cadence: "daily",
+      targetPerWeek: 6
+    });
+    const goal = store.createGoal({
+      title: "Finish DAT560 assignment",
+      cadence: "weekly",
+      targetCount: 3,
+      dueDate: null
+    });
+
+    generateChatResponse = vi
+      .fn()
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop",
+        functionCalls: [
+          {
+            name: "getHabitsGoalsStatus",
+            args: {}
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        text: "You are tracking one habit and one goal today.",
+        finishReason: "stop"
+      });
+    fakeGemini = {
+      generateChatResponse
+    } as unknown as GeminiClient;
+
+    const result = await sendChatMessage(store, "How are my habits and goals going?", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    expect(result.citations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: habit.id, type: "habit" }),
+        expect.objectContaining({ id: goal.id, type: "goal" })
+      ])
+    );
+  });
+
+  it("stores and forwards image attachments with chat messages", async () => {
+    const imageAttachment = {
+      id: "img-1",
+      dataUrl: "data:image/png;base64,aGVsbG8=",
+      mimeType: "image/png",
+      fileName: "note.png"
+    };
+
+    await sendChatMessage(store, "", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true,
+      attachments: [imageAttachment]
+    });
+
+    const firstCall = generateChatResponse.mock.calls[0]?.[0] as {
+      messages: Array<{ role: string; parts: Array<Record<string, unknown>> }>;
+    };
+    const lastMessage = firstCall.messages[firstCall.messages.length - 1];
+    const inlineData = lastMessage.parts.find((part) => "inlineData" in part)?.inlineData as
+      | { mimeType: string; data: string }
+      | undefined;
+
+    expect(inlineData?.mimeType).toBe("image/png");
+    expect(inlineData?.data).toBe("aGVsbG8=");
+
+    const history = store.getRecentChatMessages(2);
+    const user = history.find((message) => message.role === "user");
+    expect(user?.metadata?.attachments).toEqual([imageAttachment]);
   });
 });

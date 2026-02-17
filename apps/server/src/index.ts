@@ -31,6 +31,7 @@ import { GmailSyncService } from "./gmail-sync.js";
 import { buildStudyPlanCalendarIcs } from "./study-plan-export.js";
 import { generateWeeklyStudyPlan } from "./study-plan.js";
 import { generateContentRecommendations } from "./content-recommendations.js";
+import { generateDailyJournalSummary } from "./daily-journal-summary.js";
 import { PostgresRuntimeSnapshotStore } from "./postgres-persistence.js";
 import type { PostgresPersistenceDiagnostics } from "./postgres-persistence.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
@@ -214,7 +215,9 @@ app.post("/api/chat", async (req, res) => {
   }
 
   try {
-    const result = await sendChatMessage(store, parsed.data.message);
+    const result = await sendChatMessage(store, parsed.data.message.trim(), {
+      attachments: parsed.data.attachments
+    });
     return res.json({
       reply: result.reply,
       message: result.assistantMessage,
@@ -413,9 +416,24 @@ const contextSchema = z.object({
   mode: z.enum(["focus", "balanced", "recovery"]).optional()
 });
 
-const chatRequestSchema = z.object({
-  message: z.string().trim().min(1).max(4000)
+const MAX_CHAT_IMAGE_DATA_URL_LENGTH = 1_500_000;
+const chatImageAttachmentSchema = z.object({
+  id: z.string().trim().min(1).max(120),
+  dataUrl: z.string().trim().startsWith("data:image/").max(MAX_CHAT_IMAGE_DATA_URL_LENGTH),
+  mimeType: z.string().trim().min(1).max(120).optional(),
+  fileName: z.string().trim().min(1).max(240).optional()
 });
+
+const chatRequestSchema = z.object({
+  message: z.string().max(4000).default(""),
+  attachments: z.array(chatImageAttachmentSchema).max(3).optional()
+}).refine(
+  (payload) => payload.message.trim().length > 0 || (payload.attachments?.length ?? 0) > 0,
+  {
+    message: "Either message text or at least one image attachment is required.",
+    path: ["message"]
+  }
+);
 
 const chatHistoryQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
@@ -443,6 +461,10 @@ const journalSyncSchema = z.object({
       photos: z.array(journalPhotoSchema).max(5).optional()
     })
   )
+});
+
+const journalDailySummaryQuerySchema = z.object({
+  date: z.string().trim().optional()
 });
 
 const tagCreateSchema = z.object({
@@ -955,6 +977,22 @@ app.get("/api/journal/search", (req, res) => {
   });
 
   return res.json({ entries });
+});
+
+app.get("/api/journal/daily-summary", async (req, res) => {
+  const parsed = journalDailySummaryQuerySchema.safeParse(req.query ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid daily summary query", issues: parsed.error.issues });
+  }
+
+  const referenceDate = parsed.data.date ? new Date(parsed.data.date) : new Date();
+  if (Number.isNaN(referenceDate.getTime())) {
+    return res.status(400).json({ error: "Invalid date parameter" });
+  }
+
+  const summary = await generateDailyJournalSummary(store, { now: referenceDate });
+  return res.json({ summary });
 });
 
 app.delete("/api/journal/:id", (req, res) => {

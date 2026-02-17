@@ -6,6 +6,9 @@ import {
   handleSearchJournal,
   handleGetEmails,
   handleGetSocialDigest,
+  handleGetHabitsGoalsStatus,
+  handleUpdateHabitCheckIn,
+  handleUpdateGoalCheckIn,
   handleGetGitHubCourseContent,
   handleQueueDeadlineAction,
   handleQueueScheduleBlock,
@@ -24,8 +27,8 @@ describe("gemini-tools", () => {
   });
 
   describe("functionDeclarations", () => {
-    it("should define 9 function declarations", () => {
-      expect(functionDeclarations).toHaveLength(9);
+    it("should define 12 function declarations", () => {
+      expect(functionDeclarations).toHaveLength(12);
     });
 
     it("should include getSchedule function", () => {
@@ -56,6 +59,12 @@ describe("gemini-tools", () => {
       const getSocialDigest = functionDeclarations.find((f) => f.name === "getSocialDigest");
       expect(getSocialDigest).toBeDefined();
       expect(getSocialDigest?.description).toContain("social media");
+    });
+
+    it("should include habits and goals functions", () => {
+      expect(functionDeclarations.find((f) => f.name === "getHabitsGoalsStatus")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "updateHabitCheckIn")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "updateGoalCheckIn")).toBeDefined();
     });
 
     it("should include getGitHubCourseContent function", () => {
@@ -209,6 +218,71 @@ describe("gemini-tools", () => {
 
       expect(result).toHaveProperty("youtube");
       expect(result).toHaveProperty("x");
+    });
+  });
+
+  describe("habits and goals handlers", () => {
+    it("returns habits/goals status summary", () => {
+      const habit = store.createHabit({
+        name: "Unit Test Habit",
+        cadence: "daily",
+        targetPerWeek: 6
+      });
+      const goal = store.createGoal({
+        title: "Unit Test Goal",
+        cadence: "weekly",
+        targetCount: 3,
+        dueDate: null
+      });
+
+      const result = handleGetHabitsGoalsStatus(store);
+      expect(result.habits.some((item) => item.id === habit.id)).toBe(true);
+      expect(result.goals.some((item) => item.id === goal.id)).toBe(true);
+      expect(result.summary.habitsTotal).toBe(result.habits.length);
+      expect(result.summary.goalsTotal).toBe(result.goals.length);
+    });
+
+    it("updates a habit check-in by habitName", () => {
+      store.createHabit({
+        name: "Unit Test Habit Checkin",
+        cadence: "daily",
+        targetPerWeek: 6
+      });
+
+      const result = handleUpdateHabitCheckIn(store, {
+        habitName: "unit test habit checkin",
+        completed: true
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      expect(result.success).toBe(true);
+      expect(result.habit.todayCompleted).toBe(true);
+      expect(result.message).toContain("Checked in habit");
+    });
+
+    it("updates a goal check-in by goalTitle", () => {
+      store.createGoal({
+        title: "Ship DAT520 Lab 4",
+        cadence: "weekly",
+        targetCount: 4,
+        dueDate: null
+      });
+
+      const result = handleUpdateGoalCheckIn(store, {
+        goalTitle: "lab 4",
+        completed: true
+      });
+
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+
+      expect(result.success).toBe(true);
+      expect(result.goal.todayCompleted).toBe(true);
+      expect(result.message).toContain("Logged progress");
     });
   });
 
@@ -400,6 +474,39 @@ describe("gemini-tools", () => {
       expect(result.name).toBe("getSocialDigest");
       expect(result.response).toHaveProperty("youtube");
       expect(result.response).toHaveProperty("x");
+    });
+
+    it("should execute getHabitsGoalsStatus function", () => {
+      const result = executeFunctionCall("getHabitsGoalsStatus", {}, store);
+
+      expect(result.name).toBe("getHabitsGoalsStatus");
+      expect(result.response).toHaveProperty("habits");
+      expect(result.response).toHaveProperty("goals");
+    });
+
+    it("should execute updateHabitCheckIn function", () => {
+      const habit = store.createHabit({
+        name: "Study sprint",
+        cadence: "daily",
+        targetPerWeek: 5
+      });
+      const result = executeFunctionCall("updateHabitCheckIn", { habitId: habit.id, completed: true }, store);
+
+      expect(result.name).toBe("updateHabitCheckIn");
+      expect(result.response).toHaveProperty("success", true);
+    });
+
+    it("should execute updateGoalCheckIn function", () => {
+      const goal = store.createGoal({
+        title: "Ship DAT560 assignment",
+        cadence: "weekly",
+        targetCount: 3,
+        dueDate: null
+      });
+      const result = executeFunctionCall("updateGoalCheckIn", { goalId: goal.id, completed: true }, store);
+
+      expect(result.name).toBe("updateGoalCheckIn");
+      expect(result.response).toHaveProperty("success", true);
     });
 
     it("should execute getGitHubCourseContent function", () => {

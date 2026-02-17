@@ -36,7 +36,8 @@ import {
   IntegrationSyncName,
   SocialMediaFeed,
   SocialMediaSyncResult,
-  ContentRecommendationsResponse
+  ContentRecommendationsResponse,
+  DailyJournalSummary
 } from "../types";
 import {
   JournalQueueItem,
@@ -171,6 +172,22 @@ export async function getJournalEntries(limit?: number): Promise<JournalEntry[] 
     const normalized = response.entries.map((entry) => normalizeJournalEntry(entry));
     saveJournalEntries(normalized);
     return normalized;
+  } catch {
+    return null;
+  }
+}
+
+export async function getDailyJournalSummary(date?: string): Promise<DailyJournalSummary | null> {
+  const params = new URLSearchParams();
+  if (date) {
+    params.set("date", date);
+  }
+  const query = params.toString();
+  const endpoint = query ? `/api/journal/daily-summary?${query}` : "/api/journal/daily-summary";
+
+  try {
+    const response = await jsonOrThrow<{ summary: DailyJournalSummary }>(endpoint);
+    return response.summary;
   } catch {
     return null;
   }
@@ -997,10 +1014,13 @@ export async function getContentRecommendations(options?: {
   return await jsonOrThrow<ContentRecommendationsResponse>(endpoint);
 }
 
-export async function sendChatMessage(message: string): Promise<ChatMessage> {
+export async function sendChatMessage(
+  message: string,
+  attachments?: SendChatMessageRequest["attachments"]
+): Promise<ChatMessage> {
   const response = await jsonOrThrow<SendChatMessageResponse>("/api/chat", {
     method: "POST",
-    body: JSON.stringify({ message } as SendChatMessageRequest)
+    body: JSON.stringify({ message, attachments } as SendChatMessageRequest)
   });
   return response.message;
 }

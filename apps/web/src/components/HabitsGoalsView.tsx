@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { getGoals, getHabits, toggleGoalCheckIn, toggleHabitCheckIn } from "../lib/api";
+import { getDailyJournalSummary, getGoals, getHabits, toggleGoalCheckIn, toggleHabitCheckIn } from "../lib/api";
 import { loadGoals, loadHabits, saveGoals, saveHabits } from "../lib/storage";
-import { Goal, Habit, CheckInDay } from "../types";
+import { Goal, Habit, CheckInDay, DailyJournalSummary } from "../types";
 import { hapticSuccess } from "../lib/haptics";
 
 interface BusyState {
@@ -35,22 +35,46 @@ function ProgressLabel({ streak, completionRate }: { streak: number; completionR
 export function HabitsGoalsView(): JSX.Element {
   const [habits, setHabits] = useState<Habit[]>(() => loadHabits());
   const [goals, setGoals] = useState<Goal[]>(() => loadGoals());
+  const [dailySummary, setDailySummary] = useState<DailyJournalSummary | null>(null);
   const [habitMessage, setHabitMessage] = useState("");
   const [goalMessage, setGoalMessage] = useState("");
+  const [summaryMessage, setSummaryMessage] = useState("");
+  const [summaryLoading, setSummaryLoading] = useState(true);
   const [busy, setBusy] = useState<BusyState | null>(null);
+
+  const refreshSummary = async (): Promise<void> => {
+    setSummaryLoading(true);
+    setSummaryMessage("");
+    const nextSummary = await getDailyJournalSummary();
+    if (nextSummary) {
+      setDailySummary(nextSummary);
+    } else {
+      setSummaryMessage("Could not generate daily summary right now.");
+    }
+    setSummaryLoading(false);
+  };
 
   useEffect(() => {
     let disposed = false;
 
     const sync = async (): Promise<void> => {
       try {
-        const [habitData, goalData] = await Promise.all([getHabits(), getGoals()]);
+        const [habitData, goalData, summaryData] = await Promise.all([getHabits(), getGoals(), getDailyJournalSummary()]);
         if (!disposed) {
           setHabits(habitData);
           setGoals(goalData);
+          if (summaryData) {
+            setDailySummary(summaryData);
+          } else {
+            setSummaryMessage("Could not generate daily summary right now.");
+          }
         }
       } catch {
         // offline fallback already handled by API helpers
+      } finally {
+        if (!disposed) {
+          setSummaryLoading(false);
+        }
       }
     };
 
@@ -174,6 +198,32 @@ export function HabitsGoalsView(): JSX.Element {
       </header>
       {habitMessage && <p className="warning-text">{habitMessage}</p>}
       {goalMessage && <p className="warning-text">{goalMessage}</p>}
+      {summaryMessage && <p className="warning-text">{summaryMessage}</p>}
+
+      <section className="daily-summary-panel">
+        <header className="panel-header">
+          <h3>Daily Reflection Summary</h3>
+          <button type="button" className="ghost-button" onClick={() => void refreshSummary()} disabled={summaryLoading}>
+            {summaryLoading ? "Refreshing..." : "Refresh"}
+          </button>
+        </header>
+        {summaryLoading && <p className="muted">Generating today's summary...</p>}
+        {!summaryLoading && dailySummary && (
+          <>
+            <p className="daily-summary-meta">
+              {dailySummary.chatMessageCount} chat notes • {dailySummary.journalEntryCount} journal entries
+            </p>
+            <p className="daily-summary-text">{dailySummary.summary}</p>
+            {dailySummary.highlights.length > 0 && (
+              <ul className="daily-summary-list">
+                {dailySummary.highlights.map((item, index) => (
+                  <li key={`${item}-${index}`}>{item}</li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </section>
 
       <div className="habit-grid">
         {habits.map(renderHabit)}
