@@ -3099,9 +3099,10 @@ button:disabled {
 }
 
 body.keyboard-open .tab-bar {
-  transform: translateY(110%);
+  transform: translateY(120%);
   opacity: 0;
   pointer-events: none;
+  visibility: hidden;
 }
 
 body.keyboard-open .app-shell {

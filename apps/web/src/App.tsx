@@ -136,6 +136,9 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     const root = document.documentElement;
+    const KEYBOARD_GAP_THRESHOLD_PX = 80;
+    const VIEWPORT_DROP_THRESHOLD_PX = 110;
+    let baselineViewportHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
 
     const hasEditableFocus = (): boolean => {
       const active = document.activeElement;
@@ -155,18 +158,32 @@ export default function App(): JSX.Element {
       root.style.setProperty("--app-viewport-height", `${viewportHeight}px`);
       root.style.setProperty("--app-viewport-offset-top", `${viewportOffsetTop}px`);
 
-      const keyboardGap = window.innerHeight - viewportHeight - viewportOffsetTop;
-      const keyboardOpen = hasEditableFocus() && keyboardGap > 80;
+      const editableFocused = hasEditableFocus();
+      if (!editableFocused) {
+        baselineViewportHeight = Math.max(baselineViewportHeight, viewportHeight);
+      }
+
+      // iOS Safari can keep innerHeight and visualViewport in sync while the keyboard is open.
+      // Detect keyboard-open via either direct gap or a significant viewport height drop while focused.
+      const keyboardGap = Math.max(0, Math.round(window.innerHeight - viewportHeight - viewportOffsetTop));
+      const viewportDrop = Math.max(0, baselineViewportHeight - viewportHeight);
+      const keyboardOpen =
+        editableFocused && (keyboardGap > KEYBOARD_GAP_THRESHOLD_PX || viewportDrop > VIEWPORT_DROP_THRESHOLD_PX);
       document.body.classList.toggle("keyboard-open", keyboardOpen);
     };
 
     const handleFocusEvent = (): void => {
       window.setTimeout(updateViewportVars, 40);
     };
+    const handleOrientationChange = (): void => {
+      baselineViewportHeight = Math.round(window.visualViewport?.height ?? window.innerHeight);
+      window.setTimeout(updateViewportVars, 80);
+    };
 
     updateViewportVars();
 
     window.addEventListener("resize", updateViewportVars);
+    window.addEventListener("orientationchange", handleOrientationChange);
     window.addEventListener("focusin", handleFocusEvent);
     window.addEventListener("focusout", handleFocusEvent);
     window.visualViewport?.addEventListener("resize", updateViewportVars);
@@ -174,6 +191,7 @@ export default function App(): JSX.Element {
 
     return () => {
       window.removeEventListener("resize", updateViewportVars);
+      window.removeEventListener("orientationchange", handleOrientationChange);
       window.removeEventListener("focusin", handleFocusEvent);
       window.removeEventListener("focusout", handleFocusEvent);
       window.visualViewport?.removeEventListener("resize", updateViewportVars);
