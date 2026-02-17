@@ -351,6 +351,126 @@ describe("chat service", () => {
     expect(contextWindow).toContain("Gmail: No emails synced yet");
   });
 
+  it("adds deadline citations when getDeadlines tool is used", async () => {
+    const dueDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    const deadline = store.createDeadline({
+      course: "DAT560",
+      task: "Assignment 2",
+      dueDate,
+      priority: "high",
+      completed: false
+    });
+
+    generateChatResponse = vi
+      .fn()
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop",
+        functionCalls: [
+          {
+            name: "getDeadlines",
+            args: { daysAhead: 7 }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        text: "You have one high-priority deadline this week.",
+        finishReason: "stop"
+      });
+    fakeGemini = {
+      generateChatResponse
+    } as unknown as GeminiClient;
+
+    const result = await sendChatMessage(store, "What is due this week?", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    expect(result.citations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: deadline.id,
+          type: "deadline"
+        })
+      ])
+    );
+    expect(result.assistantMessage.metadata?.citations).toEqual(result.citations);
+  });
+
+  it("adds social citations when getSocialDigest tool is used", async () => {
+    const nowIso = new Date().toISOString();
+
+    store.setYouTubeData({
+      channels: [],
+      videos: [
+        {
+          id: "yt-1",
+          channelId: "ch-1",
+          channelTitle: "ML Weekly",
+          title: "Transformer fine-tuning walkthrough",
+          description: "Guide for DAT560 prep",
+          publishedAt: nowIso,
+          thumbnailUrl: "https://example.com/thumb.jpg",
+          duration: "PT8M",
+          viewCount: 1200,
+          likeCount: 90,
+          commentCount: 12
+        }
+      ],
+      lastSyncedAt: nowIso
+    });
+
+    store.setXData({
+      tweets: [
+        {
+          id: "tweet-1",
+          text: "New thread on practical gradient descent debugging.",
+          authorId: "author-1",
+          authorUsername: "mlnotes",
+          authorName: "ML Notes",
+          createdAt: nowIso,
+          likeCount: 44,
+          retweetCount: 9,
+          replyCount: 3,
+          conversationId: "conv-1"
+        }
+      ],
+      lastSyncedAt: nowIso
+    });
+
+    generateChatResponse = vi
+      .fn()
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop",
+        functionCalls: [
+          {
+            name: "getSocialDigest",
+            args: { daysBack: 3 }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        text: "You have one relevant video and one X thread to review.",
+        finishReason: "stop"
+      });
+    fakeGemini = {
+      generateChatResponse
+    } as unknown as GeminiClient;
+
+    const result = await sendChatMessage(store, "Anything useful from social today?", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    expect(result.citations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "yt-1", type: "social-youtube" }),
+        expect.objectContaining({ id: "tweet-1", type: "social-x" })
+      ])
+    );
+  });
+
   it("executes pending action on explicit confirm command without Gemini call", async () => {
     const deadline = store.createDeadline({
       course: "DAT520",

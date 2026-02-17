@@ -53,6 +53,22 @@ export interface ChatActionExecution {
   message: string;
 }
 
+export type ChatCitationType =
+  | "schedule"
+  | "deadline"
+  | "journal"
+  | "email"
+  | "social-youtube"
+  | "social-x";
+
+export interface ChatCitation {
+  id: string;
+  type: ChatCitationType;
+  label: string;
+  timestamp?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ChatMessageMetadata {
   contextWindow?: string;
   finishReason?: string;
@@ -63,6 +79,7 @@ export interface ChatMessageMetadata {
   };
   pendingActions?: ChatPendingAction[];
   actionExecution?: ChatActionExecution;
+  citations?: ChatCitation[];
 }
 
 export interface ChatMessage {

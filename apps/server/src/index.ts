@@ -93,6 +93,7 @@ app.post("/api/chat", async (req, res) => {
       userMessage: result.userMessage,
       finishReason: result.finishReason,
       usage: result.usage,
+      citations: result.citations,
       history: result.history
     });
   } catch (error) {
