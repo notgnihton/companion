@@ -2109,6 +2109,27 @@ button:disabled {
   white-space: pre-wrap;
 }
 
+.chat-markdown-paragraph {
+  margin: 0;
+}
+
+.chat-markdown-paragraph + .chat-markdown-paragraph {
+  margin-top: 8px;
+}
+
+.chat-markdown-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.chat-markdown-list:first-child {
+  margin-top: 0;
+}
+
+.chat-markdown-list li + li {
+  margin-top: 4px;
+}
+
 .chat-bubble-user .chat-bubble-content {
   background: var(--accent);
   color: #0f172a;

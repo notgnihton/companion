@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, ReactNode, useEffect, useRef, useState } from "react";
 import { sendChatMessage, getChatHistory, submitJournalEntry } from "../lib/api";
 import { ChatCitation, ChatMessage } from "../types";
 import { addJournalEntry, enqueueJournalEntry, loadTalkModeEnabled, saveTalkModeEnabled } from "../lib/storage";
@@ -49,6 +49,95 @@ function toCitationTarget(citation: ChatCitation): CitationLinkTarget {
 function formatCitationChipLabel(citation: ChatCitation): string {
   const label = citation.label.trim();
   return label.length > 56 ? `${label.slice(0, 56)}...` : label;
+}
+
+function renderInlineMarkdown(text: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const tokenPattern = /(\*\*[^*\n]+?\*\*|\*[^*\n]+?\*)/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = tokenPattern.exec(text)) !== null) {
+    if (match.index > cursor) {
+      nodes.push(<Fragment key={`plain-${key++}`}>{text.slice(cursor, match.index)}</Fragment>);
+    }
+
+    const token = match[0];
+    if (token.startsWith("**") && token.endsWith("**")) {
+      nodes.push(<strong key={`strong-${key++}`}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("*") && token.endsWith("*")) {
+      nodes.push(<em key={`em-${key++}`}>{token.slice(1, -1)}</em>);
+    } else {
+      nodes.push(<Fragment key={`token-${key++}`}>{token}</Fragment>);
+    }
+
+    cursor = match.index + token.length;
+  }
+
+  if (cursor < text.length) {
+    nodes.push(<Fragment key={`tail-${key++}`}>{text.slice(cursor)}</Fragment>);
+  }
+
+  if (nodes.length === 0) {
+    return [text];
+  }
+
+  return nodes;
+}
+
+function renderAssistantContent(content: string): ReactNode {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const blocks: ReactNode[] = [];
+  let index = 0;
+  let key = 0;
+
+  while (index < lines.length) {
+    if (lines[index].trim().length === 0) {
+      index += 1;
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(lines[index])) {
+      const listItems: string[] = [];
+      while (index < lines.length && /^[-*]\s+/.test(lines[index])) {
+        listItems.push(lines[index].replace(/^[-*]\s+/, ""));
+        index += 1;
+      }
+
+      blocks.push(
+        <ul key={`list-${key++}`} className="chat-markdown-list">
+          {listItems.map((item, itemIndex) => (
+            <li key={`item-${itemIndex}`}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ul>
+      );
+      continue;
+    }
+
+    const paragraphLines: string[] = [];
+    while (index < lines.length && lines[index].trim().length > 0 && !/^[-*]\s+/.test(lines[index])) {
+      paragraphLines.push(lines[index]);
+      index += 1;
+    }
+
+    blocks.push(
+      <p key={`paragraph-${key++}`} className="chat-markdown-paragraph">
+        {paragraphLines.map((line, lineIndex) => (
+          <Fragment key={`line-${lineIndex}`}>
+            {lineIndex > 0 ? <br /> : null}
+            {renderInlineMarkdown(line)}
+          </Fragment>
+        ))}
+      </p>
+    );
+  }
+
+  if (blocks.length === 0) {
+    return content;
+  }
+
+  return blocks;
 }
 
 export function ChatView(): JSX.Element {
@@ -284,18 +373,14 @@ export function ChatView(): JSX.Element {
 
     setSavingMessageId(message.id);
     try {
-      const entry = addJournalEntry(message.content, ["chat-reflection"]);
+      const entry = addJournalEntry(message.content);
       // addJournalEntry guarantees id and clientEntryId are set to the same value
       const entryId = entry.clientEntryId || entry.id;
       if (!entryId) {
         throw new Error("Failed to create journal entry: missing entry ID");
       }
 
-      const submitted = await submitJournalEntry(
-        message.content,
-        entryId,
-        ["chat-reflection"]
-      );
+      const submitted = await submitJournalEntry(message.content, entryId);
 
       if (!submitted) {
         enqueueJournalEntry(entry);
@@ -361,7 +446,7 @@ export function ChatView(): JSX.Element {
                   <span></span>
                 </div>
               ) : (
-                msg.content
+                msg.role === "assistant" ? renderAssistantContent(msg.content) : msg.content
               )}
             </div>
             {msg.role === "assistant" && !msg.streaming && (msg.metadata?.citations?.length ?? 0) > 0 && (

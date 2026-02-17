@@ -637,6 +637,25 @@ describe("chat service", () => {
     expect(firstRequest.systemInstruction).toContain("Tool plan: Call getSchedule");
   });
 
+  it("preserves markdown styling in assistant output", async () => {
+    generateChatResponse = vi.fn(async () => ({
+      text: "**OK**. Today's schedule includes:\n\n* **DAT520 Laboratorium /Lab** from 09:15 to 11:00\n* **DAT520 Forelesning /Lecture** from 11:15 to 13:00",
+      finishReason: "stop"
+    }));
+    fakeGemini = {
+      generateChatResponse
+    } as unknown as GeminiClient;
+
+    const result = await sendChatMessage(store, "How is my schedule looking?", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    expect(result.reply).toContain("**OK**. Today's schedule includes");
+    expect(result.reply).toContain("* **DAT520 Laboratorium /Lab** from 09:15 to 11:00");
+    expect(result.reply).toContain("* **DAT520 Forelesning /Lecture** from 11:15 to 13:00");
+  });
+
   it("compacts large tool responses before sending functionResponse payloads to Gemini", async () => {
     const now = Date.now();
     for (let index = 0; index < 12; index += 1) {

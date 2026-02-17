@@ -326,16 +326,83 @@ interface ExecutedFunctionResponse {
   modelResponse: unknown;
 }
 
-function parseActionCommand(input: string): ParsedActionCommand | null {
-  const match = input.trim().match(/^(confirm|cancel)\s+([a-zA-Z0-9_-]+)$/i);
-  if (!match) {
+const ACTION_ID_REGEX = /\baction-[a-zA-Z0-9_-]+\b/i;
+const AFFIRMATIVE_ACTION_REGEX = /^(yes|yep|yeah|sure|ok|okay|go ahead|do it|please do|save it|sounds good)\b/i;
+const NEGATIVE_ACTION_REGEX = /^(no|nope|cancel|stop|do not|don't|never mind|not now)\b/i;
+
+function isAffirmativeActionReply(input: string): boolean {
+  return AFFIRMATIVE_ACTION_REGEX.test(input.trim());
+}
+
+function isNegativeActionReply(input: string): boolean {
+  return NEGATIVE_ACTION_REGEX.test(input.trim());
+}
+
+function isImplicitActionSignal(input: string): boolean {
+  const normalized = input.trim();
+  if (!normalized) {
+    return false;
+  }
+  return (
+    /\b(confirm|cancel)\b/i.test(normalized) ||
+    isAffirmativeActionReply(normalized) ||
+    isNegativeActionReply(normalized)
+  );
+}
+
+function parseActionCommand(input: string, pendingActions: ChatPendingAction[]): ParsedActionCommand | null {
+  const trimmed = input.trim();
+  if (!trimmed) {
     return null;
   }
 
-  return {
-    type: match[1].toLowerCase() as ParsedActionCommand["type"],
-    actionId: match[2]
-  };
+  const explicitMatch = trimmed.match(/^(confirm|cancel)\s+([a-zA-Z0-9_-]+)$/i);
+  if (explicitMatch) {
+    return {
+      type: explicitMatch[1].toLowerCase() as ParsedActionCommand["type"],
+      actionId: explicitMatch[2]
+    };
+  }
+
+  // If user says just "confirm"/"cancel" and there is exactly one pending action, apply to that action.
+  const bareVerbMatch = trimmed.match(/^(confirm|cancel)$/i);
+  if (bareVerbMatch && pendingActions.length === 1) {
+    return {
+      type: bareVerbMatch[1].toLowerCase() as ParsedActionCommand["type"],
+      actionId: pendingActions[0].id
+    };
+  }
+
+  const actionIdMatch = trimmed.match(ACTION_ID_REGEX);
+  const actionId = actionIdMatch?.[0];
+  if (actionId) {
+    if (/\bcancel\b/i.test(trimmed)) {
+      return { type: "cancel", actionId };
+    }
+    if (/\bconfirm\b/i.test(trimmed)) {
+      return { type: "confirm", actionId };
+    }
+
+    const pendingAction = pendingActions.find((action) => action.id === actionId);
+    if (pendingAction) {
+      return { type: "confirm", actionId };
+    }
+  }
+
+  if (pendingActions.length === 1) {
+    if (isAffirmativeActionReply(trimmed)) {
+      return { type: "confirm", actionId: pendingActions[0].id };
+    }
+    if (isNegativeActionReply(trimmed)) {
+      return { type: "cancel", actionId: pendingActions[0].id };
+    }
+
+    if (trimmed === pendingActions[0].id) {
+      return { type: "confirm", actionId: pendingActions[0].id };
+    }
+  }
+
+  return null;
 }
 
 const INTENT_PATTERNS: Array<{ intent: Exclude<ChatIntent, "general">; patterns: RegExp[] }> = [
@@ -589,6 +656,12 @@ Core behavior:
 - Do not hallucinate user-specific data. If data is unavailable, say so explicitly and suggest the next sync step.
 - For mutating requests, always use queue* action tools and require explicit user confirmation.
 - Keep replies concise, practical, and conversational.
+- Use only lightweight Markdown that the chat UI supports:
+  - **bold** for key facts and warnings
+  - *italic* for gentle emphasis
+  - '-' or '*' bullet lists for schedules and checklists
+  - plain paragraphs separated by blank lines
+- Do not use HTML, tables, headings (#), blockquotes, or code fences.
 - If multiple intents are present, choose the smallest useful set of tools and then synthesize one clear answer.
 
 Detected intent: ${intent}
@@ -1291,7 +1364,33 @@ export async function sendChatMessage(
   options: { now?: Date; geminiClient?: GeminiClient; useFunctionCalling?: boolean } = {}
 ): Promise<SendChatResult> {
   const now = options.now ?? new Date();
-  const actionCommand = parseActionCommand(userInput);
+  const pendingActionsAtStart = store.getPendingChatActions(now);
+  const actionCommand = parseActionCommand(userInput, pendingActionsAtStart);
+
+  if (!actionCommand && pendingActionsAtStart.length > 1 && isImplicitActionSignal(userInput)) {
+    const userMessage = store.recordChatMessage("user", userInput);
+    const lines = ["Multiple pending actions found. Please confirm with a specific action ID:"];
+    pendingActionsAtStart.forEach((action) => {
+      lines.push(`- ${action.summary}`);
+      lines.push(`  Confirm: confirm ${action.id}`);
+      lines.push(`  Cancel: cancel ${action.id}`);
+    });
+
+    const assistantMessage = store.recordChatMessage("assistant", lines.join("\n"), {
+      contextWindow: "",
+      pendingActions: pendingActionsAtStart
+    });
+    const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
+
+    return {
+      reply: assistantMessage.content,
+      userMessage,
+      assistantMessage,
+      finishReason: "stop",
+      citations: [],
+      history: historyPage
+    };
+  }
 
   if (actionCommand) {
     const userMessage = store.recordChatMessage("user", userInput);
