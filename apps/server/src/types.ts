@@ -36,6 +36,7 @@ export type ChatActionType =
   | "complete-deadline"
   | "snooze-deadline"
   | "create-schedule-block"
+  | "update-schedule-block"
   | "create-journal-draft";
 
 export interface ChatPendingAction {

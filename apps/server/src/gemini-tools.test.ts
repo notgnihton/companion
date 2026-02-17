@@ -16,6 +16,7 @@ import {
   handleGetGitHubCourseContent,
   handleQueueDeadlineAction,
   handleQueueScheduleBlock,
+  handleQueueUpdateScheduleBlock,
   handleCreateJournalEntry,
   executePendingChatAction,
   executeFunctionCall
@@ -31,8 +32,8 @@ describe("gemini-tools", () => {
   });
 
   describe("functionDeclarations", () => {
-    it("should define 16 function declarations", () => {
-      expect(functionDeclarations).toHaveLength(16);
+    it("should define 17 function declarations", () => {
+      expect(functionDeclarations).toHaveLength(17);
     });
 
     it("should include getSchedule function", () => {
@@ -84,6 +85,7 @@ describe("gemini-tools", () => {
     it("should include queue action functions", () => {
       expect(functionDeclarations.find((f) => f.name === "queueDeadlineAction")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "queueScheduleBlock")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "queueUpdateScheduleBlock")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "createJournalEntry")).toBeDefined();
     });
   });
@@ -501,6 +503,28 @@ describe("gemini-tools", () => {
       expect(store.getPendingChatActions()).toHaveLength(1);
     });
 
+    it("queues a schedule block update action", () => {
+      const scheduleBlock = store.createLectureEvent({
+        title: "Gym",
+        startTime: "2026-02-18T07:00:00.000Z",
+        durationMinutes: 60,
+        workload: "medium"
+      });
+
+      const result = handleQueueUpdateScheduleBlock(store, {
+        scheduleId: scheduleBlock.id,
+        startTime: "2026-02-18T08:00:00.000Z"
+      });
+
+      expect(result).toHaveProperty("requiresConfirmation", true);
+      if (!("pendingAction" in result)) {
+        throw new Error("Expected pendingAction in queue result");
+      }
+
+      expect(result.pendingAction.actionType).toBe("update-schedule-block");
+      expect(store.getPendingChatActions()).toHaveLength(1);
+    });
+
     it("creates a journal entry immediately", () => {
       const result = handleCreateJournalEntry(store, {
         content: "Draft reflection about today's lab."
@@ -553,6 +577,31 @@ describe("gemini-tools", () => {
 
       expect(result.success).toBe(true);
       expect(result.lecture?.title).toContain("DAT600");
+    });
+
+    it("executes queued schedule block update", () => {
+      const scheduleBlock = store.createLectureEvent({
+        title: "Morning gym",
+        startTime: "2026-02-22T07:00:00.000Z",
+        durationMinutes: 60,
+        workload: "medium"
+      });
+
+      const pending = store.createPendingChatAction({
+        actionType: "update-schedule-block",
+        summary: "Move morning gym to 08:00",
+        payload: {
+          scheduleId: scheduleBlock.id,
+          startTime: "2026-02-22T08:00:00.000Z",
+          durationMinutes: 75
+        }
+      });
+
+      const result = executePendingChatAction(pending, store);
+
+      expect(result.success).toBe(true);
+      expect(result.lecture?.startTime).toContain("T08:00:00.000Z");
+      expect(result.lecture?.durationMinutes).toBe(75);
     });
   });
 
@@ -713,6 +762,24 @@ describe("gemini-tools", () => {
       );
 
       expect(result.name).toBe("queueDeadlineAction");
+      expect(result.response).toHaveProperty("requiresConfirmation", true);
+    });
+
+    it("should execute queueUpdateScheduleBlock function", () => {
+      const scheduleBlock = store.createLectureEvent({
+        title: "Focus block",
+        startTime: "2026-02-24T10:00:00.000Z",
+        durationMinutes: 90,
+        workload: "high"
+      });
+
+      const result = executeFunctionCall(
+        "queueUpdateScheduleBlock",
+        { scheduleId: scheduleBlock.id, durationMinutes: 60 },
+        store
+      );
+
+      expect(result.name).toBe("queueUpdateScheduleBlock");
       expect(result.response).toHaveProperty("requiresConfirmation", true);
     });
 

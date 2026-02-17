@@ -45,10 +45,11 @@ function formatCachedLabel(cachedAt: string | null): string {
 }
 
 interface DayTimelineSegment {
-  type: "lecture" | "gap";
+  type: "event" | "planned";
   start: Date;
   end: Date;
-  lecture?: LectureEvent;
+  event?: LectureEvent;
+  suggestion?: string;
 }
 
 function isSameLocalDate(left: Date, right: Date): boolean {
@@ -84,23 +85,95 @@ function formatLectureTitle(value: string): string {
     .trim();
 }
 
-function buildDayTimeline(lectures: LectureEvent[], referenceDate: Date): DayTimelineSegment[] {
-  if (lectures.length === 0) {
-    return [];
+function suggestGapActivity(
+  gapStart: Date,
+  gapDurationMinutes: number,
+  deadlineSuggestions: string[],
+  consumedDeadlineIndex: { value: number }
+): string {
+  const hour = gapStart.getHours();
+
+  if (hour < 9) {
+    return "Suggested: Morning routine (gym, breakfast, planning)";
   }
 
-  const sorted = [...lectures].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-  const firstStart = new Date(sorted[0].startTime);
+  if (consumedDeadlineIndex.value < deadlineSuggestions.length) {
+    const suggestion = deadlineSuggestions[consumedDeadlineIndex.value]!;
+    consumedDeadlineIndex.value += 1;
+    return `Suggested: ${suggestion}`;
+  }
+
+  if (gapDurationMinutes >= 90) {
+    return "Suggested: Focus block for assignments or revision";
+  }
+
+  return "Suggested: Buffer, review notes, or take a short reset";
+}
+
+function allocatePlannedBlocks(
+  start: Date,
+  end: Date,
+  deadlineSuggestions: string[],
+  consumedDeadlineIndex: { value: number }
+): DayTimelineSegment[] {
+  const segments: DayTimelineSegment[] = [];
+  let cursor = new Date(start);
+  let remaining = minutesBetween(cursor, end);
+
+  while (remaining >= 25) {
+    let blockMinutes: number;
+    if (remaining >= 210) {
+      blockMinutes = 90;
+    } else if (remaining >= 140) {
+      blockMinutes = 75;
+    } else if (remaining >= 95) {
+      blockMinutes = 60;
+    } else if (remaining >= 70) {
+      blockMinutes = 45;
+    } else {
+      blockMinutes = remaining;
+    }
+
+    const leftover = remaining - blockMinutes;
+    if (leftover > 0 && leftover < 25) {
+      blockMinutes = remaining;
+    }
+
+    const blockEnd = new Date(cursor.getTime() + blockMinutes * 60000);
+    segments.push({
+      type: "planned",
+      start: new Date(cursor),
+      end: blockEnd,
+      suggestion: suggestGapActivity(new Date(cursor), blockMinutes, deadlineSuggestions, consumedDeadlineIndex)
+    });
+
+    cursor = blockEnd;
+    remaining = minutesBetween(cursor, end);
+  }
+
+  return segments;
+}
+
+function buildDayTimeline(
+  scheduleBlocks: LectureEvent[],
+  referenceDate: Date,
+  deadlineSuggestions: string[]
+): DayTimelineSegment[] {
+  const sorted = [...scheduleBlocks].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+  const firstStart = sorted.length > 0 ? new Date(sorted[0].startTime) : new Date(referenceDate);
   const timelineStart = new Date(referenceDate);
   timelineStart.setHours(Math.min(7, firstStart.getHours()), 0, 0, 0);
 
-  const lastLecture = sorted[sorted.length - 1];
-  const lastEnd = new Date(new Date(lastLecture.startTime).getTime() + lastLecture.durationMinutes * 60000);
+  const lastLecture = sorted.length > 0 ? sorted[sorted.length - 1] : null;
+  const lastEnd = lastLecture
+    ? new Date(new Date(lastLecture.startTime).getTime() + lastLecture.durationMinutes * 60000)
+    : new Date(referenceDate);
   const timelineEnd = new Date(referenceDate);
   timelineEnd.setHours(Math.max(20, lastEnd.getHours() + 1), 0, 0, 0);
 
   const segments: DayTimelineSegment[] = [];
   let cursor = timelineStart;
+  const consumedDeadlineIndex = { value: 0 };
 
   sorted.forEach((lecture) => {
     const start = new Date(lecture.startTime);
@@ -108,29 +181,25 @@ function buildDayTimeline(lectures: LectureEvent[], referenceDate: Date): DayTim
 
     const gapMinutes = minutesBetween(cursor, start);
     if (gapMinutes >= 25) {
-      segments.push({
-        type: "gap",
-        start: new Date(cursor),
-        end: new Date(start)
-      });
+      segments.push(
+        ...allocatePlannedBlocks(new Date(cursor), new Date(start), deadlineSuggestions, consumedDeadlineIndex)
+      );
     }
 
     segments.push({
-      type: "lecture",
+      type: "event",
       start,
       end,
-      lecture
+      event: lecture
     });
     cursor = end;
   });
 
   const trailingGap = minutesBetween(cursor, timelineEnd);
   if (trailingGap >= 25) {
-    segments.push({
-      type: "gap",
-      start: new Date(cursor),
-      end: new Date(timelineEnd)
-    });
+    segments.push(
+      ...allocatePlannedBlocks(new Date(cursor), new Date(timelineEnd), deadlineSuggestions, consumedDeadlineIndex)
+    );
   }
 
   return segments;
@@ -253,10 +322,19 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
   const cacheAgeMs = cachedAt ? Date.now() - new Date(cachedAt).getTime() : Number.POSITIVE_INFINITY;
   const isStale = Number.isFinite(cacheAgeMs) && cacheAgeMs > SCHEDULE_STALE_MS;
   const pendingDeadlines = deadlines.filter((deadline) => !deadline.completed);
+  const deadlineSuggestions = pendingDeadlines
+    .map((deadline) => ({
+      dueDateMs: new Date(deadline.dueDate).getTime(),
+      label: `${deadline.course} ${deadline.task}`
+    }))
+    .filter((item) => Number.isFinite(item.dueDateMs))
+    .sort((left, right) => left.dueDateMs - right.dueDateMs)
+    .slice(0, 8)
+    .map((item) => item.label);
   const remainingHours = pendingDeadlines.reduce((sum, deadline) => sum + estimateDeadlineHours(deadline), 0);
   const today = new Date();
-  const todayLectures = sortedSchedule.filter((lecture) => isSameLocalDate(new Date(lecture.startTime), today));
-  const dayTimeline = buildDayTimeline(todayLectures, today);
+  const todayBlocks = sortedSchedule.filter((block) => isSameLocalDate(new Date(block.startTime), today));
+  const dayTimeline = buildDayTimeline(todayBlocks, today, deadlineSuggestions);
   const todayDeadlineMarkers = pendingDeadlines
     .filter((deadline) => {
       const dueAt = new Date(deadline.dueDate);
@@ -271,9 +349,9 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
   return (
     <section className="panel schedule-panel">
       <header className="panel-header">
-        <h2>Lecture Schedule</h2>
+        <h2>Schedule</h2>
         <div className="panel-header-actions">
-          <span className="schedule-count">{schedule.length} classes</span>
+          <span className="schedule-count">{schedule.length} blocks</span>
           <button type="button" onClick={() => void handleRefresh()} disabled={refreshing || !isOnline}>
             {refreshing ? "Refreshing..." : "Refresh"}
           </button>
@@ -293,7 +371,7 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
       <section className="day-timeline-card" aria-label="Today timeline">
         <div className="day-timeline-header">
           <h3>Today timeline</h3>
-          <span>{todayLectures.length} lecture block{todayLectures.length === 1 ? "" : "s"}</span>
+          <span>{todayBlocks.length} fixed block{todayBlocks.length === 1 ? "" : "s"}</span>
         </div>
 
         {dayTimeline.length > 0 ? (
@@ -301,7 +379,7 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
             {dayTimeline.map((segment, index) => (
               <li
                 key={`${segment.type}-${segment.start.toISOString()}-${index}`}
-                className={segment.type === "lecture" ? "day-timeline-item day-timeline-item-lecture" : "day-timeline-item day-timeline-item-gap"}
+                className={segment.type === "event" ? "day-timeline-item day-timeline-item-lecture" : "day-timeline-item day-timeline-item-gap"}
               >
                 <div className="day-timeline-item-meta">
                   <span>
@@ -311,13 +389,15 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
                   <span>{formatDuration(minutesBetween(segment.start, segment.end))}</span>
                 </div>
                 <p className="day-timeline-item-label">
-                  {segment.type === "lecture" ? formatLectureTitle(segment.lecture?.title ?? "Lecture") : "Free gap"}
+                  {segment.type === "event"
+                    ? formatLectureTitle(segment.event?.title ?? "Scheduled block")
+                    : segment.suggestion ?? "Suggested: Focus block"}
                 </p>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="day-timeline-empty">No lectures today. Use the free time for planned assignments.</p>
+          <p className="day-timeline-empty">No fixed sessions today. Ask Gemini to build your day plan.</p>
         )}
 
         <div className="day-timeline-deadlines">
@@ -382,7 +462,7 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
             })}
           </ul>
         ) : (
-          <p className="schedule-empty">No classes scheduled. Add your lecture plan to get started.</p>
+          <p className="schedule-empty">No schedule blocks yet. Add your lecture plan or ask Gemini to create routines.</p>
         )}
       </div>
     </section>

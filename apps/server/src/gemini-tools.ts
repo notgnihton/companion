@@ -322,6 +322,41 @@ export const functionDeclarations: FunctionDeclaration[] = [
     }
   },
   {
+    name: "queueUpdateScheduleBlock",
+    description:
+      "Queue an update to an existing schedule block that REQUIRES explicit user confirmation before execution.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        scheduleId: {
+          type: SchemaType.STRING,
+          description: "Existing schedule block ID (preferred)."
+        },
+        scheduleTitle: {
+          type: SchemaType.STRING,
+          description: "Existing schedule block title hint when ID is unknown."
+        },
+        title: {
+          type: SchemaType.STRING,
+          description: "Updated title for the schedule block."
+        },
+        startTime: {
+          type: SchemaType.STRING,
+          description: "Updated ISO datetime when the block starts."
+        },
+        durationMinutes: {
+          type: SchemaType.NUMBER,
+          description: "Updated block duration in minutes."
+        },
+        workload: {
+          type: SchemaType.STRING,
+          description: "Updated workload level: low, medium, high."
+        }
+      },
+      required: []
+    }
+  },
+  {
     name: "createJournalEntry",
     description:
       "Create and save a journal entry immediately. Use this when the user asks to save something to their journal right now.",
@@ -572,6 +607,48 @@ function resolveGoalTarget(
     };
   }
   return matches[0];
+}
+
+function resolveScheduleTarget(
+  store: RuntimeStore,
+  args: Record<string, unknown>
+): LectureEvent | { error: string } {
+  const scheduleId = asTrimmedString(args.scheduleId);
+  if (scheduleId) {
+    const byId = store.getScheduleEventById(scheduleId);
+    if (!byId) {
+      return { error: `Schedule block not found: ${scheduleId}` };
+    }
+    return byId;
+  }
+
+  const scheduleTitle = asTrimmedString(args.scheduleTitle);
+  const schedule = store.getScheduleEvents();
+  if (schedule.length === 0) {
+    return { error: "No schedule blocks are available yet." };
+  }
+
+  if (!scheduleTitle) {
+    if (schedule.length === 1) {
+      return schedule[0];
+    }
+    return { error: "Provide scheduleId or scheduleTitle when multiple schedule blocks exist." };
+  }
+
+  const needle = normalizeSearchText(scheduleTitle);
+  const matches = schedule.filter((event) => normalizeSearchText(event.title).includes(needle));
+  if (matches.length === 0) {
+    return { error: `No schedule block matched "${scheduleTitle}".` };
+  }
+  if (matches.length > 1) {
+    return {
+      error: `Schedule title is ambiguous. Matches: ${matches
+        .slice(0, 4)
+        .map((event) => event.title)
+        .join(", ")}`
+    };
+  }
+  return matches[0]!;
 }
 
 export function handleUpdateHabitCheckIn(
@@ -1067,6 +1144,54 @@ export function handleQueueScheduleBlock(
   return toPendingActionResponse(pending, "Action queued. Ask user for explicit confirmation before executing.");
 }
 
+export function handleQueueUpdateScheduleBlock(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): PendingActionToolResponse | { error: string } {
+  const resolved = resolveScheduleTarget(store, args);
+  if ("error" in resolved) {
+    return resolved;
+  }
+
+  const nextTitle = asTrimmedString(args.title);
+  const nextStartTime = asTrimmedString(args.startTime);
+  const nextDurationMinutes = typeof args.durationMinutes === "number"
+    ? clampNumber(args.durationMinutes, resolved.durationMinutes, 15, 240)
+    : undefined;
+  const workloadRaw = asTrimmedString(args.workload)?.toLowerCase();
+  const nextWorkload: LectureEvent["workload"] | undefined =
+    workloadRaw === "low" || workloadRaw === "medium" || workloadRaw === "high" ? workloadRaw : undefined;
+
+  let normalizedStartTime: string | undefined;
+  if (nextStartTime) {
+    const startDate = new Date(nextStartTime);
+    if (Number.isNaN(startDate.getTime())) {
+      return { error: "startTime must be a valid ISO datetime." };
+    }
+    normalizedStartTime = startDate.toISOString();
+  }
+
+  if (!nextTitle && !normalizedStartTime && !nextDurationMinutes && !nextWorkload) {
+    return {
+      error: "Provide at least one field to update: title, startTime, durationMinutes, or workload."
+    };
+  }
+
+  const pending = store.createPendingChatAction({
+    actionType: "update-schedule-block",
+    summary: `Update schedule block "${resolved.title}"`,
+    payload: {
+      scheduleId: resolved.id,
+      ...(nextTitle ? { title: nextTitle } : {}),
+      ...(normalizedStartTime ? { startTime: normalizedStartTime } : {}),
+      ...(nextDurationMinutes ? { durationMinutes: nextDurationMinutes } : {}),
+      ...(nextWorkload ? { workload: nextWorkload } : {})
+    }
+  });
+
+  return toPendingActionResponse(pending, "Action queued. Ask user for explicit confirmation before executing.");
+}
+
 export function handleCreateJournalEntry(
   store: RuntimeStore,
   args: Record<string, unknown> = {}
@@ -1213,6 +1338,84 @@ export function executePendingChatAction(
         lecture
       };
     }
+    case "update-schedule-block": {
+      const scheduleId = asTrimmedString(pendingAction.payload.scheduleId);
+      if (!scheduleId) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Invalid schedule update payload."
+        };
+      }
+
+      const existing = store.getScheduleEventById(scheduleId);
+      if (!existing) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Schedule block not found for update."
+        };
+      }
+
+      const patch: Partial<Omit<LectureEvent, "id">> = {};
+
+      const title = asTrimmedString(pendingAction.payload.title);
+      if (title) {
+        patch.title = title;
+      }
+
+      const startTime = asTrimmedString(pendingAction.payload.startTime);
+      if (startTime) {
+        const startDate = new Date(startTime);
+        if (Number.isNaN(startDate.getTime())) {
+          return {
+            actionId: pendingAction.id,
+            actionType: pendingAction.actionType,
+            success: false,
+            message: "Schedule block start time is invalid."
+          };
+        }
+        patch.startTime = startDate.toISOString();
+      }
+
+      if (typeof pendingAction.payload.durationMinutes === "number") {
+        patch.durationMinutes = clampNumber(pendingAction.payload.durationMinutes, existing.durationMinutes, 15, 240);
+      }
+
+      const workloadRaw = asTrimmedString(pendingAction.payload.workload)?.toLowerCase();
+      if (workloadRaw === "low" || workloadRaw === "medium" || workloadRaw === "high") {
+        patch.workload = workloadRaw;
+      }
+
+      if (Object.keys(patch).length === 0) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "No valid schedule update fields were provided."
+        };
+      }
+
+      const lecture = store.updateScheduleEvent(scheduleId, patch);
+      if (!lecture) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Unable to update schedule block."
+        };
+      }
+
+      return {
+        actionId: pendingAction.id,
+        actionType: pendingAction.actionType,
+        success: true,
+        message: `Updated schedule block "${lecture.title}".`,
+        lecture
+      };
+    }
     case "create-journal-draft": {
       const content = asTrimmedString(pendingAction.payload.content);
       if (!content) {
@@ -1298,6 +1501,9 @@ export function executeFunctionCall(
       break;
     case "queueScheduleBlock":
       response = handleQueueScheduleBlock(store, args);
+      break;
+    case "queueUpdateScheduleBlock":
+      response = handleQueueUpdateScheduleBlock(store, args);
       break;
     case "createJournalEntry":
       response = handleCreateJournalEntry(store, args);

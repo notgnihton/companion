@@ -683,7 +683,7 @@ function buildIntentGuidance(intent: ChatIntent): string {
     case "data-management":
       return "Intent hint: data management. Focus on import/export/backup/restore safety and exact steps.";
     case "actions":
-      return "Intent hint: action request. Use queue* action tools with explicit confirmation for deadline/schedule changes. For journal saves, use createJournalEntry directly.";
+      return "Intent hint: action request. Use queue* action tools with explicit confirmation for deadline/schedule changes (including queueUpdateScheduleBlock for edits). For journal saves, use createJournalEntry directly.";
     case "general":
     default:
       return "Intent hint: general. Ask a short clarification only if needed, otherwise use tools on demand.";
@@ -763,6 +763,12 @@ const INTENT_FEW_SHOT_EXAMPLES: IntentFewShotExample[] = [
     intent: "actions",
     toolPlan: "Use queueDeadlineAction, then require explicit confirm/cancel.",
     responseStyle: "Never execute side effects without confirmation."
+  },
+  {
+    user: "Move my gym block tomorrow to 07:00.",
+    intent: "actions",
+    toolPlan: "Use queueUpdateScheduleBlock with scheduleId/scheduleTitle and updated startTime.",
+    responseStyle: "Queue the edit, then ask for explicit confirmation."
   },
   {
     user: "Is Canvas sync failing again?",
