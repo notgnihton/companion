@@ -11,6 +11,7 @@ import { FloatingQuickCapture } from "./components/FloatingQuickCapture";
 import { SyncStatusBadge } from "./components/SyncStatusBadge";
 import { AnalyticsDashboard } from "./components/AnalyticsDashboard";
 import { TabBar, TabId } from "./components/TabBar";
+import { SocialMediaView } from "./components/SocialMediaView";
 import { useDashboard } from "./hooks/useDashboard";
 import { enablePushNotifications, isPushEnabled, supportsPushNotifications } from "./lib/push";
 import { setupSyncListeners } from "./lib/sync";
@@ -182,6 +183,9 @@ export default function App(): JSX.Element {
             )}
             {activeTab === "schedule" && (
               <ScheduleTab scheduleKey={`schedule-${scheduleRevision}`} />
+            )}
+            {activeTab === "social" && (
+              <SocialMediaView />
             )}
             {activeTab === "journal" && (
               <div className="journal-tab-container">

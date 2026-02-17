@@ -323,7 +323,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `youtube-sync-api` | backend-engineer | Add YouTube Data API v3 client: fetch subscribed channels' recent uploads, video metadata (title, description, duration, stats). Config: `YOUTUBE_API_KEY` env var. Sync every 6 hours. Quota-aware (10K units/day). |
 | ✅ done | `x-feed-sync-api` | backend-engineer | Add X/Twitter API v2 client: fetch home timeline and recent tweets from followed accounts using OAuth 1.0a. Config: `X_API_KEY`, `X_API_KEY_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`, `X_BEARER_TOKEN` env vars. Sync every 4 hours. |
 | ✅ done | `social-media-summarizer` | backend-engineer | Build Gemini-powered summarization pipeline: takes raw YouTube/X data, generates AI newsletter-style digest grouped by topic (AI news, tech, entertainment). Configurable summary length and focus areas. |
-| ⬜ todo | `social-media-digest-ui` | frontend-engineer | Build Social Media Summary view: card-based digest with YouTube video thumbnails and X thread summaries. Filter by platform, refresh on demand. Tab in bottom nav. |
+| ✅ done | `social-media-digest-ui` | frontend-engineer | Build Social Media Summary view: card-based digest with YouTube video thumbnails and X thread summaries. Filter by platform, refresh on demand. Tab in bottom nav. |
 | ✅ done | `social-media-chat-integration` | backend-engineer | Integrate social media context into Gemini chat: "What did I miss on X?" or "Any new AI videos?" queries pull from cached social media data and generate contextual summaries. |
 | | | | |
 | | **— Phase 4: Production Deployment & Gmail —** | | |

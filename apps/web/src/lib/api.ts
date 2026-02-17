@@ -20,7 +20,9 @@ import {
   SyncQueueStatus,
   CanvasSettings,
   CanvasStatus,
-  CanvasSyncResult
+  CanvasSyncResult,
+  SocialMediaFeed,
+  SocialMediaSyncResult
 } from "../types";
 import {
   JournalQueueItem,
@@ -563,6 +565,16 @@ export async function triggerCanvasSync(settings?: CanvasSettings): Promise<Canv
       error: message
     };
   }
+}
+
+export async function getSocialMediaFeed(): Promise<SocialMediaFeed> {
+  return await jsonOrThrow<SocialMediaFeed>("/api/social-media");
+}
+
+export async function syncSocialMediaFeed(): Promise<SocialMediaSyncResult> {
+  return await jsonOrThrow<SocialMediaSyncResult>("/api/social-media/sync", {
+    method: "POST"
+  });
 }
 
 export async function sendChatMessage(message: string): Promise<ChatMessage> {
