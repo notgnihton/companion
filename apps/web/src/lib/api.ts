@@ -305,7 +305,12 @@ export async function getStudyPlanSessions(options?: {
 export async function checkInStudyPlanSession(
   sessionId: string,
   status: Exclude<StudyPlanSessionStatus, "pending">,
-  checkedAt?: string
+  payload?: {
+    checkedAt?: string;
+    energyLevel?: number;
+    focusLevel?: number;
+    checkInNote?: string;
+  }
 ): Promise<StudyPlanSessionRecord | null> {
   try {
     const response = await jsonOrThrow<{ session: StudyPlanSessionRecord }>(
@@ -314,7 +319,10 @@ export async function checkInStudyPlanSession(
         method: "POST",
         body: JSON.stringify({
           status,
-          checkedAt
+          checkedAt: payload?.checkedAt,
+          energyLevel: payload?.energyLevel,
+          focusLevel: payload?.focusLevel,
+          checkInNote: payload?.checkInNote
         })
       }
     );

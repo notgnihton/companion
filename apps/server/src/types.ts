@@ -284,6 +284,32 @@ export interface StudyPlanSessionRecord extends StudyPlanSession {
   generatedAt: string;
   status: StudyPlanSessionStatus;
   checkedAt: string | null;
+  energyLevel: number | null;
+  focusLevel: number | null;
+  checkInNote: string | null;
+}
+
+export interface StudyPlanCheckInNoteRecord {
+  sessionId: string;
+  course: string;
+  task: string;
+  status: Exclude<StudyPlanSessionStatus, "pending">;
+  checkedAt: string;
+  note: string;
+}
+
+export interface StudyPlanSessionCheckInTrends {
+  sessionsChecked: number;
+  sessionsWithEnergy: number;
+  sessionsWithFocus: number;
+  sessionsWithNotes: number;
+  averageEnergy: number | null;
+  averageFocus: number | null;
+  lowEnergyCount: number;
+  highEnergyCount: number;
+  lowFocusCount: number;
+  highFocusCount: number;
+  recentNotes: StudyPlanCheckInNoteRecord[];
 }
 
 export interface StudyPlanAdherenceMetrics {
@@ -299,6 +325,7 @@ export interface StudyPlanAdherenceMetrics {
   completedMinutes: number;
   skippedMinutes: number;
   pendingMinutes: number;
+  checkInTrends: StudyPlanSessionCheckInTrends;
 }
 
 export type ContentRecommendationTargetType = "deadline" | "lecture";

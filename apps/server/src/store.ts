@@ -246,6 +246,9 @@ export class RuntimeStore {
         generatedAt TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
         checkedAt TEXT,
+        energyLevel INTEGER,
+        focusLevel INTEGER,
+        checkInNote TEXT,
         insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
       );
 
@@ -461,6 +464,20 @@ export class RuntimeStore {
     const hasLastSyncedAtColumn = gmailColumns.some((col) => col.name === "lastSyncedAt");
     if (!hasLastSyncedAtColumn) {
       this.db.prepare("ALTER TABLE gmail_data ADD COLUMN lastSyncedAt TEXT").run();
+    }
+
+    const studyPlanColumns = this.db.prepare("PRAGMA table_info(study_plan_sessions)").all() as Array<{ name: string }>;
+    const hasEnergyLevelColumn = studyPlanColumns.some((col) => col.name === "energyLevel");
+    if (!hasEnergyLevelColumn) {
+      this.db.prepare("ALTER TABLE study_plan_sessions ADD COLUMN energyLevel INTEGER").run();
+    }
+    const hasFocusLevelColumn = studyPlanColumns.some((col) => col.name === "focusLevel");
+    if (!hasFocusLevelColumn) {
+      this.db.prepare("ALTER TABLE study_plan_sessions ADD COLUMN focusLevel INTEGER").run();
+    }
+    const hasCheckInNoteColumn = studyPlanColumns.some((col) => col.name === "checkInNote");
+    if (!hasCheckInNoteColumn) {
+      this.db.prepare("ALTER TABLE study_plan_sessions ADD COLUMN checkInNote TEXT").run();
     }
   }
 
@@ -2243,8 +2260,11 @@ export class RuntimeStore {
           rationale,
           generatedAt,
           status,
-          checkedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL)
+          checkedAt,
+          energyLevel,
+          focusLevel,
+          checkInNote
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL)
         ON CONFLICT(sessionId) DO UPDATE SET
           deadlineId = excluded.deadlineId,
           course = excluded.course,
@@ -2297,6 +2317,9 @@ export class RuntimeStore {
           generatedAt: string;
           status: string;
           checkedAt: string | null;
+          energyLevel: number | null;
+          focusLevel: number | null;
+          checkInNote: string | null;
         }
       | undefined;
 
@@ -2317,7 +2340,10 @@ export class RuntimeStore {
       rationale: row.rationale,
       generatedAt: row.generatedAt,
       status: row.status as StudyPlanSessionStatus,
-      checkedAt: row.checkedAt
+      checkedAt: row.checkedAt,
+      energyLevel: row.energyLevel,
+      focusLevel: row.focusLevel,
+      checkInNote: row.checkInNote
     };
   }
 
@@ -2366,6 +2392,9 @@ export class RuntimeStore {
       generatedAt: string;
       status: string;
       checkedAt: string | null;
+      energyLevel: number | null;
+      focusLevel: number | null;
+      checkInNote: string | null;
     }>;
 
     return rows.map((row) => ({
@@ -2381,18 +2410,37 @@ export class RuntimeStore {
       rationale: row.rationale,
       generatedAt: row.generatedAt,
       status: row.status as StudyPlanSessionStatus,
-      checkedAt: row.checkedAt
+      checkedAt: row.checkedAt,
+      energyLevel: row.energyLevel,
+      focusLevel: row.focusLevel,
+      checkInNote: row.checkInNote
     }));
   }
 
   setStudyPlanSessionStatus(
     sessionId: string,
     status: Exclude<StudyPlanSessionStatus, "pending">,
-    checkedAt: string = nowIso()
+    checkedAt: string = nowIso(),
+    checkIn?: {
+      energyLevel?: number;
+      focusLevel?: number;
+      checkInNote?: string;
+    }
   ): StudyPlanSessionRecord | null {
+    const existing = this.getStudyPlanSessionById(sessionId);
+    if (!existing) {
+      return null;
+    }
+
+    const nextEnergyLevel = checkIn?.energyLevel ?? existing.energyLevel;
+    const nextFocusLevel = checkIn?.focusLevel ?? existing.focusLevel;
+    const nextCheckInNote = checkIn?.checkInNote ?? existing.checkInNote;
+
     const result = this.db
-      .prepare("UPDATE study_plan_sessions SET status = ?, checkedAt = ? WHERE sessionId = ?")
-      .run(status, checkedAt, sessionId);
+      .prepare(
+        "UPDATE study_plan_sessions SET status = ?, checkedAt = ?, energyLevel = ?, focusLevel = ?, checkInNote = ? WHERE sessionId = ?"
+      )
+      .run(status, checkedAt, nextEnergyLevel, nextFocusLevel, nextCheckInNote, sessionId);
 
     if (result.changes === 0) {
       return null;
@@ -2440,6 +2488,36 @@ export class RuntimeStore {
     const trackedSessions = sessionsDone + sessionsSkipped;
     const completionRate = sessionsPlanned === 0 ? 0 : Math.round((sessionsDone / sessionsPlanned) * 100);
     const adherenceRate = trackedSessions === 0 ? 0 : Math.round((sessionsDone / trackedSessions) * 100);
+    const checkedSessions = sessions.filter((session) => session.status !== "pending");
+    const energyValues = checkedSessions
+      .map((session) => session.energyLevel)
+      .filter((value): value is number => typeof value === "number");
+    const focusValues = checkedSessions
+      .map((session) => session.focusLevel)
+      .filter((value): value is number => typeof value === "number");
+    const averageEnergy =
+      energyValues.length === 0
+        ? null
+        : Math.round((energyValues.reduce((sum, value) => sum + value, 0) / energyValues.length) * 10) / 10;
+    const averageFocus =
+      focusValues.length === 0
+        ? null
+        : Math.round((focusValues.reduce((sum, value) => sum + value, 0) / focusValues.length) * 10) / 10;
+    const sessionsWithNotes = checkedSessions.filter(
+      (session) => typeof session.checkInNote === "string" && session.checkInNote.trim().length > 0
+    );
+    const recentNotes = [...sessionsWithNotes]
+      .filter((session): session is StudyPlanSessionRecord & { checkedAt: string } => typeof session.checkedAt === "string")
+      .sort((a, b) => new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime())
+      .slice(0, 5)
+      .map((session) => ({
+        sessionId: session.id,
+        course: session.course,
+        task: session.task,
+        status: session.status as Exclude<StudyPlanSessionStatus, "pending">,
+        checkedAt: session.checkedAt,
+        note: session.checkInNote ?? ""
+      }));
 
     return {
       windowStart: normalizedStart.toISOString(),
@@ -2453,7 +2531,20 @@ export class RuntimeStore {
       totalPlannedMinutes,
       completedMinutes,
       skippedMinutes,
-      pendingMinutes
+      pendingMinutes,
+      checkInTrends: {
+        sessionsChecked: checkedSessions.length,
+        sessionsWithEnergy: energyValues.length,
+        sessionsWithFocus: focusValues.length,
+        sessionsWithNotes: sessionsWithNotes.length,
+        averageEnergy,
+        averageFocus,
+        lowEnergyCount: energyValues.filter((value) => value <= 2).length,
+        highEnergyCount: energyValues.filter((value) => value >= 4).length,
+        lowFocusCount: focusValues.filter((value) => value <= 2).length,
+        highFocusCount: focusValues.filter((value) => value >= 4).length,
+        recentNotes
+      }
     };
   }
 

@@ -367,7 +367,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `sync-failure-recovery-prompts` | backend-engineer | Detect repeated TP/Canvas/Gmail sync failures and create actionable recovery prompts with root-cause hints and suggested fixes before data becomes stale. |
 | | | | |
 | | **— Phase 8: Personalization & Execution Quality —** | | |
-| ⬜ todo | `study-session-energy-tracking` | backend-engineer | Extend study-plan session check-ins with optional perceived-focus/energy ratings and short notes, then expose trends for adaptive planning inputs. |
+| ✅ done | `study-session-energy-tracking` | backend-engineer | Extend study-plan session check-ins with optional perceived-focus/energy ratings and short notes, then expose trends for adaptive planning inputs. |
 | ⬜ todo | `study-session-energy-ui` | frontend-engineer | Add quick post-session check-in UI (1-tap energy/focus scale + optional note) in Study Plan view, optimized for iPhone thumb reach and minimal friction. |
 | ⬜ todo | `deadline-effort-budgeting` | backend-engineer | Add per-deadline effort estimates (hours remaining + confidence) and use them as constraints in weekly plan generation to avoid under/over-allocation. |
 | ⬜ todo | `deadline-effort-editor-ui` | frontend-engineer | Add effort-estimate controls on deadline cards with sensible defaults and inline validation, and surface “hours remaining” context in schedule/planning views. |

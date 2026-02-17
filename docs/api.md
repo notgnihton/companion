@@ -872,7 +872,10 @@ Response `200`:
       "rationale": "Due soon (32h). This block is prioritized to reduce deadline risk.",
       "generatedAt": "2026-02-17T10:00:00.000Z",
       "status": "done",
-      "checkedAt": "2026-02-17T12:35:00.000Z"
+      "checkedAt": "2026-02-17T12:35:00.000Z",
+      "energyLevel": 4,
+      "focusLevel": 3,
+      "checkInNote": "Good progress."
     }
   ]
 }
@@ -887,13 +890,19 @@ Request:
 ```json
 {
   "status": "done",
-  "checkedAt": "2026-02-17T12:35:00.000Z"
+  "checkedAt": "2026-02-17T12:35:00.000Z",
+  "energyLevel": 4,
+  "focusLevel": 3,
+  "checkInNote": "Good momentum after lunch."
 }
 ```
 
 Validation:
 - `status`: `done | skipped`
 - `checkedAt`: optional ISO datetime (defaults to current server time)
+- `energyLevel`: optional integer `1..5`
+- `focusLevel`: optional integer `1..5`
+- `checkInNote`: optional trimmed string `1..500`
 
 Response `200`:
 
@@ -902,7 +911,10 @@ Response `200`:
   "session": {
     "id": "study-session-deadline-1739700000000-1-20260217110000000",
     "status": "done",
-    "checkedAt": "2026-02-17T12:35:00.000Z"
+    "checkedAt": "2026-02-17T12:35:00.000Z",
+    "energyLevel": 4,
+    "focusLevel": 3,
+    "checkInNote": "Good momentum after lunch."
   }
 }
 ```
@@ -931,7 +943,29 @@ Response `200`:
     "totalPlannedMinutes": 510,
     "completedMinutes": 270,
     "skippedMinutes": 90,
-    "pendingMinutes": 150
+    "pendingMinutes": 150,
+    "checkInTrends": {
+      "sessionsChecked": 4,
+      "sessionsWithEnergy": 3,
+      "sessionsWithFocus": 2,
+      "sessionsWithNotes": 2,
+      "averageEnergy": 3.3,
+      "averageFocus": 3.5,
+      "lowEnergyCount": 1,
+      "highEnergyCount": 1,
+      "lowFocusCount": 0,
+      "highFocusCount": 1,
+      "recentNotes": [
+        {
+          "sessionId": "study-session-deadline-1739700000000-1-20260217110000000",
+          "course": "DAT560",
+          "task": "Assignment 3",
+          "status": "done",
+          "checkedAt": "2026-02-17T12:35:00.000Z",
+          "note": "Felt sharp for most of this block."
+        }
+      ]
+    }
   }
 }
 ```

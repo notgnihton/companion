@@ -496,7 +496,10 @@ const studyPlanExportQuerySchema = z
 
 const studyPlanSessionCheckInSchema = z.object({
   status: z.enum(["done", "skipped"]),
-  checkedAt: z.string().datetime().optional()
+  checkedAt: z.string().datetime().optional(),
+  energyLevel: z.number().int().min(1).max(5).optional(),
+  focusLevel: z.number().int().min(1).max(5).optional(),
+  checkInNote: z.string().trim().min(1).max(500).optional()
 });
 
 const studyPlanSessionsQuerySchema = z.object({
@@ -1022,7 +1025,11 @@ app.post("/api/study-plan/sessions/:id/check-in", (req, res) => {
     return res.status(400).json({ error: "Invalid study plan session check-in payload", issues: parsed.error.issues });
   }
 
-  const session = store.setStudyPlanSessionStatus(req.params.id, parsed.data.status, parsed.data.checkedAt ?? nowIso());
+  const session = store.setStudyPlanSessionStatus(req.params.id, parsed.data.status, parsed.data.checkedAt ?? nowIso(), {
+    energyLevel: parsed.data.energyLevel,
+    focusLevel: parsed.data.focusLevel,
+    checkInNote: parsed.data.checkInNote
+  });
 
   if (!session) {
     return res.status(404).json({ error: "Study plan session not found" });

@@ -38,7 +38,10 @@ describe("RuntimeStore - study plan session check-ins", () => {
       id: session.id,
       generatedAt,
       status: "pending",
-      checkedAt: null
+      checkedAt: null,
+      energyLevel: null,
+      focusLevel: null,
+      checkInNote: null
     });
   });
 
@@ -51,16 +54,26 @@ describe("RuntimeStore - study plan session check-ins", () => {
     });
 
     const doneAt = "2026-02-17T12:00:00.000Z";
-    const done = store.setStudyPlanSessionStatus(session.id, "done", doneAt);
+    const done = store.setStudyPlanSessionStatus(session.id, "done", doneAt, {
+      energyLevel: 4,
+      focusLevel: 5,
+      checkInNote: "Strong focus once I started."
+    });
     expect(done).not.toBeNull();
     expect(done?.status).toBe("done");
     expect(done?.checkedAt).toBe(doneAt);
+    expect(done?.energyLevel).toBe(4);
+    expect(done?.focusLevel).toBe(5);
+    expect(done?.checkInNote).toBe("Strong focus once I started.");
 
     const skippedAt = "2026-02-17T12:10:00.000Z";
     const skipped = store.setStudyPlanSessionStatus(session.id, "skipped", skippedAt);
     expect(skipped).not.toBeNull();
     expect(skipped?.status).toBe("skipped");
     expect(skipped?.checkedAt).toBe(skippedAt);
+    expect(skipped?.energyLevel).toBe(4);
+    expect(skipped?.focusLevel).toBe(5);
+    expect(skipped?.checkInNote).toBe("Strong focus once I started.");
 
     const missing = store.setStudyPlanSessionStatus("missing-session-id", "done", doneAt);
     expect(missing).toBeNull();
@@ -134,8 +147,16 @@ describe("RuntimeStore - study plan session check-ins", () => {
     ];
 
     store.upsertStudyPlanSessions(sessions, generatedAt, { windowStart, windowEnd });
-    store.setStudyPlanSessionStatus("study-session-a", "done", "2026-02-17T11:40:00.000Z");
-    store.setStudyPlanSessionStatus("study-session-b", "skipped", "2026-02-18T09:55:00.000Z");
+    store.setStudyPlanSessionStatus("study-session-a", "done", "2026-02-17T11:40:00.000Z", {
+      energyLevel: 4,
+      focusLevel: 3,
+      checkInNote: "Good progress."
+    });
+    store.setStudyPlanSessionStatus("study-session-b", "skipped", "2026-02-18T09:55:00.000Z", {
+      energyLevel: 2,
+      focusLevel: 1,
+      checkInNote: "Too tired after lectures."
+    });
 
     const metrics = store.getStudyPlanAdherenceMetrics({ windowStart, windowEnd });
 
@@ -149,5 +170,18 @@ describe("RuntimeStore - study plan session check-ins", () => {
     expect(metrics.pendingMinutes).toBe(45);
     expect(metrics.completionRate).toBe(33);
     expect(metrics.adherenceRate).toBe(50);
+    expect(metrics.checkInTrends.sessionsChecked).toBe(2);
+    expect(metrics.checkInTrends.sessionsWithEnergy).toBe(2);
+    expect(metrics.checkInTrends.sessionsWithFocus).toBe(2);
+    expect(metrics.checkInTrends.sessionsWithNotes).toBe(2);
+    expect(metrics.checkInTrends.averageEnergy).toBe(3);
+    expect(metrics.checkInTrends.averageFocus).toBe(2);
+    expect(metrics.checkInTrends.lowEnergyCount).toBe(1);
+    expect(metrics.checkInTrends.highEnergyCount).toBe(1);
+    expect(metrics.checkInTrends.lowFocusCount).toBe(1);
+    expect(metrics.checkInTrends.highFocusCount).toBe(0);
+    expect(metrics.checkInTrends.recentNotes).toHaveLength(2);
+    expect(metrics.checkInTrends.recentNotes[0]?.sessionId).toBe("study-session-b");
+    expect(metrics.checkInTrends.recentNotes[1]?.sessionId).toBe("study-session-a");
   });
 });
