@@ -642,45 +642,47 @@ export function ChatView(): JSX.Element {
           onChange={(event) => void handleSelectAttachments(event)}
           className="chat-attach-input"
         />
-        <button
-          type="button"
-          className="chat-attach-button"
-          onClick={openAttachmentPicker}
-          disabled={isSending || pendingAttachments.length >= MAX_ATTACHMENTS}
-          aria-label="Attach images"
-          title={pendingAttachments.length >= MAX_ATTACHMENTS ? `Max ${MAX_ATTACHMENTS} images` : "Attach images"}
-        >
-          📎
-        </button>
-        <button
-          type="button"
-          className={`chat-voice-button ${isListening ? "chat-voice-button-listening" : ""}`}
-          onClick={toggleVoiceInput}
-          disabled={isSending || !speechRecognitionSupported}
-          aria-label={isListening ? "Stop voice input" : "Start voice input"}
-          title={isListening ? "Stop voice input" : "Start voice input"}
-        >
-          🎤
-        </button>
-        <input
-          ref={inputRef}
-          type="text"
-          className="chat-input"
-          placeholder="Ask me anything..."
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyPress={handleKeyPress}
-          onFocus={ensureInputInView}
-          disabled={isSending}
-        />
-        <button
-          type="button"
-          className="chat-send-button"
-          onClick={() => void handleSend()}
-          disabled={isSending || (inputText.trim().length === 0 && pendingAttachments.length === 0)}
-        >
-          {isSending ? "..." : "➤"}
-        </button>
+        <div className="chat-input-row">
+          <button
+            type="button"
+            className="chat-attach-button"
+            onClick={openAttachmentPicker}
+            disabled={isSending || pendingAttachments.length >= MAX_ATTACHMENTS}
+            aria-label="Attach images"
+            title={pendingAttachments.length >= MAX_ATTACHMENTS ? `Max ${MAX_ATTACHMENTS} images` : "Attach images"}
+          >
+            📎
+          </button>
+          <button
+            type="button"
+            className={`chat-voice-button ${isListening ? "chat-voice-button-listening" : ""}`}
+            onClick={toggleVoiceInput}
+            disabled={isSending || !speechRecognitionSupported}
+            aria-label={isListening ? "Stop voice input" : "Start voice input"}
+            title={isListening ? "Stop voice input" : "Start voice input"}
+          >
+            🎤
+          </button>
+          <input
+            ref={inputRef}
+            type="text"
+            className="chat-input"
+            placeholder="Ask me anything..."
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyPress={handleKeyPress}
+            onFocus={ensureInputInView}
+            disabled={isSending}
+          />
+          <button
+            type="button"
+            className="chat-send-button"
+            onClick={() => void handleSend()}
+            disabled={isSending || (inputText.trim().length === 0 && pendingAttachments.length === 0)}
+          >
+            {isSending ? "..." : "➤"}
+          </button>
+        </div>
       </div>
     </div>
   );
