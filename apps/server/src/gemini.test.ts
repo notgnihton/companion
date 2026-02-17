@@ -47,6 +47,42 @@ describe("GeminiClient", () => {
         "Last message must be from user"
       );
     });
+
+    it("should pass system instruction via model config for chat requests", async () => {
+      const client = new GeminiClient("test-api-key");
+
+      const startChatMock = vi.fn().mockReturnValue({
+        sendMessage: vi.fn().mockResolvedValue({
+          response: {
+            functionCalls: () => [],
+            text: () => "Hello",
+            candidates: [{ finishReason: "STOP" }]
+          }
+        })
+      });
+
+      const getGenerativeModelMock = vi.fn().mockReturnValue({
+        startChat: startChatMock
+      });
+
+      (client as unknown as { client: { getGenerativeModel: typeof getGenerativeModelMock } }).client = {
+        getGenerativeModel: getGenerativeModelMock
+      };
+
+      const request: GeminiChatRequest = {
+        messages: [{ role: "user", parts: [{ text: "Hello" }] }],
+        systemInstruction: "Use tools when needed."
+      };
+
+      const response = await client.generateChatResponse(request);
+
+      expect(response.text).toBe("Hello");
+      expect(getGenerativeModelMock).toHaveBeenCalledWith(
+        expect.objectContaining({ systemInstruction: "Use tools when needed." })
+      );
+      expect(startChatMock).toHaveBeenCalledWith(expect.objectContaining({ history: [] }));
+      expect(startChatMock.mock.calls[0]?.[0]).not.toHaveProperty("systemInstruction");
+    });
   });
 
   describe("error handling", () => {

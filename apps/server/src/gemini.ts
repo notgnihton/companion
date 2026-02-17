@@ -98,17 +98,27 @@ export class GeminiClient {
     }
 
     try {
-      // Create model with or without tools
-      const model = request.tools && request.tools.length > 0
-        ? this.client!.getGenerativeModel({ 
-            model: this.modelName,
-            tools: [{ functionDeclarations: request.tools }]
-          })
-        : this.model!;
+      const modelConfig: {
+        model: string;
+        tools?: Array<{ functionDeclarations: FunctionDeclaration[] }>;
+        systemInstruction?: string;
+      } = {
+        model: this.modelName
+      };
+
+      if (request.tools && request.tools.length > 0) {
+        modelConfig.tools = [{ functionDeclarations: request.tools }];
+      }
+
+      if (request.systemInstruction && request.systemInstruction.trim().length > 0) {
+        modelConfig.systemInstruction = request.systemInstruction;
+      }
+
+      // Build a per-request model so SDK-normalized system instructions and tools are always valid.
+      const model = this.client!.getGenerativeModel(modelConfig);
 
       const chat = model.startChat({
-        history: request.messages.slice(0, -1),
-        systemInstruction: request.systemInstruction
+        history: request.messages.slice(0, -1)
       });
 
       const lastMessage = request.messages[request.messages.length - 1];
