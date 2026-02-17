@@ -2589,6 +2589,40 @@ button:disabled {
   color: var(--text);
 }
 
+.schedule-tab-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.schedule-tab-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  width: fit-content;
+  background: var(--surface);
+}
+
+.schedule-tab-switcher button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.schedule-tab-switcher-active {
+  background: var(--accent-surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--accent-border) !important;
+}
+
 .schedule-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -2598,6 +2632,147 @@ button:disabled {
 @media (min-width: 860px) {
   .schedule-grid {
     grid-template-columns: 0.9fr 1.1fr;
+  }
+}
+
+.study-plan-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.study-plan-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.study-plan-controls label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.study-plan-summary {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.study-plan-day {
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.study-plan-day-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.study-plan-day-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.study-plan-day-header span {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.study-plan-session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.study-plan-session {
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.study-plan-session.priority-critical {
+  border-color: var(--danger-border-strong);
+}
+
+.study-plan-session.priority-high {
+  border-color: var(--warn-border-strong);
+}
+
+.study-plan-session-time {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.study-plan-session-title {
+  margin: 0;
+  font-weight: 700;
+}
+
+.study-plan-session-rationale {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.study-plan-unallocated {
+  border: 1px dashed var(--warn-border);
+  background: var(--warn-surface);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.study-plan-unallocated h3 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+
+.study-plan-unallocated ul {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.study-plan-empty,
+.study-plan-error {
+  margin: 0;
+  color: var(--muted);
+}
+
+.study-plan-error {
+  color: var(--danger);
+}
+
+@media (max-width: 640px) {
+  .study-plan-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-tab-switcher {
+    width: 100%;
+  }
+
+  .schedule-tab-switcher button {
+    flex: 1;
+  }
+
+  .study-plan-day-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 

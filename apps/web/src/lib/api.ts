@@ -5,6 +5,8 @@ import {
   ChatMessage,
   DashboardSnapshot,
   Deadline,
+  StudyPlan,
+  StudyPlanGeneratePayload,
   Goal,
   Habit,
   DeadlineStatusConfirmation,
@@ -226,6 +228,14 @@ export async function getDeadlines(): Promise<Deadline[]> {
   } catch {
     return loadDeadlines();
   }
+}
+
+export async function generateStudyPlan(payload: StudyPlanGeneratePayload): Promise<StudyPlan> {
+  const response = await jsonOrThrow<{ plan: StudyPlan }>("/api/study-plan/generate", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+  return response.plan;
 }
 
 export async function confirmDeadlineStatus(

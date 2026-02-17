@@ -339,7 +339,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | ✅ done | `gemini-function-calling` | backend-engineer | Add Gemini function calling (tools): define callable functions (`getSchedule`, `getDeadlines`, `searchJournal`, `getEmails`, `getSocialDigest`) that Gemini can invoke on demand instead of relying solely on context injection. |
 | | | | |
 | | **— Phase 5: Product Polish & Daily Workflow —** | | |
-| ⬜ todo | `study-plan-ui` | frontend-engineer | Build a Study Plan screen that calls `POST /api/study-plan/generate`, shows day-by-day time blocks, and supports regenerate controls (horizon/session length) optimized for iPhone touch usage. |
+| ✅ done | `study-plan-ui` | frontend-engineer | Build a Study Plan screen that calls `POST /api/study-plan/generate`, shows day-by-day time blocks, and supports regenerate controls (horizon/session length) optimized for iPhone touch usage. |
 | ⬜ todo | `content-recommendations-ui` | frontend-engineer | Surface `/api/recommendations/content` in the app with course-linked recommendation cards (YouTube/X), relevance reasons, and quick-open actions from Social and Chat contexts. |
 | ⬜ todo | `chat-action-executor` | backend-engineer | Extend chat tool-calling so Gemini can perform safe actions (complete/snooze deadlines, create schedule blocks, create journal draft) behind explicit user confirmation. |
 | ⬜ todo | `notification-deep-link-routing` | frontend-engineer | Add deep-link handling for push notifications and action buttons so tapping a notification navigates directly to the relevant deadline, chat thread, or review screen. |

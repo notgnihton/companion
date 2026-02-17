@@ -103,6 +103,50 @@ export interface Deadline {
   completed: boolean;
 }
 
+export interface StudyPlanSession {
+  id: string;
+  deadlineId: string;
+  course: string;
+  task: string;
+  priority: Priority;
+  startTime: string;
+  endTime: string;
+  durationMinutes: number;
+  score: number;
+  rationale: string;
+}
+
+export interface StudyPlanUnallocatedItem {
+  deadlineId: string;
+  course: string;
+  task: string;
+  priority: Priority;
+  dueDate: string;
+  remainingMinutes: number;
+  reason: string;
+}
+
+export interface StudyPlan {
+  generatedAt: string;
+  windowStart: string;
+  windowEnd: string;
+  summary: {
+    horizonDays: number;
+    deadlinesConsidered: number;
+    deadlinesCovered: number;
+    totalSessions: number;
+    totalPlannedMinutes: number;
+  };
+  sessions: StudyPlanSession[];
+  unallocated: StudyPlanUnallocatedItem[];
+}
+
+export interface StudyPlanGeneratePayload {
+  horizonDays?: number;
+  minSessionMinutes?: number;
+  maxSessionMinutes?: number;
+}
+
 export interface DeadlineReminderState {
   deadlineId: string;
   reminderCount: number;
