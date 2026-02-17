@@ -591,7 +591,7 @@ function buildIntentGuidance(intent: ChatIntent): string {
     case "notifications":
       return "Intent hint: notifications. Explain reminders/nudges and suggest direct follow-up actions.";
     case "integrations":
-      return "Intent hint: integrations. Focus on sync status, data freshness, and setup/troubleshooting steps.";
+      return "Intent hint: integrations. Use getGitHubCourseContent for syllabus/course-info questions; otherwise focus on sync status, data freshness, and setup/troubleshooting steps.";
     case "context-state":
       return "Intent hint: user state. Focus on energy/stress/mode-aware recommendations.";
     case "data-management":
@@ -669,7 +669,7 @@ const INTENT_FEW_SHOT_EXAMPLES: IntentFewShotExample[] = [
   {
     user: "What does DAT560 syllabus say about project deliverables?",
     intent: "integrations",
-    toolPlan: "Use synced GitHub course-material context; if missing, direct user to run GitHub sync.",
+    toolPlan: "Call getGitHubCourseContent with courseCode DAT560 and deliverables-focused query.",
     responseStyle: "Answer from extracted syllabus highlights and cite uncertainty when data is missing."
   }
 ];
@@ -689,7 +689,7 @@ function buildFunctionCallingSystemInstruction(userName: string, intent: ChatInt
   return `You are Companion, a personal AI assistant for ${userName}, a university student at UiS (University of Stavanger).
 
 Core behavior:
-- For factual questions about schedule, deadlines, journal, email, or social updates, use tools before answering.
+- For factual questions about schedule, deadlines, journal, email, social updates, or GitHub course materials, use tools before answering.
 - Do not hallucinate user-specific data. If data is unavailable, say so explicitly and suggest the next sync step.
 - For mutating requests that change schedule/deadlines, use queue* action tools and require explicit user confirmation.
 - For journal-save requests, call createJournalEntry directly and do not ask for confirm/cancel commands.
@@ -912,6 +912,37 @@ function buildJournalCreateFallbackSection(response: unknown): string | null {
   return `${message}\n- ${textSnippet(content, 110)}`;
 }
 
+function buildGitHubCourseFallbackSection(response: unknown): string | null {
+  if (!Array.isArray(response)) {
+    return null;
+  }
+  if (response.length === 0) {
+    return "GitHub course materials: no matching syllabus/course-info documents found.";
+  }
+
+  const lines: string[] = [`GitHub course docs (${response.length}):`];
+  response.slice(0, 3).forEach((value) => {
+    const record = asRecord(value);
+    if (!record) {
+      return;
+    }
+    const courseCode = asNonEmptyString(record.courseCode) ?? "COURSE";
+    const title = asNonEmptyString(record.title) ?? "Course document";
+    const owner = asNonEmptyString(record.owner) ?? "owner";
+    const repo = asNonEmptyString(record.repo) ?? "repo";
+    const path = asNonEmptyString(record.path) ?? "path";
+    const snippet = asNonEmptyString(record.snippet);
+    lines.push(`- ${courseCode} ${title} (${owner}/${repo}/${path})`);
+    if (snippet) {
+      lines.push(`  ${textSnippet(snippet, 120)}`);
+    }
+  });
+  if (response.length > 3) {
+    lines.push(`- +${response.length - 3} more`);
+  }
+  return lines.join("\n");
+}
+
 function buildToolRateLimitFallbackReply(
   functionResponses: ExecutedFunctionResponse[],
   pendingActions: ChatPendingAction[]
@@ -953,6 +984,9 @@ function buildToolDataFallbackReply(
         break;
       case "createJournalEntry":
         section = buildJournalCreateFallbackSection(result.rawResponse);
+        break;
+      case "getGitHubCourseContent":
+        section = buildGitHubCourseFallbackSection(result.rawResponse);
         break;
       default:
         section = null;
@@ -1225,6 +1259,35 @@ function compactSocialDigestForModel(response: unknown): unknown {
   };
 }
 
+function compactGitHubCourseContentForModel(response: unknown): unknown {
+  if (!Array.isArray(response)) {
+    return compactGenericValue(response);
+  }
+
+  return {
+    total: response.length,
+    documents: response.slice(0, TOOL_RESULT_ITEM_LIMIT).map((value) => {
+      const record = asRecord(value);
+      if (!record) {
+        return {};
+      }
+      const owner = asNonEmptyString(record.owner) ?? "";
+      const repo = asNonEmptyString(record.repo) ?? "";
+      const path = asNonEmptyString(record.path) ?? "";
+      return {
+        id: asNonEmptyString(record.id) ?? "",
+        courseCode: asNonEmptyString(record.courseCode) ?? "",
+        title: compactTextValue(asNonEmptyString(record.title) ?? "", 100),
+        source: `${owner}/${repo}/${path}`,
+        summary: compactTextValue(asNonEmptyString(record.summary) ?? "", 200),
+        snippet: compactTextValue(asNonEmptyString(record.snippet) ?? "", 220),
+        url: asNonEmptyString(record.url) ?? null
+      };
+    }),
+    truncated: response.length > TOOL_RESULT_ITEM_LIMIT
+  };
+}
+
 function compactFunctionResponseForModel(functionName: string, response: unknown): unknown {
   switch (functionName) {
     case "getSchedule":
@@ -1239,6 +1302,8 @@ function compactFunctionResponseForModel(functionName: string, response: unknown
       return compactEmailsForModel(response);
     case "getSocialDigest":
       return compactSocialDigestForModel(response);
+    case "getGitHubCourseContent":
+      return compactGitHubCourseContentForModel(response);
     default:
       return compactGenericValue(response);
   }
@@ -1421,6 +1486,48 @@ function collectToolCitations(
       });
     }
 
+    return next;
+  }
+
+  if (functionName === "getGitHubCourseContent" && Array.isArray(response)) {
+    const next: ChatCitation[] = [];
+    response.forEach((value) => {
+      const record = asRecord(value);
+      if (!record) {
+        return;
+      }
+
+      const id = asNonEmptyString(record.id);
+      const courseCode = asNonEmptyString(record.courseCode);
+      const title = asNonEmptyString(record.title);
+      const owner = asNonEmptyString(record.owner);
+      const repo = asNonEmptyString(record.repo);
+      const path = asNonEmptyString(record.path);
+      const url = asNonEmptyString(record.url);
+      const snippet = asNonEmptyString(record.snippet);
+      const syncedAt = asNonEmptyString(record.syncedAt);
+
+      if (!id || !title || !owner || !repo || !path) {
+        return;
+      }
+
+      const sourceRef = `${owner}/${repo}/${path}`;
+      next.push({
+        id,
+        type: "github-course-doc",
+        label: `${courseCode ?? "COURSE"} ${title} (${sourceRef})`,
+        timestamp: syncedAt ?? undefined,
+        metadata: {
+          courseCode: courseCode ?? null,
+          owner,
+          repo,
+          path,
+          source: sourceRef,
+          url: url ?? null,
+          snippet: snippet ? textSnippet(snippet, 220) : null
+        }
+      });
+    });
     return next;
   }
 

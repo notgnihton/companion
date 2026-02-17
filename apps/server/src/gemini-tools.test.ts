@@ -6,6 +6,7 @@ import {
   handleSearchJournal,
   handleGetEmails,
   handleGetSocialDigest,
+  handleGetGitHubCourseContent,
   handleQueueDeadlineAction,
   handleQueueScheduleBlock,
   handleCreateJournalEntry,
@@ -23,8 +24,8 @@ describe("gemini-tools", () => {
   });
 
   describe("functionDeclarations", () => {
-    it("should define 8 function declarations", () => {
-      expect(functionDeclarations).toHaveLength(8);
+    it("should define 9 function declarations", () => {
+      expect(functionDeclarations).toHaveLength(9);
     });
 
     it("should include getSchedule function", () => {
@@ -55,6 +56,12 @@ describe("gemini-tools", () => {
       const getSocialDigest = functionDeclarations.find((f) => f.name === "getSocialDigest");
       expect(getSocialDigest).toBeDefined();
       expect(getSocialDigest?.description).toContain("social media");
+    });
+
+    it("should include getGitHubCourseContent function", () => {
+      const getGitHubCourseContent = functionDeclarations.find((f) => f.name === "getGitHubCourseContent");
+      expect(getGitHubCourseContent).toBeDefined();
+      expect(getGitHubCourseContent?.description).toContain("GitHub");
     });
 
     it("should include queue action functions", () => {
@@ -205,6 +212,62 @@ describe("gemini-tools", () => {
     });
   });
 
+  describe("handleGetGitHubCourseContent", () => {
+    it("returns empty array when no GitHub data is synced", () => {
+      const result = handleGetGitHubCourseContent(store);
+      expect(result).toEqual([]);
+    });
+
+    it("filters GitHub docs by course code and query terms", () => {
+      const now = new Date().toISOString();
+      store.setGitHubCourseData({
+        repositories: [
+          { owner: "dat560-2026", repo: "info", courseCode: "DAT560" },
+          { owner: "dat520-2026", repo: "assignments", courseCode: "DAT520" }
+        ],
+        documents: [
+          {
+            id: "doc-dat560-syllabus",
+            courseCode: "DAT560",
+            owner: "dat560-2026",
+            repo: "info",
+            path: "docs/syllabus.md",
+            url: "https://github.com/dat560-2026/info/blob/HEAD/docs/syllabus.md",
+            title: "DAT560 Syllabus",
+            summary: "Project deliverables and grading details.",
+            highlights: ["Project milestone deadlines", "Exam policy"],
+            snippet: "Project deliverables: proposal, implementation, report.",
+            syncedAt: now
+          },
+          {
+            id: "doc-dat520-lab",
+            courseCode: "DAT520",
+            owner: "dat520-2026",
+            repo: "assignments",
+            path: "labs/lab-1.md",
+            url: "https://github.com/dat520-2026/assignments/blob/HEAD/labs/lab-1.md",
+            title: "Lab 1",
+            summary: "Raft implementation details.",
+            highlights: ["Leader election"],
+            snippet: "Implement RPC handlers.",
+            syncedAt: now
+          }
+        ],
+        deadlinesSynced: 2,
+        lastSyncedAt: now
+      });
+
+      const result = handleGetGitHubCourseContent(store, {
+        courseCode: "dat560",
+        query: "deliverables",
+        limit: 5
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]?.id).toBe("doc-dat560-syllabus");
+    });
+  });
+
   describe("queue action handlers", () => {
     it("queues a deadline completion action", () => {
       const deadline = store.createDeadline({
@@ -337,6 +400,36 @@ describe("gemini-tools", () => {
       expect(result.name).toBe("getSocialDigest");
       expect(result.response).toHaveProperty("youtube");
       expect(result.response).toHaveProperty("x");
+    });
+
+    it("should execute getGitHubCourseContent function", () => {
+      const now = new Date().toISOString();
+      store.setGitHubCourseData({
+        repositories: [{ owner: "dat560-2026", repo: "info", courseCode: "DAT560" }],
+        documents: [
+          {
+            id: "doc-dat560",
+            courseCode: "DAT560",
+            owner: "dat560-2026",
+            repo: "info",
+            path: "README.md",
+            url: "https://github.com/dat560-2026/info/blob/HEAD/README.md",
+            title: "Course Info",
+            summary: "Overview",
+            highlights: ["Deliverables"],
+            snippet: "Course overview snippet",
+            syncedAt: now
+          }
+        ],
+        deadlinesSynced: 0,
+        lastSyncedAt: now
+      });
+
+      const result = executeFunctionCall("getGitHubCourseContent", { courseCode: "DAT560" }, store);
+
+      expect(result.name).toBe("getGitHubCourseContent");
+      expect(Array.isArray(result.response)).toBe(true);
+      expect((result.response as Array<{ id: string }>)[0]?.id).toBe("doc-dat560");
     });
 
     it("should execute queueDeadlineAction function", () => {

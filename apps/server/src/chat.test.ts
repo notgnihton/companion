@@ -471,6 +471,69 @@ describe("chat service", () => {
     );
   });
 
+  it("adds GitHub course citations when getGitHubCourseContent tool is used", async () => {
+    const nowIso = new Date().toISOString();
+    store.setGitHubCourseData({
+      repositories: [{ owner: "dat560-2026", repo: "info", courseCode: "DAT560" }],
+      documents: [
+        {
+          id: "doc-dat560-syllabus",
+          courseCode: "DAT560",
+          owner: "dat560-2026",
+          repo: "info",
+          path: "docs/syllabus.md",
+          url: "https://github.com/dat560-2026/info/blob/HEAD/docs/syllabus.md",
+          title: "DAT560 Syllabus",
+          summary: "Project grading and deliverables.",
+          highlights: ["Project milestones", "Deliverables"],
+          snippet: "Deliverables include proposal, implementation, and final report.",
+          syncedAt: nowIso
+        }
+      ],
+      deadlinesSynced: 1,
+      lastSyncedAt: nowIso
+    });
+
+    generateChatResponse = vi
+      .fn()
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop",
+        functionCalls: [
+          {
+            name: "getGitHubCourseContent",
+            args: { courseCode: "DAT560", query: "deliverables" }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        text: "The DAT560 syllabus lists proposal, implementation, and report deliverables.",
+        finishReason: "stop"
+      });
+    fakeGemini = {
+      generateChatResponse
+    } as unknown as GeminiClient;
+
+    const result = await sendChatMessage(store, "What does DAT560 say about deliverables?", {
+      geminiClient: fakeGemini,
+      useFunctionCalling: true
+    });
+
+    expect(result.citations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "doc-dat560-syllabus",
+          type: "github-course-doc",
+          metadata: expect.objectContaining({
+            owner: "dat560-2026",
+            repo: "info",
+            path: "docs/syllabus.md"
+          })
+        })
+      ])
+    );
+  });
+
   it("supports multiple tool-call rounds before returning final text", async () => {
     const now = new Date();
     const schedule = store.createLectureEvent({

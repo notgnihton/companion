@@ -1,6 +1,14 @@
 import { FunctionDeclaration, SchemaType } from "@google/generative-ai";
 import { RuntimeStore } from "./store.js";
-import { ChatActionType, ChatPendingAction, Deadline, EmailDigest, JournalEntry, LectureEvent } from "./types.js";
+import {
+  ChatActionType,
+  ChatPendingAction,
+  Deadline,
+  EmailDigest,
+  GitHubCourseDocument,
+  JournalEntry,
+  LectureEvent
+} from "./types.js";
 
 /**
  * Function declarations for Gemini function calling.
@@ -77,6 +85,29 @@ export const functionDeclarations: FunctionDeclaration[] = [
         daysBack: {
           type: SchemaType.NUMBER,
           description: "Number of days to look back for content (default: 3)"
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "getGitHubCourseContent",
+    description:
+      "Get synced GitHub syllabus/course-info documents. Use this for questions about course policies, deliverables, grading, exams, lab expectations, and repository-based course material.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        courseCode: {
+          type: SchemaType.STRING,
+          description: "Optional course code filter such as DAT560 or DAT520."
+        },
+        query: {
+          type: SchemaType.STRING,
+          description: "Optional keyword query to rank matching documents."
+        },
+        limit: {
+          type: SchemaType.NUMBER,
+          description: "Maximum number of documents to return (default: 5, max: 10)."
         }
       },
       required: []
@@ -291,6 +322,78 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
     return fallback;
   }
   return Math.min(max, Math.max(min, Math.round(parsed)));
+}
+
+function normalizeSearchTokens(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/i)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function scoreGitHubCourseDocument(doc: GitHubCourseDocument, queryTokens: string[]): number {
+  if (queryTokens.length === 0) {
+    return 1;
+  }
+
+  const title = doc.title.toLowerCase();
+  const summary = doc.summary.toLowerCase();
+  const snippet = doc.snippet.toLowerCase();
+  const path = doc.path.toLowerCase();
+  const repo = `${doc.owner}/${doc.repo}`.toLowerCase();
+  const highlights = doc.highlights.join(" ").toLowerCase();
+
+  let score = 0;
+  queryTokens.forEach((token) => {
+    if (title.includes(token)) score += 6;
+    if (summary.includes(token)) score += 5;
+    if (snippet.includes(token)) score += 4;
+    if (highlights.includes(token)) score += 3;
+    if (path.includes(token)) score += 2;
+    if (repo.includes(token)) score += 2;
+    if (doc.courseCode.toLowerCase().includes(token)) score += 3;
+  });
+
+  return score;
+}
+
+export function handleGetGitHubCourseContent(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): GitHubCourseDocument[] {
+  const githubData = store.getGitHubCourseData();
+  if (!githubData || githubData.documents.length === 0) {
+    return [];
+  }
+
+  const requestedCourseCode = asTrimmedString(args.courseCode)?.toUpperCase();
+  const query = asTrimmedString(args.query);
+  const limit = clampNumber(args.limit, 5, 1, 10);
+  const queryTokens = query ? normalizeSearchTokens(query) : [];
+
+  const filteredByCourse = githubData.documents.filter((doc) => {
+    if (!requestedCourseCode) {
+      return true;
+    }
+    return doc.courseCode.toUpperCase().includes(requestedCourseCode);
+  });
+
+  const scored = filteredByCourse
+    .map((doc) => ({
+      doc,
+      score: scoreGitHubCourseDocument(doc, queryTokens)
+    }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      return new Date(right.doc.syncedAt).getTime() - new Date(left.doc.syncedAt).getTime();
+    })
+    .map((item) => item.doc);
+
+  return scored.slice(0, limit);
 }
 
 function toPendingActionResponse(action: ChatPendingAction, message: string): PendingActionToolResponse {
@@ -584,6 +687,9 @@ export function executeFunctionCall(
       break;
     case "getSocialDigest":
       response = handleGetSocialDigest(store, args);
+      break;
+    case "getGitHubCourseContent":
+      response = handleGetGitHubCourseContent(store, args);
       break;
     case "queueDeadlineAction":
       response = handleQueueDeadlineAction(store, args);

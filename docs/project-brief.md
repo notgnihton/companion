@@ -383,7 +383,7 @@ Features are built in priority order. The orchestrator reads this section to dec
 | | | | |
 | | **— Phase 9: Reliability UX & Learning Flow —** | | |
 | ✅ done | `integration-health-dashboard-ui` | frontend-engineer | Build an Integrations Health screen that visualizes sync-attempt history (success rate, latency trend, failure root-cause chips) and links to recovery actions for TP/Canvas/Gmail. |
-| ⬜ todo | `github-course-citations-in-chat` | backend-engineer | Add tool/citation support so chat responses can reference specific synced GitHub syllabus/course docs (path + snippet) instead of only implicit context injection. |
+| ✅ done | `github-course-citations-in-chat` | backend-engineer | Add tool/citation support so chat responses can reference specific synced GitHub syllabus/course docs (path + snippet) instead of only implicit context injection. |
 | ⬜ todo | `ios-keyboard-safearea-hardening` | frontend-engineer | Harden chat/journal input layouts for iPhone Safari keyboard + safe-area edge cases (rotation, PWA standalone, notch devices) with zero clipped controls. |
 | ⬜ todo | `sync-auto-healing-policies` | backend-engineer | Add per-integration auto-healing rules (backoff windows, temporary circuit-breakers, jittered retries) to reduce repeated failure storms and improve reliability without manual intervention. |
 | ⬜ todo | `schedule-day-timeline-ui` | frontend-engineer | Add a compact day-timeline view (lecture blocks, free gaps, upcoming deadline markers) optimized for one-glance planning on iPhone. |

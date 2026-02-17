@@ -60,7 +60,8 @@ export type ChatCitationType =
   | "journal"
   | "email"
   | "social-youtube"
-  | "social-x";
+  | "social-x"
+  | "github-course-doc";
 
 export interface ChatCitation {
   id: string;

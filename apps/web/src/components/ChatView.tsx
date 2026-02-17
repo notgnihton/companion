@@ -41,6 +41,8 @@ function toCitationTarget(citation: ChatCitation): CitationLinkTarget {
     case "social-youtube":
     case "social-x":
       return { tab: "social" };
+    case "github-course-doc":
+      return { tab: "settings", section: "integrations" };
     default:
       return { tab: "settings", section: "integrations" };
   }
