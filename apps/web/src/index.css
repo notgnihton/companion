@@ -1801,9 +1801,9 @@ button:disabled {
   border: none;
   color: var(--muted);
   cursor: pointer;
-  padding: 6px 16px;
+  padding: 6px 10px;
   transition: color 0.2s ease, transform 0.1s ease;
-  min-width: 60px;
+  min-width: 52px;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -1816,12 +1816,12 @@ button:disabled {
 }
 
 .tab-icon {
-  font-size: 24px;
+  font-size: 21px;
   line-height: 1;
 }
 
 .tab-label {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -2553,4 +2553,133 @@ label small.muted {
 .chart-container {
   height: 250px;
   position: relative;
+}
+
+.social-media-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.social-media-header {
+  align-items: center;
+}
+
+.social-media-header button {
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.social-media-filter-row {
+  display: flex;
+  gap: 8px;
+}
+
+.social-filter-chip {
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.social-filter-chip-active {
+  border-color: var(--accent-border);
+  background: var(--accent-surface);
+}
+
+.social-media-sync-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.social-media-content-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.social-card {
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-soft);
+}
+
+.social-card-body {
+  padding: 12px;
+}
+
+.social-video-thumb-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--surface);
+}
+
+.social-video-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.social-video-duration {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.social-card-source {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.social-card-title {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.social-card-meta {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.social-tweet-text {
+  margin: 0 0 8px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.social-media-loading,
+.social-media-empty,
+.social-media-error {
+  margin: 12px 0 0;
+  color: var(--muted);
+}
+
+@media (max-width: 768px) {
+  .social-media-content-grid {
+    grid-template-columns: 1fr;
+  }
 }

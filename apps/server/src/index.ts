@@ -1240,6 +1240,43 @@ app.post("/api/x/sync", async (_req, res) => {
   return res.json(result);
 });
 
+app.get("/api/social-media", (_req, res) => {
+  const youtubeData = store.getYouTubeData();
+  const xData = store.getXData();
+
+  return res.json({
+    youtube: {
+      videos: youtubeData?.videos ?? [],
+      lastSyncedAt: youtubeData?.lastSyncedAt ?? null
+    },
+    x: {
+      tweets: xData?.tweets ?? [],
+      lastSyncedAt: xData?.lastSyncedAt ?? null
+    }
+  });
+});
+
+app.post("/api/social-media/sync", async (_req, res) => {
+  const [youtubeResult, xResult] = await Promise.all([
+    youtubeSyncService.sync({ maxChannels: 20, maxVideosPerChannel: 5 }),
+    xSyncService.sync({ maxTweets: 40 })
+  ]);
+
+  return res.json({
+    youtube: {
+      success: youtubeResult.success,
+      videosCount: youtubeResult.videosCount,
+      error: youtubeResult.error
+    },
+    x: {
+      success: xResult.success,
+      tweetsCount: xResult.tweetsCount,
+      error: xResult.error
+    },
+    syncedAt: new Date().toISOString()
+  });
+});
+
 app.get("/api/gemini/status", (_req, res) => {
   const geminiClient = getGeminiClient();
   const isConfigured = geminiClient.isConfigured();
