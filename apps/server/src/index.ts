@@ -393,6 +393,15 @@ async function maybeAutoSyncGitHubDeadlines(): Promise<void> {
   await githubOnDemandSyncInFlight;
 }
 
+function hasUpcomingScheduleEvents(reference: Date, lookAheadHours = 36): boolean {
+  const nowMs = reference.getTime();
+  const lookAheadMs = nowMs + lookAheadHours * 60 * 60 * 1000;
+  return store.getScheduleEvents().some((event) => {
+    const startMs = Date.parse(event.startTime);
+    return Number.isFinite(startMs) && startMs >= nowMs && startMs <= lookAheadMs;
+  });
+}
+
 function publishSyncRecoveryPrompt(prompt: SyncRecoveryPrompt | null): void {
   if (!prompt) {
     return;
@@ -2623,6 +2632,7 @@ app.get("/api/github/course-content", (req, res) => {
 app.post("/api/canvas/sync", async (req, res) => {
   const parsed = canvasSyncSchema.safeParse(req.body ?? {});
   const syncStartedAt = Date.now();
+  const hadUpcomingScheduleBeforeSync = hasUpcomingScheduleEvents(new Date());
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid Canvas sync payload", issues: parsed.error.issues });
@@ -2639,7 +2649,23 @@ app.post("/api/canvas/sync", async (req, res) => {
   if (result.success) {
     syncFailureRecovery.recordSuccess("canvas");
     recordIntegrationAttempt("canvas", syncStartedAt, true);
-    return res.json(result);
+
+    let scheduleRecoveryAttempted = false;
+    let scheduleRecovered = false;
+
+    if (!hadUpcomingScheduleBeforeSync && !hasUpcomingScheduleEvents(new Date())) {
+      scheduleRecoveryAttempted = true;
+      const tpResult = await tpSyncService.sync();
+      scheduleRecovered = tpResult.success && hasUpcomingScheduleEvents(new Date());
+    }
+
+    return res.json({
+      ...result,
+      scheduleRecovery: {
+        attempted: scheduleRecoveryAttempted,
+        recovered: scheduleRecovered
+      }
+    });
   }
 
   const recoveryPrompt = syncFailureRecovery.recordFailure("canvas", result.error ?? "Canvas sync failed");

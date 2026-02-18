@@ -64,6 +64,29 @@ describe("Canvas Integration", () => {
       expect(result.announcementsCount).toBe(0);
     });
 
+    it("keeps existing schedule events unchanged during Canvas sync", async () => {
+      const lecture = store.createLectureEvent({
+        title: "DAT520 Laboratorium / Lab",
+        location: "E-456",
+        startTime: "2026-02-18T09:15:00.000Z",
+        durationMinutes: 105,
+        workload: "medium"
+      });
+
+      const mockClient = {
+        getCourses: async () => [],
+        getAllAssignments: async () => [],
+        getAllModules: async () => [],
+        getAnnouncements: async () => []
+      } as unknown as CanvasClient;
+
+      const service = new CanvasSyncService(store, mockClient);
+      const result = await service.triggerSync();
+
+      expect(result.success).toBe(true);
+      expect(store.getScheduleEvents()).toEqual([lecture]);
+    });
+
     it("filters assignments to integration date window before storing and bridging", async () => {
       const nearDueAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
       const farDueAt = new Date(Date.now() + 400 * 24 * 60 * 60 * 1000).toISOString();
