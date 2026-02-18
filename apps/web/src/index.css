@@ -3247,6 +3247,34 @@ body.keyboard-open .pull-to-refresh-container {
   color: var(--text);
 }
 
+.nutrition-tab-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  width: fit-content;
+  background: var(--surface);
+}
+
+.nutrition-tab-switcher button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.nutrition-tab-switcher-active {
+  background: var(--accent-surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--accent-border) !important;
+}
+
 .nutrition-message {
   margin: 0;
   color: var(--warn);
@@ -3520,6 +3548,29 @@ body.keyboard-open .pull-to-refresh-container {
   padding: 10px;
   display: grid;
   gap: 8px;
+}
+
+.nutrition-amount-control {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.nutrition-amount-button {
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  width: 38px;
+  height: 38px;
+  font-weight: 700;
+  touch-action: none;
+  user-select: none;
+}
+
+.nutrition-amount-input {
+  text-align: center;
 }
 
 .nutrition-list {

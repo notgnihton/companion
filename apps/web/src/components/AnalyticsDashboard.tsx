@@ -53,10 +53,7 @@ export function AnalyticsDashboard(): JSX.Element {
     return [
       `${insight.metrics.deadlinesCompleted}/${insight.metrics.deadlinesDue} deadlines completed`,
       `${insight.metrics.averageHabitCompletion7d}% average habit completion (7d)`,
-      `${insight.metrics.studySessionsDone}/${insight.metrics.studySessionsPlanned} study sessions completed`,
-      `${insight.metrics.openHighPriorityDeadlines} urgent high-priority deadlines`,
-      `${insight.metrics.journalEntries + insight.metrics.userReflections} reflection signals`,
-      `Energy: ${insight.metrics.dominantEnergy ?? "unknown"} • Stress: ${insight.metrics.dominantStress ?? "unknown"}`
+      `${insight.metrics.journalEntries + insight.metrics.userReflections} reflection signals`
     ];
   }, [insight]);
 
