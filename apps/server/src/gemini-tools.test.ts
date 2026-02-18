@@ -672,7 +672,7 @@ describe("gemini-tools", () => {
   });
 
   describe("queue action handlers", () => {
-    it("queues a deadline completion action", () => {
+    it("completes a deadline immediately without pending confirmation", () => {
       const deadline = store.createDeadline({
         course: "DAT560",
         task: "Assignment 2",
@@ -686,14 +686,17 @@ describe("gemini-tools", () => {
         action: "complete"
       });
 
-      expect(result).toHaveProperty("requiresConfirmation", true);
-      if (!("pendingAction" in result)) {
-        throw new Error("Expected pendingAction in queue result");
+      expect("error" in result).toBe(false);
+      expect("pendingAction" in result).toBe(false);
+      expect(result).toHaveProperty("requiresConfirmation", false);
+      if ("error" in result || "pendingAction" in result) {
+        throw new Error("Expected immediate completion response.");
       }
 
-      expect(result.pendingAction.actionType).toBe("complete-deadline");
-      expect(result.confirmationCommand).toContain(`confirm ${result.pendingAction.id}`);
-      expect(store.getPendingChatActions()).toHaveLength(1);
+      expect(result.success).toBe(true);
+      expect(result.action).toBe("complete");
+      expect(result.deadline.completed).toBe(true);
+      expect(store.getPendingChatActions()).toHaveLength(0);
     });
 
     it("snoozes a deadline immediately without pending confirmation", () => {
@@ -1186,7 +1189,7 @@ describe("gemini-tools", () => {
       expect((result.response as Array<{ id: string }>)[0]?.id).toBe("doc-dat560");
     });
 
-    it("should execute queueDeadlineAction function", () => {
+    it("should execute queueDeadlineAction function for complete", () => {
       const deadline = store.createDeadline({
         course: "DAT520",
         task: "Lab 4",
@@ -1197,13 +1200,14 @@ describe("gemini-tools", () => {
 
       const result = executeFunctionCall(
         "queueDeadlineAction",
-        { deadlineId: deadline.id, action: "snooze", snoozeHours: 24 },
+        { deadlineId: deadline.id, action: "complete" },
         store
       );
 
       expect(result.name).toBe("queueDeadlineAction");
       expect(result.response).toHaveProperty("requiresConfirmation", false);
       expect(result.response).toHaveProperty("success", true);
+      expect(store.getDeadlineById(deadline.id, false)?.completed).toBe(true);
     });
 
     it("should execute updateScheduleBlock function", () => {

@@ -706,10 +706,7 @@ describe("chat service", () => {
     expect(firstRequest.systemInstruction).toContain("For factual questions about schedule, deadlines, journal, email");
     expect(firstRequest.systemInstruction).toContain("For journal-save requests, call createJournalEntry directly");
     expect(firstRequest.systemInstruction).toContain(
-      "For deadline completion, use queueDeadlineAction and require explicit user confirmation."
-    );
-    expect(firstRequest.systemInstruction).toContain(
-      "For deadline snooze/extension requests, use queueDeadlineAction and apply immediately (no confirmation step)."
+      "For deadline completion and snooze/extension requests, use queueDeadlineAction and apply immediately (no confirmation step)."
     );
     expect(firstRequest.systemInstruction).toContain(
       "For schedule mutations, execute immediately with createScheduleBlock/updateScheduleBlock/deleteScheduleBlock/clearScheduleWindow."
@@ -959,7 +956,7 @@ describe("chat service", () => {
     expect(store.getPendingChatActions()).toHaveLength(0);
   });
 
-  it("adds pending action metadata when Gemini queues an action tool call", async () => {
+  it("applies deadline completion immediately when Gemini calls queueDeadlineAction", async () => {
     const deadline = store.createDeadline({
       course: "DAT560",
       task: "Assignment 2",
@@ -986,7 +983,7 @@ describe("chat service", () => {
         }
       })
       .mockResolvedValueOnce({
-        text: "",
+        text: "Done. Marked it complete.",
         finishReason: "stop",
         usageMetadata: {
           promptTokenCount: 9,
@@ -1004,9 +1001,10 @@ describe("chat service", () => {
     });
 
     expect(generateChatResponse).toHaveBeenCalledTimes(2);
-    expect(result.assistantMessage.metadata?.pendingActions?.length).toBe(1);
-    expect(result.reply).toContain("need your confirmation");
-    expect(result.reply).toContain("confirm ");
+    expect(store.getDeadlineById(deadline.id, false)?.completed).toBe(true);
+    expect(result.assistantMessage.metadata?.pendingActions).toBeUndefined();
+    expect(store.getPendingChatActions()).toHaveLength(0);
+    expect(result.reply).toContain("Done. Marked it complete.");
   });
 
   it("applies deadline snooze immediately without creating pending confirmation", async () => {

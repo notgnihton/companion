@@ -511,7 +511,7 @@ export const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "queueDeadlineAction",
     description:
-      "Modify a deadline by action. completion REQUIRES explicit user confirmation; snooze applies immediately.",
+      "Modify a deadline immediately by action. Supports complete and snooze without extra confirmation.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -2028,8 +2028,8 @@ export interface PendingActionToolResponse {
 export interface ImmediateDeadlineActionResponse {
   success: true;
   requiresConfirmation: false;
-  action: "snooze";
-  snoozeHours: number;
+  action: "complete" | "snooze";
+  snoozeHours?: number;
   message: string;
   deadline: Deadline;
 }
@@ -2192,15 +2192,18 @@ export function handleQueueDeadlineAction(
   }
 
   if (action === "complete") {
-    const pending = store.createPendingChatAction({
-      actionType: "complete-deadline",
-      summary: `Mark ${deadline.course} ${deadline.task} as completed`,
-      payload: {
-        deadlineId: deadline.id
-      }
-    });
+    const updated = store.updateDeadline(deadline.id, { completed: true });
+    if (!updated) {
+      return { error: "Unable to complete deadline." };
+    }
 
-    return toPendingActionResponse(pending, "Action queued. Ask user for explicit confirmation before executing.");
+    return {
+      success: true,
+      requiresConfirmation: false,
+      action: "complete",
+      message: `Marked ${updated.course} ${updated.task} as completed.`,
+      deadline: updated
+    };
   }
 
   const snoozeHours = clampNumber(args.snoozeHours, 24, 1, 168);
