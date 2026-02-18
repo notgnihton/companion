@@ -167,7 +167,7 @@ describe("gemini-tools", () => {
   });
 
   describe("handleGetDeadlines", () => {
-    it("should return upcoming deadlines within default 14 days", () => {
+    it("should return upcoming deadlines within default 30 days", () => {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
 
@@ -183,6 +183,31 @@ describe("gemini-tools", () => {
 
       expect(result.length).toBeGreaterThan(0);
       expect(result[0]?.id).toBe(deadline.id);
+    });
+
+    it("filters out completed deadlines by default", () => {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      store.createDeadline({
+        course: "DAT520",
+        task: "Completed assignment",
+        dueDate: tomorrow.toISOString(),
+        priority: "high",
+        completed: true
+      });
+
+      const active = store.createDeadline({
+        course: "DAT560",
+        task: "Active assignment",
+        dueDate: tomorrow.toISOString(),
+        priority: "high",
+        completed: false
+      });
+
+      const result = handleGetDeadlines(store);
+      expect(result.map((item) => item.id)).toContain(active.id);
+      expect(result.some((item) => item.task.includes("Completed assignment"))).toBe(false);
     });
 
     it("should respect daysAhead parameter", () => {
@@ -218,6 +243,31 @@ describe("gemini-tools", () => {
 
       const result = handleGetDeadlines(store);
       expect(result).toHaveLength(0);
+    });
+
+    it("supports courseCode filtering for DAT520/DAT560 queries", () => {
+      const soon = new Date();
+      soon.setDate(soon.getDate() + 3);
+
+      const dat520 = store.createDeadline({
+        course: "DAT520-1 26V",
+        task: "Assignment 3",
+        dueDate: soon.toISOString(),
+        priority: "high",
+        completed: false
+      });
+
+      store.createDeadline({
+        course: "DAT560-1 26V",
+        task: "Assignment 2",
+        dueDate: soon.toISOString(),
+        priority: "high",
+        completed: false
+      });
+
+      const result = handleGetDeadlines(store, { courseCode: "DAT520", daysAhead: 30 });
+      expect(result).toHaveLength(1);
+      expect(result[0]?.id).toBe(dat520.id);
     });
   });
 

@@ -864,7 +864,7 @@ describe("chat service", () => {
 
     const deadlines = fnResponse?.response?.deadlines as unknown[];
     expect(Array.isArray(deadlines)).toBe(true);
-    expect(deadlines.length).toBe(6);
+    expect(deadlines.length).toBe(10);
   });
 
   it("returns a local fallback reply when second function-calling pass is rate limited", async () => {

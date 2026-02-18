@@ -54,7 +54,23 @@ export const functionDeclarations: FunctionDeclaration[] = [
       properties: {
         daysAhead: {
           type: SchemaType.NUMBER,
-          description: "Number of days ahead to fetch deadlines (default: 14 days)"
+          description: "Number of days ahead to fetch deadlines (default: 30 days)."
+        },
+        courseCode: {
+          type: SchemaType.STRING,
+          description: "Optional course filter like DAT520 or DAT560."
+        },
+        query: {
+          type: SchemaType.STRING,
+          description: "Optional free-text filter matched against course/task."
+        },
+        includeOverdue: {
+          type: SchemaType.BOOLEAN,
+          description: "Set true to include recently overdue deadlines."
+        },
+        includeCompleted: {
+          type: SchemaType.BOOLEAN,
+          description: "Set true to include completed deadlines."
         }
       },
       required: []
@@ -793,17 +809,63 @@ export function handleGetDeadlines(
   store: RuntimeStore,
   args: Record<string, unknown> = {}
 ): Deadline[] {
-  const daysAhead = (args.daysAhead as number) ?? 14;
+  const daysAhead = clampNumber(args.daysAhead, 30, 1, 365);
+  const includeOverdue = args.includeOverdue === true;
+  const includeCompleted = args.includeCompleted === true;
+  const requestedCourseCode = asTrimmedString(args.courseCode);
+  const query = asTrimmedString(args.query)?.toLowerCase();
+  const normalizedCourseCode = requestedCourseCode
+    ? requestedCourseCode.replace(/[^A-Za-z0-9]/g, "").toUpperCase()
+    : null;
   const now = new Date();
+  const maxPastDays = 45;
 
-  const deadlines = store.getAcademicDeadlines(now).filter((deadline) => {
-    const due = new Date(deadline.dueDate);
-    if (Number.isNaN(due.getTime())) {
-      return false;
-    }
-    const diffDays = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-    return diffDays >= 0 && diffDays <= daysAhead;
-  });
+  const deadlines = store
+    .getAcademicDeadlines(now)
+    .filter((deadline) => (includeCompleted ? true : !deadline.completed))
+    .filter((deadline) => {
+      const due = new Date(deadline.dueDate);
+      if (Number.isNaN(due.getTime())) {
+        return false;
+      }
+      const diffDays = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+      if (diffDays > daysAhead) {
+        return false;
+      }
+      if (diffDays < 0 && !includeOverdue) {
+        return false;
+      }
+      return diffDays >= -maxPastDays;
+    })
+    .filter((deadline) => {
+      if (!normalizedCourseCode) {
+        return true;
+      }
+      const normalizedCourse = deadline.course.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      const normalizedTask = deadline.task.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      return (
+        normalizedCourse.includes(normalizedCourseCode) || normalizedTask.includes(normalizedCourseCode)
+      );
+    })
+    .filter((deadline) => {
+      if (!query) {
+        return true;
+      }
+      const haystack = `${deadline.course} ${deadline.task}`.toLowerCase();
+      return haystack.includes(query);
+    })
+    .sort((left, right) => {
+      const leftDue = new Date(left.dueDate).getTime();
+      const rightDue = new Date(right.dueDate).getTime();
+      if (leftDue !== rightDue) {
+        return leftDue - rightDue;
+      }
+      const courseCmp = left.course.localeCompare(right.course);
+      if (courseCmp !== 0) {
+        return courseCmp;
+      }
+      return left.task.localeCompare(right.task);
+    });
 
   return deadlines;
 }

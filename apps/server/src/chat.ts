@@ -961,8 +961,14 @@ const INTENT_FEW_SHOT_EXAMPLES: IntentFewShotExample[] = [
   {
     user: "What is due this week?",
     intent: "deadlines",
-    toolPlan: "Call getDeadlines with { daysAhead: 7 }.",
+    toolPlan: "Call getDeadlines with { daysAhead: 30 }.",
     responseStyle: "Sort by urgency and highlight high-risk items first."
+  },
+  {
+    user: "When is the DAT520 lab deadline?",
+    intent: "deadlines",
+    toolPlan: "Call getDeadlines with { courseCode: \"DAT520\", daysAhead: 60, includeOverdue: true }.",
+    responseStyle: "Prioritize matching course deadlines and clearly separate overdue vs upcoming."
   },
   {
     user: "What have I written in my journal about DAT560?",
@@ -1167,7 +1173,7 @@ function buildDeadlinesFallbackSection(response: unknown): string | null {
   }
 
   const lines: string[] = [`Upcoming deadlines (${response.length}):`];
-  response.slice(0, 5).forEach((value) => {
+  response.slice(0, 8).forEach((value) => {
     const record = asRecord(value);
     if (!record) {
       return;
@@ -1177,8 +1183,8 @@ function buildDeadlinesFallbackSection(response: unknown): string | null {
     const dueDate = asNonEmptyString(record.dueDate) ?? "unknown due date";
     lines.push(`- ${course}: ${textSnippet(task, 90)} (due ${dueDate})`);
   });
-  if (response.length > 5) {
-    lines.push(`- +${response.length - 5} more`);
+  if (response.length > 8) {
+    lines.push(`- +${response.length - 8} more`);
   }
   return lines.join("\n");
 }
@@ -1609,6 +1615,7 @@ const MAX_CHAT_CITATIONS = 8;
 const FUNCTION_CALL_HISTORY_LIMIT = 6;
 const MAX_FUNCTION_CALL_ROUNDS = 4;
 const TOOL_RESULT_ITEM_LIMIT = 6;
+const DEADLINE_TOOL_RESULT_LIMIT = 10;
 const TOOL_RESULT_TEXT_MAX_CHARS = 220;
 const TOOL_RESULT_MAX_DEPTH = 3;
 
@@ -1724,7 +1731,7 @@ function compactDeadlinesForModel(response: unknown): unknown {
 
   return {
     total: response.length,
-    deadlines: response.slice(0, TOOL_RESULT_ITEM_LIMIT).map((value) => {
+    deadlines: response.slice(0, DEADLINE_TOOL_RESULT_LIMIT).map((value) => {
       const record = asRecord(value);
       if (!record) {
         return {};
@@ -1738,7 +1745,7 @@ function compactDeadlinesForModel(response: unknown): unknown {
         completed: Boolean(record.completed)
       };
     }),
-    truncated: response.length > TOOL_RESULT_ITEM_LIMIT
+    truncated: response.length > DEADLINE_TOOL_RESULT_LIMIT
   };
 }
 
