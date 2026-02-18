@@ -548,12 +548,12 @@ export const functionDeclarations: FunctionDeclaration[] = [
         quantity: {
           type: SchemaType.NUMBER,
           description:
-            "Optional amount in grams for gram-based foods (preferred over servings when unit is grams)."
+            "Amount in grams for gram-based foods (required when custom food unit is grams)."
         },
         estimatedWeightGrams: {
           type: SchemaType.NUMBER,
           description:
-            "Optional estimated meal weight in grams (especially for image-based meal logging)."
+            "Estimated meal weight in grams for image-based meal logging."
         },
         name: {
           type: SchemaType.STRING,
@@ -633,7 +633,7 @@ export const functionDeclarations: FunctionDeclaration[] = [
         items: {
           type: SchemaType.ARRAY,
           description:
-            "Optional meal items. Each item can reference a custom food via customFoodId/customFoodName and quantity in grams. For image-estimated meals, always provide realistic grams (for example 220, 350).",
+            "Optional meal items. Each item can reference a custom food via customFoodId/customFoodName and must include quantity. For image-estimated meals, provide realistic grams (for example 220, 350).",
           items: {
             type: SchemaType.OBJECT,
             properties: {
@@ -2439,13 +2439,31 @@ export function handleCreateNutritionCustomFood(
     return { error: "caloriesPerUnit is required." };
   }
 
+  const unitLabel = asTrimmedString(args.unitLabel) ?? "serving";
+  const caloriesPerUnit = clampFloat(args.caloriesPerUnit, 0, 0, 10000);
+  const proteinGramsPerUnit = clampFloat(args.proteinGramsPerUnit, 0, 0, 1000);
+  const carbsGramsPerUnit = clampFloat(args.carbsGramsPerUnit, 0, 0, 1500);
+  const fatGramsPerUnit = clampFloat(args.fatGramsPerUnit, 0, 0, 600);
+
+  const densityError = assertPlausibleGramDensityForCustomFood({
+    name,
+    unitLabel,
+    caloriesPerUnit,
+    proteinGramsPerUnit,
+    carbsGramsPerUnit,
+    fatGramsPerUnit
+  });
+  if (densityError) {
+    return { error: densityError };
+  }
+
   const food = store.createNutritionCustomFood({
     name,
-    unitLabel: asTrimmedString(args.unitLabel) ?? "serving",
-    caloriesPerUnit: clampFloat(args.caloriesPerUnit, 0, 0, 10000),
-    proteinGramsPerUnit: clampFloat(args.proteinGramsPerUnit, 0, 0, 1000),
-    carbsGramsPerUnit: clampFloat(args.carbsGramsPerUnit, 0, 0, 1500),
-    fatGramsPerUnit: clampFloat(args.fatGramsPerUnit, 0, 0, 600)
+    unitLabel,
+    caloriesPerUnit,
+    proteinGramsPerUnit,
+    carbsGramsPerUnit,
+    fatGramsPerUnit
   });
 
   return {
@@ -2484,6 +2502,23 @@ export function handleUpdateNutritionCustomFood(
   }
   if (typeof args.fatGramsPerUnit === "number") {
     patch.fatGramsPerUnit = clampFloat(args.fatGramsPerUnit, 0, 0, 600);
+  }
+
+  const effectiveUnitLabel = patch.unitLabel ?? resolved.unitLabel;
+  const effectiveCaloriesPerUnit = patch.caloriesPerUnit ?? resolved.caloriesPerUnit;
+  const effectiveProteinGramsPerUnit = patch.proteinGramsPerUnit ?? resolved.proteinGramsPerUnit;
+  const effectiveCarbsGramsPerUnit = patch.carbsGramsPerUnit ?? resolved.carbsGramsPerUnit;
+  const effectiveFatGramsPerUnit = patch.fatGramsPerUnit ?? resolved.fatGramsPerUnit;
+  const densityError = assertPlausibleGramDensityForCustomFood({
+    name: patch.name ?? resolved.name,
+    unitLabel: effectiveUnitLabel,
+    caloriesPerUnit: effectiveCaloriesPerUnit,
+    proteinGramsPerUnit: effectiveProteinGramsPerUnit,
+    carbsGramsPerUnit: effectiveCarbsGramsPerUnit,
+    fatGramsPerUnit: effectiveFatGramsPerUnit
+  });
+  if (densityError) {
+    return { error: densityError };
   }
 
   if (Object.keys(patch).length === 0) {
@@ -2563,17 +2598,9 @@ function buildNutritionMealItemFromCustomFood(
 
 const MAX_PLAUSIBLE_KCAL_PER_GRAM = 9.5;
 const MAX_PLAUSIBLE_MACRO_GRAMS_PER_GRAM = 1.1;
-const DEFAULT_ESTIMATED_MEAL_KCAL_PER_GRAM = 1.8;
-const MIN_ESTIMATED_MEAL_WEIGHT_GRAMS = 80;
-const MAX_ESTIMATED_MEAL_WEIGHT_GRAMS = 1400;
 
 function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
-}
-
-function roundToPrecision(value: number, decimals: number): number {
-  const factor = 10 ** decimals;
-  return Math.round(value * factor) / factor;
 }
 
 function isGramUnitLabel(unitLabel: string | null | undefined): boolean {
@@ -2589,42 +2616,30 @@ function hasImplausiblePerGramDensity(item: Pick<NutritionMeal["items"][number],
   return item.caloriesPerUnit > MAX_PLAUSIBLE_KCAL_PER_GRAM || macroDensity > MAX_PLAUSIBLE_MACRO_GRAMS_PER_GRAM;
 }
 
-function estimateMealWeightGrams(totalCalories: number, totalProteinGrams: number, totalCarbsGrams: number, totalFatGrams: number): number {
-  const macroCalories = totalProteinGrams * 4 + totalCarbsGrams * 4 + totalFatGrams * 9;
-  const usableCalories = totalCalories > 0 ? totalCalories : macroCalories;
-  const estimated = usableCalories / DEFAULT_ESTIMATED_MEAL_KCAL_PER_GRAM;
-  return clampFloat(
-    estimated,
-    MIN_ESTIMATED_MEAL_WEIGHT_GRAMS,
-    MIN_ESTIMATED_MEAL_WEIGHT_GRAMS,
-    MAX_ESTIMATED_MEAL_WEIGHT_GRAMS
-  );
-}
-
-function normalizeLikelyWholeMealGramItem(item: NutritionMeal["items"][number]): NutritionMeal["items"][number] {
-  if (!isGramUnitLabel(item.unitLabel) || !hasImplausiblePerGramDensity(item) || item.quantity > 10) {
-    return item;
+function assertPlausibleGramDensityForCustomFood(candidate: {
+  name: string;
+  unitLabel: string;
+  caloriesPerUnit: number;
+  proteinGramsPerUnit: number;
+  carbsGramsPerUnit: number;
+  fatGramsPerUnit: number;
+}): string | null {
+  if (!isGramUnitLabel(candidate.unitLabel)) {
+    return null;
   }
 
-  const totalCalories = item.quantity * item.caloriesPerUnit;
-  const totalProtein = item.quantity * item.proteinGramsPerUnit;
-  const totalCarbs = item.quantity * item.carbsGramsPerUnit;
-  const totalFat = item.quantity * item.fatGramsPerUnit;
-  const estimatedWeight = estimateMealWeightGrams(totalCalories, totalProtein, totalCarbs, totalFat);
-
-  if (estimatedWeight <= 0) {
-    return item;
+  if (
+    hasImplausiblePerGramDensity({
+      caloriesPerUnit: candidate.caloriesPerUnit,
+      proteinGramsPerUnit: candidate.proteinGramsPerUnit,
+      carbsGramsPerUnit: candidate.carbsGramsPerUnit,
+      fatGramsPerUnit: candidate.fatGramsPerUnit
+    })
+  ) {
+    return `Custom food "${candidate.name}" uses gram units but has implausible per-gram nutrition values. Provide realistic per-gram values (or change unitLabel).`;
   }
 
-  return {
-    ...item,
-    quantity: estimatedWeight,
-    unitLabel: "g",
-    caloriesPerUnit: roundToPrecision(totalCalories / estimatedWeight, 4),
-    proteinGramsPerUnit: roundToPrecision(totalProtein / estimatedWeight, 4),
-    carbsGramsPerUnit: roundToPrecision(totalCarbs / estimatedWeight, 4),
-    fatGramsPerUnit: roundToPrecision(totalFat / estimatedWeight, 4)
-  };
+  return null;
 }
 
 function parseNutritionMealItemsArg(
@@ -2644,7 +2659,10 @@ function parseNutritionMealItemsArg(
     const record = entry as Record<string, unknown>;
     const customFoodId = asTrimmedString(record.customFoodId);
     const customFoodName = asTrimmedString(record.customFoodName);
-    const quantity = clampFloat(record.quantity, 100, 1, 1000);
+    if (typeof record.quantity !== "number") {
+      return { error: "Each meal item must include quantity in grams/units." };
+    }
+    const quantity = clampFloat(record.quantity, 1, 1, 1000);
 
     if (customFoodId || customFoodName) {
       const resolvedFood = resolveNutritionCustomFoodTarget(store, {
@@ -2654,7 +2672,21 @@ function parseNutritionMealItemsArg(
       if ("error" in resolvedFood) {
         return resolvedFood;
       }
-      items.push(normalizeLikelyWholeMealGramItem(buildNutritionMealItemFromCustomFood(resolvedFood, quantity)));
+      if (
+        isGramUnitLabel(resolvedFood.unitLabel) &&
+        hasImplausiblePerGramDensity({
+          caloriesPerUnit: resolvedFood.caloriesPerUnit,
+          proteinGramsPerUnit: resolvedFood.proteinGramsPerUnit,
+          carbsGramsPerUnit: resolvedFood.carbsGramsPerUnit,
+          fatGramsPerUnit: resolvedFood.fatGramsPerUnit
+        })
+      ) {
+        return {
+          error:
+            `Custom food "${resolvedFood.name}" has implausible per-gram nutrition values. Update it with realistic per-gram values before using it in meals.`
+        };
+      }
+      items.push(buildNutritionMealItemFromCustomFood(resolvedFood, quantity));
       continue;
     }
 
@@ -2667,7 +2699,7 @@ function parseNutritionMealItemsArg(
       return { error: `Item "${name}" must include caloriesPerUnit when no custom food is provided.` };
     }
 
-    items.push(normalizeLikelyWholeMealGramItem({
+    const nextItem = {
       name,
       quantity,
       unitLabel: asTrimmedString(record.unitLabel) ?? "g",
@@ -2676,7 +2708,15 @@ function parseNutritionMealItemsArg(
       carbsGramsPerUnit: clampFloat(record.carbsGramsPerUnit, 0, 0, 1500),
       fatGramsPerUnit: clampFloat(record.fatGramsPerUnit, 0, 0, 600),
       ...(customFoodId ? { customFoodId } : {})
-    }));
+    };
+    if (isGramUnitLabel(nextItem.unitLabel) && hasImplausiblePerGramDensity(nextItem)) {
+      return {
+        error:
+          `Item "${name}" uses gram units but has implausible per-gram nutrition values. Provide realistic per-gram values and explicit quantity.`
+      };
+    }
+
+    items.push(nextItem);
   }
 
   return items;
@@ -2705,7 +2745,10 @@ export function handleCreateNutritionMeal(
     if ("error" in resolvedFood) {
       return resolvedFood;
     }
-    items = [buildNutritionMealItemFromCustomFood(resolvedFood, clampFloat(args.quantity, 100, 1, 1000))];
+    if (typeof args.quantity !== "number") {
+      return { error: "quantity is required when creating a meal from a custom food." };
+    }
+    items = [buildNutritionMealItemFromCustomFood(resolvedFood, clampFloat(args.quantity, 1, 1, 1000))];
   }
 
   const caloriesInput = typeof args.calories === "number" ? clampFloat(args.calories, 0, 0, 10000) : null;
@@ -3025,10 +3068,10 @@ export function handleLogMeal(
   let carbsGrams: number = clampFloat(args.carbsGrams, 0, 0, 1500);
   let fatGrams: number = clampFloat(args.fatGrams, 0, 0, 600);
   const servings = typeof args.servings === "number" ? clampFloat(args.servings, 1, 0.1, 100) : 1;
-  const quantityArg = typeof args.quantity === "number" ? clampFloat(args.quantity, 100, 1, 2000) : null;
+  const quantityArg = typeof args.quantity === "number" ? clampFloat(args.quantity, 1, 1, 2000) : null;
   const estimatedWeightArg =
     typeof args.estimatedWeightGrams === "number"
-      ? clampFloat(args.estimatedWeightGrams, 0, MIN_ESTIMATED_MEAL_WEIGHT_GRAMS, MAX_ESTIMATED_MEAL_WEIGHT_GRAMS)
+      ? clampFloat(args.estimatedWeightGrams, 1, 1, 2000)
       : null;
 
   if (customFoodId || customFoodName) {
@@ -3040,17 +3083,21 @@ export function handleLogMeal(
     mealName = mealName ?? resolved.name;
 
     const useGramQuantity = isGramUnitLabel(resolved.unitLabel);
-    const hasExplicitAmount = quantityArg !== null || typeof args.servings === "number";
-    const baseQuantity = useGramQuantity
-      ? quantityArg ??
-        (typeof args.servings === "number"
-          ? clampFloat(args.servings, 100, 1, 2000)
-          : hasImplausiblePerGramDensity(resolved)
-            ? 1
-            : 100)
-      : servings;
+    const explicitQuantity = quantityArg ?? estimatedWeightArg;
+    if (useGramQuantity && explicitQuantity === null) {
+      return { error: "quantity (grams) is required when logging a gram-based custom food." };
+    }
+    const baseQuantity = explicitQuantity ?? servings;
 
-    const normalizedItem = normalizeLikelyWholeMealGramItem({
+    const nextItem = buildNutritionMealItemFromCustomFood(resolved, baseQuantity);
+    if (useGramQuantity && hasImplausiblePerGramDensity(nextItem)) {
+      return {
+        error:
+          `Custom food "${resolved.name}" has implausible per-gram nutrition values. Update that food with realistic per-gram macros before logging it.`
+      };
+    }
+
+    const item = {
       name: resolved.name,
       quantity: baseQuantity,
       unitLabel: resolved.unitLabel,
@@ -3059,23 +3106,23 @@ export function handleLogMeal(
       carbsGramsPerUnit: resolved.carbsGramsPerUnit,
       fatGramsPerUnit: resolved.fatGramsPerUnit,
       customFoodId: resolved.id
-    });
+    };
 
-    calories = roundToTenth(normalizedItem.quantity * normalizedItem.caloriesPerUnit);
-    proteinGrams = roundToTenth(normalizedItem.quantity * normalizedItem.proteinGramsPerUnit);
-    carbsGrams = roundToTenth(normalizedItem.quantity * normalizedItem.carbsGramsPerUnit);
-    fatGrams = roundToTenth(normalizedItem.quantity * normalizedItem.fatGramsPerUnit);
+    calories = roundToTenth(item.quantity * item.caloriesPerUnit);
+    proteinGrams = roundToTenth(item.quantity * item.proteinGramsPerUnit);
+    carbsGrams = roundToTenth(item.quantity * item.carbsGramsPerUnit);
+    fatGrams = roundToTenth(item.quantity * item.fatGramsPerUnit);
 
     const note = asTrimmedString(args.notes);
     const autoNote = useGramQuantity
-      ? `${normalizedItem.quantity} g`
-      : `${roundToTenth(normalizedItem.quantity)} ${resolved.unitLabel}`;
+      ? `${item.quantity} g`
+      : `${roundToTenth(item.quantity)} ${resolved.unitLabel}`;
 
     const meal = store.createNutritionMeal({
       name: mealName,
       mealType: parseMealType(args.mealType),
       consumedAt: asTrimmedString(args.consumedAt) ?? new Date().toISOString(),
-      items: [normalizedItem],
+      items: [item],
       calories,
       proteinGrams,
       carbsGrams,
@@ -3086,9 +3133,9 @@ export function handleLogMeal(
     return {
       success: true,
       meal,
-      message: hasExplicitAmount
+      message: explicitQuantity !== null
         ? `Logged meal "${meal.name}" from custom food "${resolved.name}".`
-        : `Logged meal "${meal.name}" from custom food "${resolved.name}" with estimated weight.`
+        : `Logged meal "${meal.name}" from custom food "${resolved.name}".`
     };
   }
 
@@ -3100,18 +3147,31 @@ export function handleLogMeal(
   }
 
   const note = asTrimmedString(args.notes);
-  const inferredWeight = estimatedWeightArg ?? estimateMealWeightGrams(calories, proteinGrams, carbsGrams, fatGrams);
-  const mealItems = [
-    {
-      name: mealName,
-      quantity: inferredWeight,
-      unitLabel: "g",
-      caloriesPerUnit: roundToTenth(calories / inferredWeight),
-      proteinGramsPerUnit: roundToTenth(proteinGrams / inferredWeight),
-      carbsGramsPerUnit: roundToTenth(carbsGrams / inferredWeight),
-      fatGramsPerUnit: roundToTenth(fatGrams / inferredWeight)
-    }
-  ];
+  const explicitWeight = quantityArg ?? estimatedWeightArg;
+  const mealItems =
+    explicitWeight !== null
+      ? [
+          {
+            name: mealName,
+            quantity: explicitWeight,
+            unitLabel: "g",
+            caloriesPerUnit: roundToTenth(calories / explicitWeight),
+            proteinGramsPerUnit: roundToTenth(proteinGrams / explicitWeight),
+            carbsGramsPerUnit: roundToTenth(carbsGrams / explicitWeight),
+            fatGramsPerUnit: roundToTenth(fatGrams / explicitWeight)
+          }
+        ]
+      : [
+          {
+            name: mealName,
+            quantity: 1,
+            unitLabel: "serving",
+            caloriesPerUnit: calories,
+            proteinGramsPerUnit: proteinGrams,
+            carbsGramsPerUnit: carbsGrams,
+            fatGramsPerUnit: fatGrams
+          }
+        ];
 
   const meal = store.createNutritionMeal({
     name: mealName,

@@ -858,7 +858,7 @@ describe("gemini-tools", () => {
       expect(logged.meal.fatGrams).toBe(6);
     });
 
-    it("estimates realistic grams when custom food macros are packed into a 1g gram-unit item", () => {
+    it("rejects gram-unit custom foods with implausible per-gram nutrition density", () => {
       const created = handleCreateNutritionCustomFood(store, {
         name: "Lasagne",
         unitLabel: "g",
@@ -867,6 +867,21 @@ describe("gemini-tools", () => {
         carbsGramsPerUnit: 58,
         fatGramsPerUnit: 22
       });
+      expect("error" in created).toBe(true);
+      if ("error" in created) {
+        expect(created.error.toLowerCase()).toContain("implausible per-gram");
+      }
+    });
+
+    it("requires explicit quantity for gram-based custom food logMeal calls", () => {
+      const created = handleCreateNutritionCustomFood(store, {
+        name: "Cooked rice",
+        unitLabel: "g",
+        caloriesPerUnit: 1.3,
+        proteinGramsPerUnit: 0.027,
+        carbsGramsPerUnit: 0.286,
+        fatGramsPerUnit: 0.003
+      });
       if ("error" in created) {
         throw new Error(created.error);
       }
@@ -874,19 +889,14 @@ describe("gemini-tools", () => {
       const logged = handleLogMeal(store, {
         customFoodId: created.food.id
       });
-      if ("error" in logged) {
-        throw new Error(logged.error);
-      }
 
-      const [item] = logged.meal.items;
-      expect(item).toBeDefined();
-      expect(item?.unitLabel).toBe("g");
-      expect(item?.quantity ?? 0).toBeGreaterThan(80);
-      expect(item?.caloriesPerUnit ?? 99).toBeLessThan(10);
-      expect(logged.meal.calories).toBeGreaterThan(300);
+      expect("error" in logged).toBe(true);
+      if ("error" in logged) {
+        expect(logged.error.toLowerCase()).toContain("quantity");
+      }
     });
 
-    it("normalizes createNutritionMeal gram items when quantity=1 but per-gram density is implausible", () => {
+    it("rejects createNutritionMeal items with implausible per-gram density", () => {
       const created = handleCreateNutritionMeal(store, {
         name: "Image meal",
         mealType: "dinner",
@@ -902,16 +912,10 @@ describe("gemini-tools", () => {
           }
         ]
       });
+      expect("error" in created).toBe(true);
       if ("error" in created) {
-        throw new Error(created.error);
+        expect(created.error.toLowerCase()).toContain("implausible per-gram");
       }
-
-      const [item] = created.meal.items;
-      expect(item).toBeDefined();
-      expect(item?.unitLabel).toBe("g");
-      expect(item?.quantity ?? 0).toBeGreaterThan(80);
-      expect(item?.caloriesPerUnit ?? 99).toBeLessThan(10);
-      expect(created.meal.calories).toBeGreaterThan(300);
     });
 
   });
