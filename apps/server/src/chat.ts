@@ -719,8 +719,10 @@ Core behavior:
 - For email follow-ups like "what did it contain?" after inbox discussion, call getEmails again and answer from sender/subject/snippet.
 - For deadline completion and snooze/extension requests, use queueDeadlineAction and apply immediately (no confirmation step).
 - For schedule mutations, execute immediately with createScheduleBlock/updateScheduleBlock/deleteScheduleBlock/clearScheduleWindow.
+- For recurring routine preferences from conversation (for example "I go gym every day at 07:00"), create or update routine presets immediately with queueCreateRoutinePreset/queueUpdateRoutinePreset.
 - If user asks to "clear", "free up", or remove the rest of today's plan, prefer clearScheduleWindow.
 - For journal-save requests, call createJournalEntry directly and do not ask for confirm/cancel commands.
+- When user intent to mutate data is clear, execute the available mutation tool directly instead of asking for extra permission.
 - Never claim a write action succeeded unless a tool call in this turn returned success.
 - If a tool call is needed, emit tool calls only first and wait to write user-facing text until tool results are available.
 - Keep replies practical and conversational, and adapt response length to user intent:
@@ -783,10 +785,10 @@ function buildScheduleFallbackSection(response: unknown): string | null {
     return null;
   }
   if (response.length === 0) {
-    return "Schedule: no events found for today.";
+    return "Schedule: no events found for this time window.";
   }
 
-  const lines: string[] = [`Schedule today (${response.length}):`];
+  const lines: string[] = [`Schedule (${response.length}):`];
   response.slice(0, 4).forEach((value) => {
     const record = asRecord(value);
     if (!record) {
@@ -2786,26 +2788,55 @@ export async function sendChatMessage(
         rationale: habitGoalAutocapture.rationale
       }
     });
+    const execution = executePendingChatAction(pendingAction, store);
+    store.deletePendingChatAction(pendingAction.id);
 
-    const assistantReply = [
-      habitGoalAutocapture.prompt,
-      `Why this suggestion: ${habitGoalAutocapture.rationale}`,
-      "Use the Confirm/Cancel buttons below, or type:",
-      `- confirm ${pendingAction.id}`,
-      `- cancel ${pendingAction.id}`
-    ].join("\n");
+    const assistantReply = execution.success
+      ? [
+          habitGoalAutocapture.prompt,
+          execution.message,
+          `Why I did this: ${habitGoalAutocapture.rationale}`
+        ].join("\n")
+      : [
+          "I detected your intent and tried to apply it automatically, but it failed.",
+          execution.message
+        ].join("\n");
+    const autoCitations: ChatCitation[] = [];
+    if (execution.habit) {
+      autoCitations.push({
+        id: execution.habit.id,
+        type: "habit",
+        label: execution.habit.name,
+        timestamp: now.toISOString()
+      });
+    }
+    if (execution.goal) {
+      autoCitations.push({
+        id: execution.goal.id,
+        type: "goal",
+        label: execution.goal.title,
+        timestamp: now.toISOString()
+      });
+    }
     const assistantMessage = store.recordChatMessage("assistant", assistantReply, {
       contextWindow: "",
-      pendingActions: store.getPendingChatActions(now)
+      actionExecution: {
+        actionId: execution.actionId,
+        actionType: execution.actionType,
+        status: execution.success ? "confirmed" : "failed",
+        message: execution.message
+      },
+      ...(autoCitations.length > 0 ? { citations: autoCitations } : {})
     });
     const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
+    const citations = assistantMessage.metadata?.citations ?? [];
 
     return {
       reply: assistantMessage.content,
       userMessage,
       assistantMessage,
       finishReason: "stop",
-      citations: [],
+      citations,
       history: historyPage
     };
   }

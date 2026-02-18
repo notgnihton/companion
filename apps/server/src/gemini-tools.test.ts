@@ -145,6 +145,57 @@ describe("gemini-tools", () => {
       const fixedEvents = result.filter((item) => item.recurrenceParentId !== "timeline-suggested");
       expect(fixedEvents).toEqual([]);
     });
+
+    it("supports querying a specific future date", () => {
+      const todayEvent = store.createLectureEvent({
+        title: "DAT520 Lecture",
+        startTime: "2026-02-18T09:15:00.000Z",
+        durationMinutes: 90,
+        workload: "medium"
+      });
+      const tomorrowEvent = store.createLectureEvent({
+        title: "DAT560 Lab",
+        startTime: "2026-02-19T11:15:00.000Z",
+        durationMinutes: 105,
+        workload: "high"
+      });
+
+      const result = handleGetSchedule(store, { date: "2026-02-19", includeSuggestions: false });
+
+      expect(result.map((item) => item.id)).toContain(tomorrowEvent.id);
+      expect(result.map((item) => item.id)).not.toContain(todayEvent.id);
+    });
+
+    it("supports multi-day schedule windows for planning ahead", () => {
+      const dayOne = store.createLectureEvent({
+        title: "DAT520 Lecture",
+        startTime: "2026-02-18T09:15:00.000Z",
+        durationMinutes: 90,
+        workload: "medium"
+      });
+      const dayTwo = store.createLectureEvent({
+        title: "DAT560 Lab",
+        startTime: "2026-02-19T11:15:00.000Z",
+        durationMinutes: 105,
+        workload: "high"
+      });
+      const dayThree = store.createLectureEvent({
+        title: "DAT600 Session",
+        startTime: "2026-02-20T07:15:00.000Z",
+        durationMinutes: 105,
+        workload: "medium"
+      });
+
+      const result = handleGetSchedule(store, {
+        date: "2026-02-18",
+        daysAhead: 2,
+        includeSuggestions: false
+      });
+
+      expect(result.map((item) => item.id)).toContain(dayOne.id);
+      expect(result.map((item) => item.id)).toContain(dayTwo.id);
+      expect(result.map((item) => item.id)).not.toContain(dayThree.id);
+    });
   });
 
   describe("handleGetRoutinePresets", () => {
@@ -816,7 +867,7 @@ describe("gemini-tools", () => {
       expect(scheduleIds.length).toBe(1);
     });
 
-    it("queues routine preset create and update actions", () => {
+    it("applies routine preset create and update actions immediately", () => {
       const createResult = handleQueueCreateRoutinePreset(store, {
         title: "Morning gym",
         preferredStartTime: "07:00",
@@ -824,32 +875,30 @@ describe("gemini-tools", () => {
         weekdays: [1, 3, 5]
       });
 
-      expect(createResult).toHaveProperty("requiresConfirmation", true);
-      if (!("pendingAction" in createResult)) {
-        throw new Error("Expected pendingAction in routine create result");
+      expect("error" in createResult).toBe(false);
+      expect("pendingAction" in createResult).toBe(false);
+      expect(createResult).toHaveProperty("requiresConfirmation", false);
+      if ("error" in createResult || "pendingAction" in createResult) {
+        throw new Error("Expected immediate routine create response");
       }
-      expect(createResult.pendingAction.actionType).toBe("create-routine-preset");
-
-      const preset = store.createRoutinePreset({
-        title: "Nightly review",
-        preferredStartTime: "21:00",
-        durationMinutes: 45,
-        workload: "low",
-        weekdays: [0, 1, 2, 3, 4, 5, 6],
-        active: true
-      });
+      expect(createResult.action).toBe("create-routine-preset");
+      expect(createResult.routinePreset.title).toBe("Morning gym");
 
       const updateResult = handleQueueUpdateRoutinePreset(store, {
-        presetId: preset.id,
+        presetId: createResult.routinePreset.id,
         preferredStartTime: "20:30",
         active: false
       });
 
-      expect(updateResult).toHaveProperty("requiresConfirmation", true);
-      if (!("pendingAction" in updateResult)) {
-        throw new Error("Expected pendingAction in routine update result");
+      expect("error" in updateResult).toBe(false);
+      expect("pendingAction" in updateResult).toBe(false);
+      expect(updateResult).toHaveProperty("requiresConfirmation", false);
+      if ("error" in updateResult || "pendingAction" in updateResult) {
+        throw new Error("Expected immediate routine update response");
       }
-      expect(updateResult.pendingAction.actionType).toBe("update-routine-preset");
+      expect(updateResult.action).toBe("update-routine-preset");
+      expect(updateResult.routinePreset.preferredStartTime).toBe("20:30");
+      expect(updateResult.routinePreset.active).toBe(false);
     });
 
     it("creates a journal entry immediately", () => {
@@ -1280,25 +1329,21 @@ describe("gemini-tools", () => {
       );
 
       expect(createResult.name).toBe("queueCreateRoutinePreset");
-      expect(createResult.response).toHaveProperty("requiresConfirmation", true);
+      expect(createResult.response).toHaveProperty("requiresConfirmation", false);
+      expect(createResult.response).toHaveProperty("success", true);
 
-      const preset = store.createRoutinePreset({
-        title: "Nightly review",
-        preferredStartTime: "21:00",
-        durationMinutes: 45,
-        workload: "low",
-        weekdays: [0, 1, 2, 3, 4, 5, 6],
-        active: true
-      });
+      const createdPresetId = (createResult.response as { routinePreset?: { id?: string } }).routinePreset?.id;
+      expect(createdPresetId).toBeDefined();
 
       const updateResult = executeFunctionCall(
         "queueUpdateRoutinePreset",
-        { presetId: preset.id, preferredStartTime: "20:30" },
+        { presetId: createdPresetId, preferredStartTime: "20:30" },
         store
       );
 
       expect(updateResult.name).toBe("queueUpdateRoutinePreset");
-      expect(updateResult.response).toHaveProperty("requiresConfirmation", true);
+      expect(updateResult.response).toHaveProperty("requiresConfirmation", false);
+      expect(updateResult.response).toHaveProperty("success", true);
     });
 
     it("should execute createJournalEntry function", () => {

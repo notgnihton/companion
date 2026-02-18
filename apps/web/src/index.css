@@ -3120,6 +3120,21 @@ button:disabled {
   min-height: calc(var(--app-viewport-height) - 120px);
 }
 
+.tab-panel {
+  min-height: 0;
+}
+
+.tab-panel-active {
+  display: block;
+  width: 100%;
+  height: 100%;
+  flex: 1;
+}
+
+.tab-panel-hidden {
+  display: none;
+}
+
 body.keyboard-open .tab-bar {
   transform: translateY(130%);
   opacity: 0;

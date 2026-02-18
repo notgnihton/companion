@@ -641,7 +641,7 @@ describe("chat service", () => {
 
     expect(generateChatResponse).toHaveBeenCalledTimes(2);
     expect(result.reply).toContain("I fetched your data");
-    expect(result.reply).toContain("Schedule today");
+    expect(result.reply).toContain("Schedule (");
   });
 
   it("returns routine preset fallback details when getRoutinePresets is called and model returns empty text", async () => {
@@ -710,6 +710,9 @@ describe("chat service", () => {
     );
     expect(firstRequest.systemInstruction).toContain(
       "For schedule mutations, execute immediately with createScheduleBlock/updateScheduleBlock/deleteScheduleBlock/clearScheduleWindow."
+    );
+    expect(firstRequest.systemInstruction).toContain(
+      "For recurring routine preferences from conversation"
     );
   });
 
@@ -904,7 +907,7 @@ describe("chat service", () => {
     expect(generateChatResponse).toHaveBeenCalledTimes(2);
     expect(result.finishReason).toBe("rate_limit_fallback");
     expect(result.reply).toContain("temporary rate limit");
-    expect(result.reply).toContain("Schedule today");
+    expect(result.reply).toContain("Schedule (");
     expect(result.citations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1066,7 +1069,7 @@ describe("chat service", () => {
     );
   });
 
-  it("autocaptures repeated commitment language into a habit creation pending action", async () => {
+  it("autocaptures repeated commitment language and creates a habit immediately", async () => {
     store.recordChatMessage("user", "I keep missing morning gym lately.");
 
     const result = await sendChatMessage(store, "I want to do morning gym consistently.", {
@@ -1074,15 +1077,13 @@ describe("chat service", () => {
     });
 
     expect(generateChatResponse).not.toHaveBeenCalled();
-    expect(result.reply).toContain("Why this suggestion");
-    expect(result.reply).toContain("Confirm/Cancel buttons");
-    expect(result.assistantMessage.metadata?.pendingActions).toHaveLength(1);
-    expect(result.assistantMessage.metadata?.pendingActions?.[0]).toMatchObject({
-      actionType: "create-habit"
-    });
+    expect(result.reply).toContain("Why I did this");
+    expect(result.assistantMessage.metadata?.pendingActions).toBeUndefined();
+    expect(result.assistantMessage.metadata?.actionExecution?.status).toBe("confirmed");
+    expect(store.getHabits().some((habit) => habit.name.toLowerCase().includes("morning gym"))).toBe(true);
   });
 
-  it("autocaptures repeated struggle language into habit update and executes on confirm", async () => {
+  it("autocaptures repeated struggle language and updates habit immediately", async () => {
     const habit = store.createHabit({
       name: "Morning gym",
       cadence: "daily",
@@ -1096,16 +1097,8 @@ describe("chat service", () => {
     });
 
     expect(generateChatResponse).not.toHaveBeenCalled();
-
-    const pendingAction = suggestion.assistantMessage.metadata?.pendingActions?.[0];
-    expect(pendingAction).toBeDefined();
-    expect(pendingAction?.actionType).toBe("update-habit");
-
-    const confirmResult = await sendChatMessage(store, `confirm ${pendingAction?.id}`, {
-      geminiClient: fakeGemini,
-    });
-
-    expect(confirmResult.assistantMessage.metadata?.actionExecution?.status).toBe("confirmed");
+    expect(suggestion.assistantMessage.metadata?.pendingActions).toBeUndefined();
+    expect(suggestion.assistantMessage.metadata?.actionExecution?.status).toBe("confirmed");
     expect(store.getHabitById(habit.id)?.targetPerWeek).toBe(4);
   });
 

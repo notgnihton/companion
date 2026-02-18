@@ -450,9 +450,9 @@ export default function App(): JSX.Element {
         <>
           {/* Tab content area */}
           <div className="tab-content-area">
-            {activeTab === "chat" && (
+            <div className={`tab-panel ${activeTab === "chat" ? "tab-panel-active" : "tab-panel-hidden"}`}>
               <ChatTab />
-            )}
+            </div>
             {activeTab === "schedule" && (
               <ScheduleTab
                 scheduleKey={`schedule-${scheduleRevision}`}

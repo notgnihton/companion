@@ -27,10 +27,23 @@ export const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "getSchedule",
     description:
-      "Get today's lecture schedule for the user. Returns list of lectures with times, durations, and course names. Use this when user asks about today's schedule, what lectures they have, or when they're free today.",
+      "Get schedule events for a date window. Returns lectures and planned blocks with times, durations, and course names. Use this for today's schedule, future planning, and free-time questions.",
     parameters: {
       type: SchemaType.OBJECT,
-      properties: {},
+      properties: {
+        date: {
+          type: SchemaType.STRING,
+          description: "Optional anchor date/time (ISO or natural time like 'tomorrow 09:00'). Defaults to today."
+        },
+        daysAhead: {
+          type: SchemaType.NUMBER,
+          description: "Number of days in the window starting from date (default: 1, max: 30)."
+        },
+        includeSuggestions: {
+          type: SchemaType.BOOLEAN,
+          description: "When true, include timeline suggestions for today's window (default: true)."
+        }
+      },
       required: []
     }
   },
@@ -643,7 +656,7 @@ export const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "queueCreateRoutinePreset",
     description:
-      "Queue creation of a reusable routine preset that REQUIRES explicit user confirmation before execution.",
+      "Create a reusable routine preset immediately and auto-place it in upcoming schedule gaps.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -677,7 +690,7 @@ export const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "queueUpdateRoutinePreset",
     description:
-      "Queue updates to an existing routine preset that REQUIRES explicit user confirmation before execution.",
+      "Update an existing routine preset immediately and re-apply placements in upcoming schedule gaps.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -961,11 +974,57 @@ function buildTodayTimelineSuggestions(
 
 export function handleGetSchedule(store: RuntimeStore, _args: Record<string, unknown> = {}): LectureEvent[] {
   const now = new Date();
-  const todaySchedule = store
+  const args = _args;
+  const requestedDate = asTrimmedString(args.date);
+  const daysAhead = clampNumber(args.daysAhead, 1, 1, 30);
+  const includeSuggestions = args.includeSuggestions !== false;
+
+  const startOfUtcDay = (date: Date): Date =>
+    new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
+
+  const parseRequestedWindowStart = (): Date | null => {
+    if (!requestedDate) {
+      return startOfUtcDay(now);
+    }
+
+    const dayOnly = requestedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dayOnly) {
+      return new Date(`${requestedDate}T00:00:00.000Z`);
+    }
+
+    const parsed = parseFlexibleDateTime(requestedDate, now);
+    if (!parsed) {
+      return null;
+    }
+    return startOfUtcDay(parsed);
+  };
+
+  const windowStart = parseRequestedWindowStart();
+  if (!windowStart) {
+    return [];
+  }
+  const windowEnd = new Date(windowStart);
+  windowEnd.setUTCDate(windowEnd.getUTCDate() + daysAhead);
+
+  const scheduleInWindow = store
     .getScheduleEvents()
-    .filter((event) => isSameDay(new Date(event.startTime), now));
-  const timelineSuggestions = buildTodayTimelineSuggestions(store, todaySchedule, now);
-  return [...todaySchedule, ...timelineSuggestions];
+    .filter((event) => {
+      const eventStart = new Date(event.startTime).getTime();
+      if (Number.isNaN(eventStart)) {
+        return false;
+      }
+      return eventStart >= windowStart.getTime() && eventStart < windowEnd.getTime();
+    })
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+  const todayStart = startOfUtcDay(now).getTime();
+  const isTodayWindow = daysAhead === 1 && windowStart.getTime() === todayStart;
+  if (!includeSuggestions || !isTodayWindow) {
+    return scheduleInWindow;
+  }
+
+  const timelineSuggestions = buildTodayTimelineSuggestions(store, scheduleInWindow, now);
+  return [...scheduleInWindow, ...timelineSuggestions];
 }
 
 export function handleGetRoutinePresets(
@@ -2034,6 +2093,18 @@ export interface ImmediateDeadlineActionResponse {
   deadline: Deadline;
 }
 
+export interface ImmediateRoutinePresetActionResponse {
+  success: true;
+  requiresConfirmation: false;
+  action: "create-routine-preset" | "update-routine-preset";
+  message: string;
+  routinePreset: RoutinePreset;
+  placement: {
+    createdEvents: number;
+    clearedEvents: number;
+  };
+}
+
 export interface PendingActionExecutionResult {
   actionId: string;
   actionType: ChatActionType;
@@ -2583,7 +2654,7 @@ export function handleQueueClearScheduleWindow(
 export function handleQueueCreateRoutinePreset(
   store: RuntimeStore,
   args: Record<string, unknown> = {}
-): PendingActionToolResponse | { error: string } {
+): ImmediateRoutinePresetActionResponse | { error: string } {
   const title = asTrimmedString(args.title);
   const preferredStartTime = parseRoutinePreferredStartTime(args.preferredStartTime);
   const durationMinutes = clampNumber(args.durationMinutes, 60, 15, 240);
@@ -2596,26 +2667,32 @@ export function handleQueueCreateRoutinePreset(
     return { error: "title and preferredStartTime (HH:mm) are required." };
   }
 
-  const pending = store.createPendingChatAction({
-    actionType: "create-routine-preset",
-    summary: `Create routine preset "${title}" at ${preferredStartTime}`,
-    payload: {
-      title,
-      preferredStartTime,
-      durationMinutes,
-      workload,
-      weekdays,
-      active: true
-    }
+  const routinePreset = store.createRoutinePreset({
+    title,
+    preferredStartTime,
+    durationMinutes,
+    workload,
+    weekdays,
+    active: true
   });
+  const placement = applyRoutinePresetPlacements(store, { horizonDays: 7 });
 
-  return toPendingActionResponse(pending, "Action queued. Ask user for explicit confirmation before executing.");
+  return {
+    success: true,
+    requiresConfirmation: false,
+    action: "create-routine-preset",
+    message:
+      `Created routine preset "${routinePreset.title}" and placed ${placement.createdEvents} routine blocks ` +
+      `(cleared ${placement.clearedEvents}).`,
+    routinePreset,
+    placement
+  };
 }
 
 export function handleQueueUpdateRoutinePreset(
   store: RuntimeStore,
   args: Record<string, unknown> = {}
-): PendingActionToolResponse | { error: string } {
+): ImmediateRoutinePresetActionResponse | { error: string } {
   const resolved = resolveRoutinePresetTarget(store, args);
   if ("error" in resolved) {
     return resolved;
@@ -2638,21 +2715,42 @@ export function handleQueueUpdateRoutinePreset(
     };
   }
 
-  const pending = store.createPendingChatAction({
-    actionType: "update-routine-preset",
-    summary: `Update routine preset "${resolved.title}"`,
-    payload: {
-      presetId: resolved.id,
-      ...(nextTitle ? { title: nextTitle } : {}),
-      ...(nextPreferredStartTime ? { preferredStartTime: nextPreferredStartTime } : {}),
-      ...(typeof nextDurationMinutes === "number" ? { durationMinutes: nextDurationMinutes } : {}),
-      ...(nextWorkload ? { workload: nextWorkload } : {}),
-      ...(nextWeekdays ? { weekdays: nextWeekdays } : {}),
-      ...(typeof nextActive === "boolean" ? { active: nextActive } : {})
-    }
-  });
+  const patch: Partial<Omit<RoutinePreset, "id" | "createdAt" | "updatedAt">> = {};
+  if (nextTitle) {
+    patch.title = nextTitle;
+  }
+  if (nextPreferredStartTime) {
+    patch.preferredStartTime = nextPreferredStartTime;
+  }
+  if (typeof nextDurationMinutes === "number") {
+    patch.durationMinutes = nextDurationMinutes;
+  }
+  if (nextWorkload) {
+    patch.workload = nextWorkload;
+  }
+  if (nextWeekdays) {
+    patch.weekdays = nextWeekdays;
+  }
+  if (typeof nextActive === "boolean") {
+    patch.active = nextActive;
+  }
 
-  return toPendingActionResponse(pending, "Action queued. Ask user for explicit confirmation before executing.");
+  const routinePreset = store.updateRoutinePreset(resolved.id, patch);
+  if (!routinePreset) {
+    return { error: "Unable to update routine preset." };
+  }
+  const placement = applyRoutinePresetPlacements(store, { horizonDays: 7 });
+
+  return {
+    success: true,
+    requiresConfirmation: false,
+    action: "update-routine-preset",
+    message:
+      `Updated routine preset "${routinePreset.title}" and re-applied routines ` +
+      `(placed ${placement.createdEvents}, cleared ${placement.clearedEvents}).`,
+    routinePreset,
+    placement
+  };
 }
 
 export function handleCreateJournalEntry(
