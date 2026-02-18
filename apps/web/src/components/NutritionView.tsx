@@ -64,6 +64,38 @@ interface NutritionTargetDraft {
   targetFatGrams: string;
 }
 
+interface NutritionDaySnapshotMeal {
+  name: string;
+  mealType: NutritionMealType;
+  calories: number;
+  proteinGrams: number;
+  carbsGrams: number;
+  fatGrams: number;
+  notes?: string;
+  consumedTime: string;
+}
+
+interface NutritionDaySnapshotPlanBlock {
+  title: string;
+  scheduledTime: string;
+  targetCalories?: number;
+  targetProteinGrams?: number;
+  targetCarbsGrams?: number;
+  targetFatGrams?: number;
+  notes?: string;
+}
+
+interface NutritionDaySnapshot {
+  id: string;
+  name: string;
+  createdAt: string;
+  meals: NutritionDaySnapshotMeal[];
+  mealPlanBlocks: NutritionDaySnapshotPlanBlock[];
+}
+
+const DAY_SNAPSHOT_STORAGE_KEY = "companion:nutrition-day-snapshots";
+const MAX_DAY_SNAPSHOTS = 24;
+
 function toDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -91,6 +123,54 @@ function toLocalDatetimeInput(iso: string): string {
   const hh = String(parsed.getHours()).padStart(2, "0");
   const min = String(parsed.getMinutes()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+}
+
+function toTimeHHmm(iso: string): string {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) {
+    return "00:00";
+  }
+  const hh = String(parsed.getHours()).padStart(2, "0");
+  const min = String(parsed.getMinutes()).padStart(2, "0");
+  return `${hh}:${min}`;
+}
+
+function toIsoForDateTime(dateKey: string, time: string): string {
+  const [year, month, day] = dateKey.split("-").map((value) => Number.parseInt(value, 10));
+  const [hours, minutes] = time.split(":").map((value) => Number.parseInt(value, 10));
+
+  const parsed = new Date(
+    Number.isFinite(year) ? year : new Date().getFullYear(),
+    Number.isFinite(month) ? month - 1 : 0,
+    Number.isFinite(day) ? day : 1,
+    Number.isFinite(hours) ? hours : 0,
+    Number.isFinite(minutes) ? minutes : 0,
+    0,
+    0
+  );
+  return parsed.toISOString();
+}
+
+function loadDaySnapshots(): NutritionDaySnapshot[] {
+  try {
+    const raw = localStorage.getItem(DAY_SNAPSHOT_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw) as NutritionDaySnapshot[];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .filter((snapshot) => snapshot && typeof snapshot.id === "string" && typeof snapshot.name === "string")
+      .slice(0, MAX_DAY_SNAPSHOTS);
+  } catch {
+    return [];
+  }
+}
+
+function saveDaySnapshots(snapshots: NutritionDaySnapshot[]): void {
+  localStorage.setItem(DAY_SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshots.slice(0, MAX_DAY_SNAPSHOTS)));
 }
 
 function formatDateTime(iso: string): string {
@@ -312,6 +392,10 @@ export function NutritionView(): JSX.Element {
   const [targetDraft, setTargetDraft] = useState<NutritionTargetDraft>(() => toTargetDraft(null));
   const [targetDraftDirty, setTargetDraftDirty] = useState(false);
   const [savingTargets, setSavingTargets] = useState(false);
+  const [daySnapshots, setDaySnapshots] = useState<NutritionDaySnapshot[]>(() => loadDaySnapshots());
+  const [daySnapshotName, setDaySnapshotName] = useState("");
+  const [selectedDaySnapshotId, setSelectedDaySnapshotId] = useState("");
+  const [dayControlBusy, setDayControlBusy] = useState(false);
 
   const [mealDraft, setMealDraft] = useState<MealDraft>({
     name: "",
@@ -382,6 +466,152 @@ export function NutritionView(): JSX.Element {
   useEffect(() => {
     void refresh();
   }, []);
+
+  const persistDaySnapshots = (nextSnapshots: NutritionDaySnapshot[]): void => {
+    saveDaySnapshots(nextSnapshots);
+    setDaySnapshots(nextSnapshots);
+  };
+
+  const handleSaveDaySnapshot = (): void => {
+    const trimmedName = daySnapshotName.trim();
+    const fallbackName = `Day ${new Date().toLocaleDateString("en-GB")}`;
+    const snapshotName = trimmedName || fallbackName;
+    const nowIso = new Date().toISOString();
+
+    const nextSnapshot: NutritionDaySnapshot = {
+      id: selectedDaySnapshotId || crypto.randomUUID(),
+      name: snapshotName,
+      createdAt: nowIso,
+      meals: meals.map((meal) => ({
+        name: meal.name,
+        mealType: meal.mealType,
+        calories: meal.calories,
+        proteinGrams: meal.proteinGrams,
+        carbsGrams: meal.carbsGrams,
+        fatGrams: meal.fatGrams,
+        notes: meal.notes,
+        consumedTime: toTimeHHmm(meal.consumedAt)
+      })),
+      mealPlanBlocks: mealPlanBlocks
+        .slice()
+        .sort((left, right) => new Date(left.scheduledFor).getTime() - new Date(right.scheduledFor).getTime())
+        .map((block) => ({
+          title: block.title,
+          scheduledTime: toTimeHHmm(block.scheduledFor),
+          targetCalories: block.targetCalories,
+          targetProteinGrams: block.targetProteinGrams,
+          targetCarbsGrams: block.targetCarbsGrams,
+          targetFatGrams: block.targetFatGrams,
+          notes: block.notes
+        }))
+    };
+
+    const nextSnapshots = [nextSnapshot, ...daySnapshots.filter((snapshot) => snapshot.id !== nextSnapshot.id)].slice(
+      0,
+      MAX_DAY_SNAPSHOTS
+    );
+    persistDaySnapshots(nextSnapshots);
+    setSelectedDaySnapshotId(nextSnapshot.id);
+    setDaySnapshotName("");
+    setMessage(`Saved day snapshot "${snapshotName}".`);
+    hapticSuccess();
+  };
+
+  const clearCurrentDayData = async (): Promise<boolean> => {
+    const [deletedMeals, deletedBlocks] = await Promise.all([
+      Promise.all(meals.map((meal) => deleteNutritionMeal(meal.id))),
+      Promise.all(mealPlanBlocks.map((block) => deleteNutritionMealPlanBlock(block.id)))
+    ]);
+    return deletedMeals.every(Boolean) && deletedBlocks.every(Boolean);
+  };
+
+  const handleLoadDaySnapshot = async (): Promise<void> => {
+    const snapshot = daySnapshots.find((candidate) => candidate.id === selectedDaySnapshotId);
+    if (!snapshot) {
+      setMessage("Choose a saved day snapshot first.");
+      return;
+    }
+
+    setDayControlBusy(true);
+    setMessage("");
+
+    const resetOk = await clearCurrentDayData();
+    if (!resetOk) {
+      setDayControlBusy(false);
+      setMessage("Could not clear today's meals before loading snapshot.");
+      return;
+    }
+
+    let allCreated = true;
+    for (const block of snapshot.mealPlanBlocks) {
+      const created = await createNutritionMealPlanBlock({
+        title: block.title,
+        scheduledFor: toIsoForDateTime(todayKey, block.scheduledTime),
+        ...(typeof block.targetCalories === "number" ? { targetCalories: block.targetCalories } : {}),
+        ...(typeof block.targetProteinGrams === "number" ? { targetProteinGrams: block.targetProteinGrams } : {}),
+        ...(typeof block.targetCarbsGrams === "number" ? { targetCarbsGrams: block.targetCarbsGrams } : {}),
+        ...(typeof block.targetFatGrams === "number" ? { targetFatGrams: block.targetFatGrams } : {}),
+        ...(block.notes ? { notes: block.notes } : {})
+      });
+      if (!created) {
+        allCreated = false;
+      }
+    }
+
+    for (const meal of snapshot.meals) {
+      const created = await createNutritionMeal({
+        name: meal.name,
+        mealType: meal.mealType,
+        consumedAt: toIsoForDateTime(todayKey, meal.consumedTime),
+        calories: meal.calories,
+        proteinGrams: meal.proteinGrams,
+        carbsGrams: meal.carbsGrams,
+        fatGrams: meal.fatGrams,
+        ...(meal.notes ? { notes: meal.notes } : {})
+      });
+      if (!created) {
+        allCreated = false;
+      }
+    }
+
+    await refresh();
+    setDayControlBusy(false);
+    hapticSuccess();
+    setMessage(
+      allCreated
+        ? `Loaded day snapshot "${snapshot.name}".`
+        : `Loaded "${snapshot.name}" with partial errors. Try Refresh and repeat if needed.`
+    );
+  };
+
+  const handleResetDay = async (): Promise<void> => {
+    if (!window.confirm("Clear all meals and meal-plan blocks for today?")) {
+      return;
+    }
+
+    setDayControlBusy(true);
+    setMessage("");
+    const ok = await clearCurrentDayData();
+    await refresh();
+    setDayControlBusy(false);
+
+    if (!ok) {
+      setMessage("Could not fully reset day right now.");
+      return;
+    }
+    hapticSuccess();
+    setMessage("Reset today's nutrition plan.");
+  };
+
+  const handleDeleteDaySnapshot = (): void => {
+    if (!selectedDaySnapshotId) {
+      return;
+    }
+    const next = daySnapshots.filter((snapshot) => snapshot.id !== selectedDaySnapshotId);
+    persistDaySnapshots(next);
+    setSelectedDaySnapshotId("");
+    setMessage("Deleted selected day snapshot.");
+  };
 
   const updateTargetDraftField = (field: keyof NutritionTargetDraft, value: string): void => {
     setTargetDraft((previous) => ({
@@ -693,6 +923,68 @@ export function NutritionView(): JSX.Element {
       </header>
 
       {message && <p className="nutrition-message">{message}</p>}
+
+      <article className="nutrition-card nutrition-day-controls">
+        <div className="nutrition-day-controls-header">
+          <h3>Day controls</h3>
+          <p className="nutrition-item-meta">Save, load, or reset today&apos;s macro plan in one tap.</p>
+        </div>
+        <div className="nutrition-day-controls-grid">
+          <label>
+            Snapshot name
+            <input
+              type="text"
+              value={daySnapshotName}
+              onChange={(event) => setDaySnapshotName(event.target.value)}
+              maxLength={80}
+              placeholder="e.g. Lean bulk weekday"
+            />
+          </label>
+          <button type="button" onClick={handleSaveDaySnapshot} disabled={dayControlBusy || loading}>
+            Save day
+          </button>
+          <label>
+            Saved snapshots
+            <select
+              value={selectedDaySnapshotId}
+              onChange={(event) => setSelectedDaySnapshotId(event.target.value)}
+              disabled={dayControlBusy}
+            >
+              <option value="">Select snapshot</option>
+              {daySnapshots.map((snapshot) => (
+                <option key={snapshot.id} value={snapshot.id}>
+                  {snapshot.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="nutrition-inline-actions">
+            <button
+              type="button"
+              onClick={() => void handleLoadDaySnapshot()}
+              disabled={dayControlBusy || !selectedDaySnapshotId}
+            >
+              Load day
+            </button>
+            <button
+              type="button"
+              className="nutrition-secondary-button"
+              onClick={() => void handleResetDay()}
+              disabled={dayControlBusy || loading}
+            >
+              Reset day
+            </button>
+            <button
+              type="button"
+              className="nutrition-secondary-button"
+              onClick={handleDeleteDaySnapshot}
+              disabled={dayControlBusy || !selectedDaySnapshotId}
+            >
+              Delete saved
+            </button>
+          </div>
+        </div>
+      </article>
 
       <article className="nutrition-card">
         <div>
