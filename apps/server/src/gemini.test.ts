@@ -250,6 +250,84 @@ describe("GeminiClient", () => {
       vi.unstubAllGlobals();
     });
 
+    it("merges streamed function_call chunks and preserves thought_signature", async () => {
+      const client = new GeminiClient("test-api-key");
+      const encoder = new TextEncoder();
+      const streamBody = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                candidates: [
+                  {
+                    content: {
+                      parts: [
+                        {
+                          function_call: {
+                            name: "getSchedule",
+                            args: {}
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              })}\n\n`
+            )
+          );
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                candidates: [
+                  {
+                    finish_reason: "STOP",
+                    content: {
+                      parts: [
+                        {
+                          function_call: {
+                            id: "call-1",
+                            name: "getSchedule",
+                            args: { window: "today" },
+                            thought_signature: "sig-stream-1"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              })}\n\n`
+            )
+          );
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        }
+      });
+
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        body: streamBody
+      });
+      vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+      (client as unknown as { getVertexAccessToken: () => Promise<string> }).getVertexAccessToken = async () => "token";
+      (client as unknown as { normalizeVertexModelNameForGenerateContent: () => string }).normalizeVertexModelNameForGenerateContent =
+        () => "projects/p/locations/global/publishers/google/models/gemini-3-flash-preview";
+
+      const response = await client.generateChatResponseStream({
+        messages: [{ role: "user", parts: [{ text: "schedule?" }] }]
+      });
+
+      expect(response.functionCalls?.[0]).toEqual(
+        expect.objectContaining({
+          id: "call-1",
+          name: "getSchedule",
+          args: { window: "today" },
+          thought_signature: "sig-stream-1"
+        })
+      );
+
+      vi.unstubAllGlobals();
+    });
+
     it("should retry transient 429 responses and return the recovered Vertex result", async () => {
       const client = new GeminiClient("test-api-key");
 

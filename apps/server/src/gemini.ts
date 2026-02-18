@@ -576,7 +576,6 @@ export class GeminiClient {
       let finishReason: string | undefined;
       let usageMetadata: GeminiChatResponse["usageMetadata"] | undefined;
       const functionCalls: FunctionCall[] = [];
-      const functionCallIndexByKey = new Map<string, number>();
 
       const consumeSseBlock = (block: string): void => {
         const lines = block.split(/\r?\n/);
@@ -657,7 +656,7 @@ export class GeminiClient {
             .thought_signature
             ?? (call as unknown as { thought_signature?: unknown; thoughtSignature?: unknown }).thoughtSignature;
           const callId = (call as unknown as { id?: unknown }).id;
-          const key = `${call.name}:${JSON.stringify(args)}:${typeof callId === "string" ? callId : ""}`;
+          const normalizedArgs = JSON.stringify(args);
           const nextCall = {
             ...(typeof callId === "string" && callId.trim().length > 0 ? { id: callId } : {}),
             name: call.name,
@@ -665,21 +664,75 @@ export class GeminiClient {
             ...(typeof signature === "string" && signature.length > 0 ? { thought_signature: signature } : {})
           } as FunctionCall;
 
-          const existingIndex = functionCallIndexByKey.get(key);
-          if (existingIndex === undefined) {
-            functionCallIndexByKey.set(key, functionCalls.length);
+          let existingIndex = -1;
+          if (typeof callId === "string" && callId.trim().length > 0) {
+            existingIndex = functionCalls.findIndex((existing) => {
+              const existingId = (existing as unknown as { id?: unknown }).id;
+              return typeof existingId === "string" && existingId === callId;
+            });
+          }
+          if (existingIndex < 0) {
+            existingIndex = functionCalls.findIndex((existing) => {
+              if (existing.name !== call.name) {
+                return false;
+              }
+              const existingArgs =
+                existing.args && typeof existing.args === "object" && !Array.isArray(existing.args)
+                  ? JSON.stringify(existing.args)
+                  : "{}";
+              return existingArgs === normalizedArgs;
+            });
+          }
+          if (existingIndex < 0 && typeof callId === "string" && callId.trim().length > 0) {
+            existingIndex = functionCalls.findIndex((existing) => {
+              if (existing.name !== call.name) {
+                return false;
+              }
+              const existingId = (existing as unknown as { id?: unknown }).id;
+              if (typeof existingId === "string" && existingId.trim().length > 0) {
+                return false;
+              }
+              const existingArgs =
+                existing.args && typeof existing.args === "object" && !Array.isArray(existing.args)
+                  ? JSON.stringify(existing.args)
+                  : "{}";
+              return existingArgs === "{}" || normalizedArgs === "{}";
+            });
+          }
+
+          if (existingIndex < 0) {
             functionCalls.push(nextCall);
             return;
           }
 
-          const existing = functionCalls[existingIndex] as unknown as { thought_signature?: unknown };
-          const hasExistingSignature = typeof existing?.thought_signature === "string" && existing.thought_signature.length > 0;
-          const hasNextSignature =
-            typeof (nextCall as unknown as { thought_signature?: unknown }).thought_signature === "string" &&
-            ((nextCall as unknown as { thought_signature?: string }).thought_signature?.length ?? 0) > 0;
-          if (!hasExistingSignature && hasNextSignature) {
-            functionCalls[existingIndex] = nextCall;
+          const merged = {
+            ...(functionCalls[existingIndex] as unknown as Record<string, unknown>)
+          } as Record<string, unknown>;
+          if (!merged.id && typeof callId === "string" && callId.trim().length > 0) {
+            merged.id = callId;
           }
+
+          const nextSignature =
+            typeof (nextCall as unknown as { thought_signature?: unknown }).thought_signature === "string" &&
+              ((nextCall as unknown as { thought_signature?: string }).thought_signature?.length ?? 0) > 0
+              ? (nextCall as unknown as { thought_signature: string }).thought_signature
+              : undefined;
+          if (nextSignature) {
+            merged.thought_signature = nextSignature;
+          }
+
+          const mergedArgs =
+            merged.args && typeof merged.args === "object" && !Array.isArray(merged.args)
+              ? JSON.stringify(merged.args)
+              : "{}";
+          if (mergedArgs === "{}" && normalizedArgs !== "{}") {
+            merged.args = args;
+          }
+          if (!("args" in merged)) {
+            merged.args = args;
+          }
+
+          functionCalls[existingIndex] = merged as unknown as FunctionCall;
         });
 
         const nextUsage = this.toUsageMetadata(payload.usageMetadata ?? payload.usage_metadata);

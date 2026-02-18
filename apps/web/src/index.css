@@ -2506,7 +2506,7 @@ button:disabled {
   background: var(--card);
   border-top: 1px solid var(--border-soft);
   position: sticky;
-  bottom: 0;
+  bottom: 4px;
   z-index: 4;
 }
 
@@ -3086,7 +3086,7 @@ body.keyboard-open .chat-input-container {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: var(--keyboard-gap);
+  bottom: calc(var(--keyboard-gap) + 4px);
   z-index: 6;
   padding: 4px 6px 4px;
   border-top: 1px solid var(--border-soft);
@@ -4397,7 +4397,7 @@ body.keyboard-open .pull-to-refresh-container {
   }
 
   body.keyboard-open .chat-input-container {
-    bottom: var(--keyboard-gap);
+    bottom: calc(var(--keyboard-gap) + 4px);
     padding-bottom: 4px;
   }
 }
