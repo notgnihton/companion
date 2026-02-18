@@ -2276,6 +2276,239 @@ function addGeminiUsage(
   };
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function normalizeChatSnippet(value: string, maxLength = 260): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength)}...`;
+}
+
+function truncateText(value: string, maxLength: number): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return trimmed.length <= maxLength ? trimmed : `${trimmed.slice(0, maxLength - 3)}...`;
+}
+
+function buildCompressionTranscript(messages: ChatMessage[]): string {
+  if (messages.length === 0) {
+    return "(no messages)";
+  }
+
+  return messages
+    .map((message) => {
+      const roleLabel = message.role === "assistant" ? "assistant" : "user";
+      return `[${message.timestamp}] ${roleLabel}: ${normalizeChatSnippet(message.content, 420)}`;
+    })
+    .join("\n");
+}
+
+function buildHeuristicContextCompression(messages: ChatMessage[], targetSummaryChars: number): string {
+  if (messages.length === 0) {
+    return "No chat context available yet.";
+  }
+
+  const recentUserPoints = messages
+    .filter((message) => message.role === "user")
+    .slice(-8)
+    .map((message) => normalizeChatSnippet(message.content, 180))
+    .filter((value) => value.length > 0);
+
+  const recentAssistantPoints = messages
+    .filter((message) => message.role === "assistant")
+    .slice(-6)
+    .map((message) => normalizeChatSnippet(message.content, 180))
+    .filter((value) => value.length > 0);
+
+  const lines: string[] = ["Compressed context snapshot:", "", "User focus:"];
+  if (recentUserPoints.length === 0) {
+    lines.push("- No explicit user requests captured.");
+  } else {
+    recentUserPoints.forEach((point) => lines.push(`- ${point}`));
+  }
+
+  lines.push("", "Recent assistant guidance:");
+  if (recentAssistantPoints.length === 0) {
+    lines.push("- No assistant responses captured.");
+  } else {
+    recentAssistantPoints.forEach((point) => lines.push(`- ${point}`));
+  }
+
+  const summary = lines.join("\n");
+  return summary.length <= targetSummaryChars ? summary : `${summary.slice(0, targetSummaryChars - 3)}...`;
+}
+
+export interface CompressChatContextOptions {
+  now?: Date;
+  geminiClient?: GeminiClient;
+  maxMessages?: number;
+  preserveRecentMessages?: number;
+  targetSummaryChars?: number;
+}
+
+export interface CompressChatContextResult {
+  summary: string;
+  sourceMessageCount: number;
+  compressedMessageCount: number;
+  preservedMessageCount: number;
+  fromTimestamp?: string;
+  toTimestamp?: string;
+  usedModelMode: "live" | "standard" | "fallback";
+}
+
+export async function compressChatContext(
+  store: RuntimeStore,
+  options: CompressChatContextOptions = {}
+): Promise<CompressChatContextResult> {
+  const now = options.now ?? new Date();
+  const maxMessages = clampNumber(options.maxMessages ?? 180, 10, 500);
+  const preserveRecentMessages = clampNumber(options.preserveRecentMessages ?? 16, 0, 100);
+  const targetSummaryChars = clampNumber(options.targetSummaryChars ?? 2800, 300, 12000);
+  const allMessages = store.getRecentChatMessages(maxMessages);
+
+  if (allMessages.length === 0) {
+    return {
+      summary: "No chat history available yet.",
+      sourceMessageCount: 0,
+      compressedMessageCount: 0,
+      preservedMessageCount: 0,
+      usedModelMode: "fallback"
+    };
+  }
+
+  const compressionBoundary = Math.max(0, allMessages.length - preserveRecentMessages);
+  const compressibleMessages = allMessages.slice(0, compressionBoundary);
+  const preservedMessages = allMessages.slice(compressionBoundary);
+  const summarySource = compressibleMessages.length > 0 ? compressibleMessages : allMessages;
+
+  if (summarySource.length === 0) {
+    return {
+      summary: "No older context to compress yet.",
+      sourceMessageCount: allMessages.length,
+      compressedMessageCount: 0,
+      preservedMessageCount: preservedMessages.length,
+      usedModelMode: "fallback"
+    };
+  }
+
+  const transcript = buildCompressionTranscript(summarySource);
+  const pendingActions = store.getPendingChatActions(now).slice(0, 5);
+  const pendingActionContext =
+    pendingActions.length === 0
+      ? "No pending explicit confirmation actions."
+      : pendingActions
+          .map((action) => `- ${action.summary} (id: ${action.id}, expires: ${action.expiresAt})`)
+          .join("\n");
+
+  const systemInstruction = [
+    "You compress chat context for future model turns.",
+    "Output plain text only.",
+    "Write concise bullets that preserve only durable, user-specific facts.",
+    "Keep concrete commitments, dates, deadlines, constraints, and preferences.",
+    "Avoid fluff and avoid repeating conversational filler.",
+    `Keep output under ${targetSummaryChars} characters.`
+  ].join("\n");
+
+  const userPrompt = [
+    "Create a context compression summary with these exact sections:",
+    "1) Active objectives",
+    "2) Deadlines and dates",
+    "3) Commitments and habits",
+    "4) Preferences and constraints",
+    "5) Open loops",
+    "",
+    "Rules:",
+    "- Use '-' bullets under each section",
+    "- If unknown, write '- none'",
+    "- Keep it factual and actionable",
+    "",
+    "Pending actions:",
+    pendingActionContext,
+    "",
+    "Conversation transcript to compress:",
+    transcript
+  ].join("\n");
+
+  const gemini = options.geminiClient ?? getGeminiClient();
+  let modelSummary: string | null = null;
+  let usedModelMode: CompressChatContextResult["usedModelMode"] = "fallback";
+
+  const maybeLiveClient = gemini as GeminiClient & {
+    generateLiveChatResponse?: (request: {
+      messages: GeminiMessage[];
+      systemInstruction?: string;
+      timeoutMs?: number;
+    }) => Promise<{ text: string }>;
+  };
+
+  if (config.GEMINI_USE_LIVE_API && typeof maybeLiveClient.generateLiveChatResponse === "function") {
+    try {
+      const liveResponse = await maybeLiveClient.generateLiveChatResponse({
+        messages: [
+          {
+            role: "user",
+            parts: [{ text: userPrompt }]
+          }
+        ],
+        systemInstruction
+      });
+
+      const liveText = truncateText(liveResponse.text ?? "", targetSummaryChars);
+      if (liveText.length > 0) {
+        modelSummary = liveText;
+        usedModelMode = "live";
+      }
+    } catch {
+      // Fall through to standard model path.
+    }
+  }
+
+  if (!modelSummary) {
+    try {
+      const standardResponse = await gemini.generateChatResponse({
+        messages: [
+          {
+            role: "user",
+            parts: [{ text: userPrompt }]
+          }
+        ],
+        systemInstruction
+      });
+      const standardText = truncateText(standardResponse.text ?? "", targetSummaryChars);
+      if (standardText.length > 0) {
+        modelSummary = standardText;
+        usedModelMode = "standard";
+      }
+    } catch (error) {
+      if (!(error instanceof GeminiError) && !(error instanceof RateLimitError)) {
+        throw error;
+      }
+      modelSummary = null;
+    }
+  }
+
+  const summary = modelSummary ?? buildHeuristicContextCompression(summarySource, targetSummaryChars);
+
+  return {
+    summary,
+    sourceMessageCount: allMessages.length,
+    compressedMessageCount: summarySource.length,
+    preservedMessageCount: preservedMessages.length,
+    fromTimestamp: summarySource[0]?.timestamp,
+    toTimestamp: summarySource[summarySource.length - 1]?.timestamp,
+    usedModelMode
+  };
+}
+
 export interface SendChatResult {
   reply: string;
   userMessage: ChatMessage;

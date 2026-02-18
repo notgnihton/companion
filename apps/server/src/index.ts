@@ -18,7 +18,7 @@ import {
 import { OrchestratorRuntime } from "./orchestrator.js";
 import { EmailDigestService } from "./email-digest.js";
 import { getVapidPublicKey, hasStaticVapidKeys, sendPushNotification } from "./push.js";
-import { sendChatMessage, GeminiError, RateLimitError } from "./chat.js";
+import { sendChatMessage, compressChatContext, GeminiError, RateLimitError } from "./chat.js";
 import { getGeminiClient } from "./gemini.js";
 import { RuntimeStore } from "./store.js";
 import { fetchTPSchedule, diffScheduleEvents } from "./tp-sync.js";
@@ -665,6 +665,34 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
+app.post("/api/chat/context/compress", async (req, res) => {
+  const parsed = chatContextCompressionSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid chat context compression payload", issues: parsed.error.issues });
+  }
+
+  try {
+    const result = await compressChatContext(store, {
+      maxMessages: parsed.data.maxMessages,
+      preserveRecentMessages: parsed.data.preserveRecentMessages,
+      targetSummaryChars: parsed.data.targetSummaryChars
+    });
+
+    return res.json(result);
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return res.status(429).json({ error: error.message });
+    }
+
+    if (error instanceof GeminiError) {
+      return res.status(error.statusCode ?? 500).json({ error: error.message });
+    }
+
+    return res.status(500).json({ error: "Chat context compression failed" });
+  }
+});
+
 app.get("/api/chat/history", (req, res) => {
   const parsed = chatHistoryQuerySchema.safeParse(req.query ?? {});
 
@@ -861,6 +889,12 @@ const chatRequestSchema = z.object({
     path: ["message"]
   }
 );
+
+const chatContextCompressionSchema = z.object({
+  maxMessages: z.coerce.number().int().min(10).max(500).optional(),
+  preserveRecentMessages: z.coerce.number().int().min(0).max(100).optional(),
+  targetSummaryChars: z.coerce.number().int().min(300).max(12000).optional()
+});
 
 const chatHistoryQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional(),

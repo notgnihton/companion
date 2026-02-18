@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { RuntimeStore } from "./store.js";
-import { sendChatMessage, RateLimitError } from "./chat.js";
+import { sendChatMessage, compressChatContext, RateLimitError } from "./chat.js";
 import type { GeminiClient } from "./gemini.js";
 
 describe("chat service", () => {
@@ -1139,5 +1139,64 @@ describe("chat service", () => {
     const history = store.getRecentChatMessages(2);
     const user = history.find((message) => message.role === "user");
     expect(user?.metadata?.attachments).toEqual([imageAttachment]);
+  });
+
+  it("compresses older chat context via Gemini", async () => {
+    store.recordChatMessage("user", "Need to finish DAT560 lab by Thursday evening.");
+    store.recordChatMessage("assistant", "Plan two focused blocks for DAT560 and one review block.");
+    store.recordChatMessage("user", "Latest short ping");
+    store.recordChatMessage("assistant", "Latest short pong");
+
+    generateChatResponse = vi.fn().mockResolvedValue({
+      text: "1) Active objectives\n- Finish DAT560 lab\n2) Deadlines and dates\n- DAT560 lab by Thursday evening",
+      finishReason: "stop"
+    });
+    fakeGemini = {
+      generateChatResponse
+    } as unknown as GeminiClient;
+
+    const result = await compressChatContext(store, {
+      geminiClient: fakeGemini,
+      maxMessages: 50,
+      preserveRecentMessages: 2,
+      targetSummaryChars: 2200
+    });
+
+    expect(result.usedModelMode).toBe("standard");
+    expect(result.compressedMessageCount).toBe(2);
+    expect(result.preservedMessageCount).toBe(2);
+    expect(result.summary).toContain("Active objectives");
+    expect(generateChatResponse).toHaveBeenCalledTimes(1);
+
+    const request = generateChatResponse.mock.calls[0][0] as {
+      messages: Array<{ parts: Array<{ text?: string }> }>;
+    };
+    const promptText = request.messages[0]?.parts[0]?.text ?? "";
+    expect(promptText).toContain("Conversation transcript to compress");
+    expect(promptText).toContain("Need to finish DAT560 lab");
+    expect(promptText).not.toContain("Latest short ping");
+  });
+
+  it("falls back to heuristic compression when model call fails", async () => {
+    store.recordChatMessage("user", "I want to keep a daily study sprint after dinner.");
+    store.recordChatMessage("assistant", "Great, we can track this as a habit with check-ins.");
+    store.recordChatMessage("user", "Also keep gym at 07:00 before class.");
+
+    generateChatResponse = vi.fn().mockRejectedValue(new RateLimitError("Temporary 429"));
+    fakeGemini = {
+      generateChatResponse
+    } as unknown as GeminiClient;
+
+    const result = await compressChatContext(store, {
+      geminiClient: fakeGemini,
+      maxMessages: 30,
+      preserveRecentMessages: 0,
+      targetSummaryChars: 1800
+    });
+
+    expect(result.usedModelMode).toBe("fallback");
+    expect(result.summary).toContain("Compressed context snapshot");
+    expect(result.summary).toContain("daily study sprint");
+    expect(result.summary).toContain("gym at 07:00");
   });
 });
