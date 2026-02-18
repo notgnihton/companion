@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   functionDeclarations,
   handleGetSchedule,
+  handleGetRoutinePresets,
   handleGetDeadlines,
   handleSearchJournal,
   handleGetEmails,
@@ -27,6 +28,8 @@ import {
   handleQueueDeadlineAction,
   handleQueueScheduleBlock,
   handleQueueUpdateScheduleBlock,
+  handleQueueCreateRoutinePreset,
+  handleQueueUpdateRoutinePreset,
   handleCreateJournalEntry,
   executePendingChatAction,
   executeFunctionCall
@@ -42,14 +45,20 @@ describe("gemini-tools", () => {
   });
 
   describe("functionDeclarations", () => {
-    it("should define 27 function declarations", () => {
-      expect(functionDeclarations).toHaveLength(27);
+    it("should define 30 function declarations", () => {
+      expect(functionDeclarations).toHaveLength(30);
     });
 
     it("should include getSchedule function", () => {
       const getSchedule = functionDeclarations.find((f) => f.name === "getSchedule");
       expect(getSchedule).toBeDefined();
       expect(getSchedule?.description).toContain("schedule");
+    });
+
+    it("should include routine preset functions", () => {
+      expect(functionDeclarations.find((f) => f.name === "getRoutinePresets")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "queueCreateRoutinePreset")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "queueUpdateRoutinePreset")).toBeDefined();
     });
 
     it("should include getDeadlines function", () => {
@@ -109,6 +118,8 @@ describe("gemini-tools", () => {
       expect(functionDeclarations.find((f) => f.name === "queueDeadlineAction")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "queueScheduleBlock")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "queueUpdateScheduleBlock")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "queueCreateRoutinePreset")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "queueUpdateRoutinePreset")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "createJournalEntry")).toBeDefined();
     });
   });
@@ -135,6 +146,23 @@ describe("gemini-tools", () => {
     it("should return empty array if no events today", () => {
       const result = handleGetSchedule(store);
       expect(result).toEqual([]);
+    });
+  });
+
+  describe("handleGetRoutinePresets", () => {
+    it("returns configured routine presets", () => {
+      store.createRoutinePreset({
+        title: "Morning gym",
+        preferredStartTime: "07:00",
+        durationMinutes: 60,
+        workload: "medium",
+        weekdays: [1, 3, 5],
+        active: true
+      });
+
+      const result = handleGetRoutinePresets(store);
+      expect(result).toHaveLength(1);
+      expect(result[0]?.title).toBe("Morning gym");
     });
   });
 
@@ -683,6 +711,42 @@ describe("gemini-tools", () => {
       expect(store.getPendingChatActions()).toHaveLength(1);
     });
 
+    it("queues routine preset create and update actions", () => {
+      const createResult = handleQueueCreateRoutinePreset(store, {
+        title: "Morning gym",
+        preferredStartTime: "07:00",
+        durationMinutes: 60,
+        weekdays: [1, 3, 5]
+      });
+
+      expect(createResult).toHaveProperty("requiresConfirmation", true);
+      if (!("pendingAction" in createResult)) {
+        throw new Error("Expected pendingAction in routine create result");
+      }
+      expect(createResult.pendingAction.actionType).toBe("create-routine-preset");
+
+      const preset = store.createRoutinePreset({
+        title: "Nightly review",
+        preferredStartTime: "21:00",
+        durationMinutes: 45,
+        workload: "low",
+        weekdays: [0, 1, 2, 3, 4, 5, 6],
+        active: true
+      });
+
+      const updateResult = handleQueueUpdateRoutinePreset(store, {
+        presetId: preset.id,
+        preferredStartTime: "20:30",
+        active: false
+      });
+
+      expect(updateResult).toHaveProperty("requiresConfirmation", true);
+      if (!("pendingAction" in updateResult)) {
+        throw new Error("Expected pendingAction in routine update result");
+      }
+      expect(updateResult.pendingAction.actionType).toBe("update-routine-preset");
+    });
+
     it("creates a journal entry immediately", () => {
       const result = handleCreateJournalEntry(store, {
         content: "Draft reflection about today's lab."
@@ -761,6 +825,37 @@ describe("gemini-tools", () => {
       expect(result.lecture?.startTime).toContain("T08:00:00.000Z");
       expect(result.lecture?.durationMinutes).toBe(75);
     });
+
+    it("executes queued routine preset create and update", () => {
+      const createPending = store.createPendingChatAction({
+        actionType: "create-routine-preset",
+        summary: "Create morning gym preset",
+        payload: {
+          title: "Morning gym",
+          preferredStartTime: "07:00",
+          durationMinutes: 60,
+          workload: "medium",
+          weekdays: [1, 2, 3, 4, 5]
+        }
+      });
+
+      const created = executePendingChatAction(createPending, store);
+      expect(created.success).toBe(true);
+      expect(created.routinePreset?.title).toBe("Morning gym");
+
+      const updatePending = store.createPendingChatAction({
+        actionType: "update-routine-preset",
+        summary: "Update morning gym preset",
+        payload: {
+          presetId: created.routinePreset?.id,
+          preferredStartTime: "08:00"
+        }
+      });
+
+      const updated = executePendingChatAction(updatePending, store);
+      expect(updated.success).toBe(true);
+      expect(updated.routinePreset?.preferredStartTime).toBe("08:00");
+    });
   });
 
   describe("executeFunctionCall", () => {
@@ -768,6 +863,13 @@ describe("gemini-tools", () => {
       const result = executeFunctionCall("getSchedule", {}, store);
 
       expect(result.name).toBe("getSchedule");
+      expect(Array.isArray(result.response)).toBe(true);
+    });
+
+    it("should execute getRoutinePresets function", () => {
+      const result = executeFunctionCall("getRoutinePresets", {}, store);
+
+      expect(result.name).toBe("getRoutinePresets");
       expect(Array.isArray(result.response)).toBe(true);
     });
 
@@ -995,6 +1097,35 @@ describe("gemini-tools", () => {
 
       expect(result.name).toBe("queueUpdateScheduleBlock");
       expect(result.response).toHaveProperty("requiresConfirmation", true);
+    });
+
+    it("should execute routine preset queue functions", () => {
+      const createResult = executeFunctionCall(
+        "queueCreateRoutinePreset",
+        { title: "Morning gym", preferredStartTime: "07:00", durationMinutes: 60 },
+        store
+      );
+
+      expect(createResult.name).toBe("queueCreateRoutinePreset");
+      expect(createResult.response).toHaveProperty("requiresConfirmation", true);
+
+      const preset = store.createRoutinePreset({
+        title: "Nightly review",
+        preferredStartTime: "21:00",
+        durationMinutes: 45,
+        workload: "low",
+        weekdays: [0, 1, 2, 3, 4, 5, 6],
+        active: true
+      });
+
+      const updateResult = executeFunctionCall(
+        "queueUpdateRoutinePreset",
+        { presetId: preset.id, preferredStartTime: "20:30" },
+        store
+      );
+
+      expect(updateResult.name).toBe("queueUpdateRoutinePreset");
+      expect(updateResult.response).toHaveProperty("requiresConfirmation", true);
     });
 
     it("should execute createJournalEntry function", () => {

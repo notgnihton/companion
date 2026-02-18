@@ -37,6 +37,8 @@ export type ChatActionType =
   | "snooze-deadline"
   | "create-schedule-block"
   | "update-schedule-block"
+  | "create-routine-preset"
+  | "update-routine-preset"
   | "create-journal-draft"
   | "create-habit"
   | "update-habit"
@@ -248,6 +250,18 @@ export interface LectureEvent {
   workload: "low" | "medium" | "high";
   recurrence?: RecurrenceRule;
   recurrenceParentId?: string;
+}
+
+export interface RoutinePreset {
+  id: string;
+  title: string;
+  preferredStartTime: string; // HH:mm (24h)
+  durationMinutes: number;
+  workload: "low" | "medium" | "high";
+  weekdays: number[]; // 0=Sunday ... 6=Saturday
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Deadline {

@@ -10,12 +10,14 @@ import {
   HabitWithStatus,
   JournalEntry,
   LectureEvent,
+  RoutinePreset,
   NutritionDailySummary,
   NutritionCustomFood,
   NutritionMeal,
   NutritionMealPlanBlock,
   NutritionMealType
 } from "./types.js";
+import { applyRoutinePresetPlacements } from "./routine-presets.js";
 
 /**
  * Function declarations for Gemini function calling.
@@ -27,6 +29,16 @@ export const functionDeclarations: FunctionDeclaration[] = [
     name: "getSchedule",
     description:
       "Get today's lecture schedule for the user. Returns list of lectures with times, durations, and course names. Use this when user asks about today's schedule, what lectures they have, or when they're free today.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: "getRoutinePresets",
+    description:
+      "Get reusable routine presets that auto-place into free schedule blocks (for example gym at 07:00 or nightly review at 21:00).",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {},
@@ -648,6 +660,86 @@ export const functionDeclarations: FunctionDeclaration[] = [
     }
   },
   {
+    name: "queueCreateRoutinePreset",
+    description:
+      "Queue creation of a reusable routine preset that REQUIRES explicit user confirmation before execution.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        title: {
+          type: SchemaType.STRING,
+          description: "Routine title, for example 'Morning gym'."
+        },
+        preferredStartTime: {
+          type: SchemaType.STRING,
+          description: "Preferred local 24h time in HH:mm format, for example 07:00."
+        },
+        durationMinutes: {
+          type: SchemaType.NUMBER,
+          description: "Routine duration in minutes (default: 60)."
+        },
+        workload: {
+          type: SchemaType.STRING,
+          description: "Workload level: low, medium, high (default: medium)."
+        },
+        weekdays: {
+          type: SchemaType.ARRAY,
+          description: "Optional weekdays to place routine: numbers 0-6 (Sun-Sat). Defaults to all days.",
+          items: {
+            type: SchemaType.NUMBER
+          }
+        }
+      },
+      required: ["title", "preferredStartTime"]
+    }
+  },
+  {
+    name: "queueUpdateRoutinePreset",
+    description:
+      "Queue updates to an existing routine preset that REQUIRES explicit user confirmation before execution.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        presetId: {
+          type: SchemaType.STRING,
+          description: "Routine preset ID (preferred)."
+        },
+        presetTitle: {
+          type: SchemaType.STRING,
+          description: "Routine preset title hint when ID is unknown."
+        },
+        title: {
+          type: SchemaType.STRING,
+          description: "Updated routine title."
+        },
+        preferredStartTime: {
+          type: SchemaType.STRING,
+          description: "Updated preferred 24h start time (HH:mm)."
+        },
+        durationMinutes: {
+          type: SchemaType.NUMBER,
+          description: "Updated duration in minutes."
+        },
+        workload: {
+          type: SchemaType.STRING,
+          description: "Updated workload level: low, medium, high."
+        },
+        weekdays: {
+          type: SchemaType.ARRAY,
+          description: "Updated weekdays list as numbers 0-6 (Sun-Sat).",
+          items: {
+            type: SchemaType.NUMBER
+          }
+        },
+        active: {
+          type: SchemaType.BOOLEAN,
+          description: "Set false to pause placements for this preset."
+        }
+      },
+      required: []
+    }
+  },
+  {
     name: "createJournalEntry",
     description:
       "Create and save a journal entry immediately. Use this when the user asks to save something to their journal right now.",
@@ -688,6 +780,13 @@ export function handleGetSchedule(store: RuntimeStore, _args: Record<string, unk
     .filter((event) => isSameDay(new Date(event.startTime), now));
 
   return todaySchedule;
+}
+
+export function handleGetRoutinePresets(
+  store: RuntimeStore,
+  _args: Record<string, unknown> = {}
+): RoutinePreset[] {
+  return store.getRoutinePresets();
 }
 
 export function handleGetDeadlines(
@@ -936,6 +1035,96 @@ function resolveScheduleTarget(
       error: `Schedule title is ambiguous. Matches: ${matches
         .slice(0, 4)
         .map((event) => event.title)
+        .join(", ")}`
+    };
+  }
+  return matches[0]!;
+}
+
+function parseRoutinePreferredStartTime(value: unknown): string | null {
+  const raw = asTrimmedString(value);
+  if (!raw) {
+    return null;
+  }
+
+  if (/^([01]?\d|2[0-3]):([0-5]\d)$/.test(raw)) {
+    const [hoursRaw, minutesRaw] = raw.split(":");
+    const hours = hoursRaw.padStart(2, "0");
+    const minutes = minutesRaw.padStart(2, "0");
+    return `${hours}:${minutes}`;
+  }
+
+  const parsedDate = new Date(raw);
+  if (!Number.isNaN(parsedDate.getTime())) {
+    const hours = String(parsedDate.getUTCHours()).padStart(2, "0");
+    const minutes = String(parsedDate.getUTCMinutes()).padStart(2, "0");
+    return `${hours}:${minutes}`;
+  }
+
+  return null;
+}
+
+function parseRoutineWeekdays(value: unknown): number[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const weekdays = value
+    .map((entry) => {
+      if (typeof entry === "number") {
+        return entry;
+      }
+      if (typeof entry === "string" && entry.trim().length > 0) {
+        return Number(entry);
+      }
+      return Number.NaN;
+    })
+    .filter((entry) => Number.isInteger(entry) && entry >= 0 && entry <= 6)
+    .map((entry) => Number(entry));
+
+  if (weekdays.length === 0) {
+    return null;
+  }
+
+  return Array.from(new Set(weekdays)).sort((a, b) => a - b);
+}
+
+function resolveRoutinePresetTarget(
+  store: RuntimeStore,
+  args: Record<string, unknown>
+): RoutinePreset | { error: string } {
+  const presetId = asTrimmedString(args.presetId);
+  if (presetId) {
+    const byId = store.getRoutinePresetById(presetId);
+    if (!byId) {
+      return { error: `Routine preset not found: ${presetId}` };
+    }
+    return byId;
+  }
+
+  const presetTitle = asTrimmedString(args.presetTitle);
+  const presets = store.getRoutinePresets();
+  if (presets.length === 0) {
+    return { error: "No routine presets are configured yet." };
+  }
+
+  if (!presetTitle) {
+    if (presets.length === 1) {
+      return presets[0];
+    }
+    return { error: "Provide presetId or presetTitle when multiple routine presets exist." };
+  }
+
+  const needle = normalizeSearchText(presetTitle);
+  const matches = presets.filter((preset) => normalizeSearchText(preset.title).includes(needle));
+  if (matches.length === 0) {
+    return { error: `No routine preset matched "${presetTitle}".` };
+  }
+  if (matches.length > 1) {
+    return {
+      error: `Routine title is ambiguous. Matches: ${matches
+        .slice(0, 4)
+        .map((preset) => preset.title)
         .join(", ")}`
     };
   }
@@ -1717,6 +1906,7 @@ export interface PendingActionExecutionResult {
   message: string;
   deadline?: Deadline;
   lecture?: LectureEvent;
+  routinePreset?: RoutinePreset;
   journal?: JournalEntry;
   habit?: HabitWithStatus;
   goal?: GoalWithStatus;
@@ -1974,6 +2164,81 @@ export function handleQueueUpdateScheduleBlock(
   return toPendingActionResponse(pending, "Action queued. Ask user for explicit confirmation before executing.");
 }
 
+export function handleQueueCreateRoutinePreset(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): PendingActionToolResponse | { error: string } {
+  const title = asTrimmedString(args.title);
+  const preferredStartTime = parseRoutinePreferredStartTime(args.preferredStartTime);
+  const durationMinutes = clampNumber(args.durationMinutes, 60, 15, 240);
+  const weekdays = parseRoutineWeekdays(args.weekdays) ?? [0, 1, 2, 3, 4, 5, 6];
+  const workloadRaw = asTrimmedString(args.workload)?.toLowerCase();
+  const workload: RoutinePreset["workload"] =
+    workloadRaw === "low" || workloadRaw === "medium" || workloadRaw === "high" ? workloadRaw : "medium";
+
+  if (!title || !preferredStartTime) {
+    return { error: "title and preferredStartTime (HH:mm) are required." };
+  }
+
+  const pending = store.createPendingChatAction({
+    actionType: "create-routine-preset",
+    summary: `Create routine preset "${title}" at ${preferredStartTime}`,
+    payload: {
+      title,
+      preferredStartTime,
+      durationMinutes,
+      workload,
+      weekdays,
+      active: true
+    }
+  });
+
+  return toPendingActionResponse(pending, "Action queued. Ask user for explicit confirmation before executing.");
+}
+
+export function handleQueueUpdateRoutinePreset(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): PendingActionToolResponse | { error: string } {
+  const resolved = resolveRoutinePresetTarget(store, args);
+  if ("error" in resolved) {
+    return resolved;
+  }
+
+  const nextTitle = asTrimmedString(args.title);
+  const nextPreferredStartTime = parseRoutinePreferredStartTime(args.preferredStartTime);
+  const nextDurationMinutes = typeof args.durationMinutes === "number"
+    ? clampNumber(args.durationMinutes, resolved.durationMinutes, 15, 240)
+    : undefined;
+  const nextWeekdays = parseRoutineWeekdays(args.weekdays) ?? undefined;
+  const workloadRaw = asTrimmedString(args.workload)?.toLowerCase();
+  const nextWorkload: RoutinePreset["workload"] | undefined =
+    workloadRaw === "low" || workloadRaw === "medium" || workloadRaw === "high" ? workloadRaw : undefined;
+  const nextActive = typeof args.active === "boolean" ? args.active : undefined;
+
+  if (!nextTitle && !nextPreferredStartTime && !nextDurationMinutes && !nextWorkload && !nextWeekdays && typeof nextActive !== "boolean") {
+    return {
+      error: "Provide at least one field to update: title, preferredStartTime, durationMinutes, workload, weekdays, or active."
+    };
+  }
+
+  const pending = store.createPendingChatAction({
+    actionType: "update-routine-preset",
+    summary: `Update routine preset "${resolved.title}"`,
+    payload: {
+      presetId: resolved.id,
+      ...(nextTitle ? { title: nextTitle } : {}),
+      ...(nextPreferredStartTime ? { preferredStartTime: nextPreferredStartTime } : {}),
+      ...(typeof nextDurationMinutes === "number" ? { durationMinutes: nextDurationMinutes } : {}),
+      ...(nextWorkload ? { workload: nextWorkload } : {}),
+      ...(nextWeekdays ? { weekdays: nextWeekdays } : {}),
+      ...(typeof nextActive === "boolean" ? { active: nextActive } : {})
+    }
+  });
+
+  return toPendingActionResponse(pending, "Action queued. Ask user for explicit confirmation before executing.");
+}
+
 export function handleCreateJournalEntry(
   store: RuntimeStore,
   args: Record<string, unknown> = {}
@@ -2196,6 +2461,115 @@ export function executePendingChatAction(
         success: true,
         message: `Updated schedule block "${lecture.title}".`,
         lecture
+      };
+    }
+    case "create-routine-preset": {
+      const title = asTrimmedString(pendingAction.payload.title);
+      const preferredStartTime = parseRoutinePreferredStartTime(pendingAction.payload.preferredStartTime);
+      if (!title || !preferredStartTime) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Invalid routine preset payload."
+        };
+      }
+
+      const durationMinutes = clampNumber(pendingAction.payload.durationMinutes, 60, 15, 240);
+      const weekdays = parseRoutineWeekdays(pendingAction.payload.weekdays) ?? [0, 1, 2, 3, 4, 5, 6];
+      const workloadRaw = asTrimmedString(pendingAction.payload.workload)?.toLowerCase();
+      const workload: RoutinePreset["workload"] =
+        workloadRaw === "low" || workloadRaw === "medium" || workloadRaw === "high" ? workloadRaw : "medium";
+      const active = typeof pendingAction.payload.active === "boolean" ? pendingAction.payload.active : true;
+
+      const routinePreset = store.createRoutinePreset({
+        title,
+        preferredStartTime,
+        durationMinutes,
+        workload,
+        weekdays,
+        active
+      });
+      const placement = applyRoutinePresetPlacements(store, { horizonDays: 7 });
+
+      return {
+        actionId: pendingAction.id,
+        actionType: pendingAction.actionType,
+        success: true,
+        message:
+          `Created routine preset "${routinePreset.title}" and placed ${placement.createdEvents} routine blocks ` +
+          `(cleared ${placement.clearedEvents}).`,
+        routinePreset
+      };
+    }
+    case "update-routine-preset": {
+      const presetId = asTrimmedString(pendingAction.payload.presetId);
+      if (!presetId) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Invalid routine preset update payload."
+        };
+      }
+
+      const patch: Partial<Omit<RoutinePreset, "id" | "createdAt" | "updatedAt">> = {};
+      const title = asTrimmedString(pendingAction.payload.title);
+      if (title) {
+        patch.title = title;
+      }
+
+      const preferredStartTime = parseRoutinePreferredStartTime(pendingAction.payload.preferredStartTime);
+      if (preferredStartTime) {
+        patch.preferredStartTime = preferredStartTime;
+      }
+
+      if (typeof pendingAction.payload.durationMinutes === "number") {
+        patch.durationMinutes = clampNumber(pendingAction.payload.durationMinutes, 60, 15, 240);
+      }
+
+      const weekdays = parseRoutineWeekdays(pendingAction.payload.weekdays);
+      if (weekdays) {
+        patch.weekdays = weekdays;
+      }
+
+      const workloadRaw = asTrimmedString(pendingAction.payload.workload)?.toLowerCase();
+      if (workloadRaw === "low" || workloadRaw === "medium" || workloadRaw === "high") {
+        patch.workload = workloadRaw;
+      }
+
+      if (typeof pendingAction.payload.active === "boolean") {
+        patch.active = pendingAction.payload.active;
+      }
+
+      if (Object.keys(patch).length === 0) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "No valid routine preset update fields were provided."
+        };
+      }
+
+      const routinePreset = store.updateRoutinePreset(presetId, patch);
+      if (!routinePreset) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Routine preset not found for update."
+        };
+      }
+
+      const placement = applyRoutinePresetPlacements(store, { horizonDays: 7 });
+      return {
+        actionId: pendingAction.id,
+        actionType: pendingAction.actionType,
+        success: true,
+        message:
+          `Updated routine preset "${routinePreset.title}" and placed ${placement.createdEvents} routine blocks ` +
+          `(cleared ${placement.clearedEvents}).`,
+        routinePreset
       };
     }
     case "create-journal-draft": {
@@ -2487,6 +2861,9 @@ export function executeFunctionCall(
     case "getSchedule":
       response = handleGetSchedule(store, args);
       break;
+    case "getRoutinePresets":
+      response = handleGetRoutinePresets(store, args);
+      break;
     case "getDeadlines":
       response = handleGetDeadlines(store, args);
       break;
@@ -2561,6 +2938,12 @@ export function executeFunctionCall(
       break;
     case "queueUpdateScheduleBlock":
       response = handleQueueUpdateScheduleBlock(store, args);
+      break;
+    case "queueCreateRoutinePreset":
+      response = handleQueueCreateRoutinePreset(store, args);
+      break;
+    case "queueUpdateRoutinePreset":
+      response = handleQueueUpdateRoutinePreset(store, args);
       break;
     case "createJournalEntry":
       response = handleCreateJournalEntry(store, args);

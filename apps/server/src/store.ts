@@ -15,6 +15,7 @@ import {
   JournalPhoto,
   JournalSyncPayload,
   LectureEvent,
+  RoutinePreset,
   Notification,
   EmailDigest,
   EmailDigestReason,
@@ -95,6 +96,7 @@ export class RuntimeStore {
   private readonly maxChatMessages = 500;
   private readonly maxJournalEntries = 100;
   private readonly maxScheduleEvents = 200;
+  private readonly maxRoutinePresets = 100;
   private readonly maxDeadlines = 200;
   private readonly maxHabits = 100;
   private readonly maxGoals = 100;
@@ -239,6 +241,19 @@ export class RuntimeStore {
         workload TEXT NOT NULL,
         recurrence TEXT,
         recurrenceParentId TEXT,
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
+      );
+
+      CREATE TABLE IF NOT EXISTS routine_presets (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        preferredStartTime TEXT NOT NULL,
+        durationMinutes INTEGER NOT NULL,
+        workload TEXT NOT NULL,
+        weekdays TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
         insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
       );
 
@@ -2158,6 +2173,172 @@ export class RuntimeStore {
   deleteScheduleEvent(id: string): boolean {
     const result = this.db.prepare("DELETE FROM schedule_events WHERE id = ?").run(id);
     return result.changes > 0;
+  }
+
+  createRoutinePreset(
+    entry: Omit<RoutinePreset, "id" | "createdAt" | "updatedAt">
+  ): RoutinePreset {
+    const now = nowIso();
+    const preset: RoutinePreset = {
+      id: makeId("routine"),
+      title: entry.title.trim(),
+      preferredStartTime: entry.preferredStartTime,
+      durationMinutes: Math.max(15, Math.round(entry.durationMinutes)),
+      workload: entry.workload,
+      weekdays: this.normalizeRoutineWeekdays(entry.weekdays),
+      active: entry.active,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    this.db
+      .prepare(
+        `INSERT INTO routine_presets
+          (id, title, preferredStartTime, durationMinutes, workload, weekdays, active, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        preset.id,
+        preset.title,
+        preset.preferredStartTime,
+        preset.durationMinutes,
+        preset.workload,
+        JSON.stringify(preset.weekdays),
+        preset.active ? 1 : 0,
+        preset.createdAt,
+        preset.updatedAt
+      );
+
+    const count = (this.db.prepare("SELECT COUNT(*) as count FROM routine_presets").get() as { count: number }).count;
+    if (count > this.maxRoutinePresets) {
+      this.db
+        .prepare(
+          `DELETE FROM routine_presets WHERE id IN (
+            SELECT id FROM routine_presets ORDER BY insertOrder ASC LIMIT ?
+          )`
+        )
+        .run(count - this.maxRoutinePresets);
+    }
+
+    return preset;
+  }
+
+  getRoutinePresets(): RoutinePreset[] {
+    const rows = this.db
+      .prepare("SELECT * FROM routine_presets ORDER BY active DESC, title ASC, insertOrder ASC")
+      .all() as Array<{
+      id: string;
+      title: string;
+      preferredStartTime: string;
+      durationMinutes: number;
+      workload: string;
+      weekdays: string;
+      active: number;
+      createdAt: string;
+      updatedAt: string;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      preferredStartTime: row.preferredStartTime,
+      durationMinutes: row.durationMinutes,
+      workload: row.workload as RoutinePreset["workload"],
+      weekdays: this.normalizeRoutineWeekdays(JSON.parse(row.weekdays)),
+      active: row.active === 1,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt
+    }));
+  }
+
+  getRoutinePresetById(id: string): RoutinePreset | null {
+    const row = this.db.prepare("SELECT * FROM routine_presets WHERE id = ?").get(id) as
+      | {
+          id: string;
+          title: string;
+          preferredStartTime: string;
+          durationMinutes: number;
+          workload: string;
+          weekdays: string;
+          active: number;
+          createdAt: string;
+          updatedAt: string;
+        }
+      | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      title: row.title,
+      preferredStartTime: row.preferredStartTime,
+      durationMinutes: row.durationMinutes,
+      workload: row.workload as RoutinePreset["workload"],
+      weekdays: this.normalizeRoutineWeekdays(JSON.parse(row.weekdays)),
+      active: row.active === 1,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt
+    };
+  }
+
+  updateRoutinePreset(
+    id: string,
+    patch: Partial<Omit<RoutinePreset, "id" | "createdAt" | "updatedAt">>
+  ): RoutinePreset | null {
+    const existing = this.getRoutinePresetById(id);
+    if (!existing) {
+      return null;
+    }
+
+    const next: RoutinePreset = {
+      ...existing,
+      ...patch,
+      title: typeof patch.title === "string" ? patch.title.trim() : existing.title,
+      preferredStartTime: patch.preferredStartTime ?? existing.preferredStartTime,
+      durationMinutes:
+        typeof patch.durationMinutes === "number"
+          ? Math.max(15, Math.round(patch.durationMinutes))
+          : existing.durationMinutes,
+      workload: patch.workload ?? existing.workload,
+      weekdays: patch.weekdays ? this.normalizeRoutineWeekdays(patch.weekdays) : existing.weekdays,
+      active: patch.active ?? existing.active,
+      updatedAt: nowIso()
+    };
+
+    this.db
+      .prepare(
+        `UPDATE routine_presets
+         SET title = ?, preferredStartTime = ?, durationMinutes = ?, workload = ?, weekdays = ?, active = ?, updatedAt = ?
+         WHERE id = ?`
+      )
+      .run(
+        next.title,
+        next.preferredStartTime,
+        next.durationMinutes,
+        next.workload,
+        JSON.stringify(next.weekdays),
+        next.active ? 1 : 0,
+        next.updatedAt,
+        id
+      );
+
+    return next;
+  }
+
+  private normalizeRoutineWeekdays(input: unknown): number[] {
+    const values = Array.isArray(input) ? input : [];
+    const normalized = values
+      .map((value) => (typeof value === "number" ? value : Number.NaN))
+      .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)
+      .map((value) => Number(value));
+
+    if (normalized.length === 0) {
+      return [0, 1, 2, 3, 4, 5, 6];
+    }
+
+    return Array.from(new Set(normalized)).sort((a, b) => a - b);
   }
 
   upsertScheduleEvents(
