@@ -101,7 +101,7 @@ async function initializeRuntimeStore(): Promise<RuntimePersistenceContext> {
   const store = new RuntimeStore(sqlitePath);
 
   await postgresSnapshotStore.persistSnapshot(store.serializeDatabase());
-  postgresSnapshotStore.startAutoSync(() => store.serializeDatabase(), 30_000);
+  postgresSnapshotStore.startAutoSync(() => store.serializeDatabase(), 5_000);
 
   return {
     store,
@@ -157,6 +157,8 @@ let githubOnDemandSyncInFlight: Promise<void> | null = null;
 let lastGithubOnDemandSyncAt = 0;
 const MAX_DAILY_SUMMARY_CACHE_DAYS = 45;
 const MAX_ANALYTICS_CACHE_ITEMS = 15;
+const DAILY_SUMMARY_MIN_REFRESH_MS = config.GROWTH_DAILY_SUMMARY_MIN_REFRESH_MINUTES * 60 * 1000;
+const ANALYTICS_COACH_MIN_REFRESH_MS = config.GROWTH_ANALYTICS_MIN_REFRESH_MINUTES * 60 * 1000;
 
 interface DailySummaryCacheEntry {
   signature: string;
@@ -186,6 +188,17 @@ function latestIso(values: string[]): string {
 function toDateMs(value: string): number | null {
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+function isCacheEntryFresh(generatedAt: string | undefined, minRefreshMs: number, nowMs: number): boolean {
+  if (!generatedAt) {
+    return false;
+  }
+  const generatedAtMs = toDateMs(generatedAt);
+  if (generatedAtMs === null) {
+    return false;
+  }
+  return nowMs - generatedAtMs < minRefreshMs;
 }
 
 function parseBooleanQueryFlag(value: unknown): boolean {
@@ -638,11 +651,17 @@ app.get("/api/analytics/coach", async (req, res) => {
   const forceRefresh = forceRefreshRaw === "1" || forceRefreshRaw === "true" || forceRefreshRaw === "yes";
   const periodDays = toAnalyticsPeriodDays(parsed.data.periodDays);
   const now = new Date();
+  const nowMs = now.getTime();
   const { cacheKey, signature } = buildAnalyticsCoachSignature(periodDays, now);
   const cached = analyticsCoachCache.get(cacheKey);
 
-  if (!forceRefresh && cached && cached.signature === signature) {
-    return res.json({ insight: cached.insight });
+  if (!forceRefresh && cached) {
+    if (isCacheEntryFresh(cached.insight.generatedAt, ANALYTICS_COACH_MIN_REFRESH_MS, nowMs)) {
+      return res.json({ insight: cached.insight });
+    }
+    if (cached.signature === signature) {
+      return res.json({ insight: cached.insight });
+    }
   }
 
   const insight = await generateAnalyticsCoachInsight(store, {
@@ -1691,11 +1710,17 @@ app.get("/api/journal/daily-summary", async (req, res) => {
   const forceRefresh = forceRefreshRaw === "1" || forceRefreshRaw === "true" || forceRefreshRaw === "yes";
 
   const dateKey = toDateKey(referenceDate);
+  const nowMs = Date.now();
   const signature = buildDailySummarySignature(dateKey);
   const cached = dailySummaryCache.get(dateKey);
 
-  if (!forceRefresh && cached && cached.signature === signature) {
-    return res.json({ summary: cached.summary });
+  if (!forceRefresh && cached) {
+    if (isCacheEntryFresh(cached.summary.generatedAt, DAILY_SUMMARY_MIN_REFRESH_MS, nowMs)) {
+      return res.json({ summary: cached.summary });
+    }
+    if (cached.signature === signature) {
+      return res.json({ summary: cached.summary });
+    }
   }
 
   const summary = await generateDailyJournalSummary(store, { now: referenceDate });
@@ -2910,6 +2935,7 @@ app.post("/api/social-media/sync", async (_req, res) => {
 app.get("/api/gemini/status", (_req, res) => {
   const geminiClient = getGeminiClient();
   const isConfigured = geminiClient.isConfigured();
+  const growthImageModel = geminiClient.getGrowthImageModel();
   const chatHistory = store.getChatHistory({ page: 1, pageSize: 1 });
   const lastRequestAt = chatHistory.messages.length > 0 
     ? chatHistory.messages[0]?.timestamp ?? null
@@ -2918,6 +2944,8 @@ app.get("/api/gemini/status", (_req, res) => {
   return res.json({
     apiConfigured: isConfigured,
     model: isConfigured ? config.GEMINI_LIVE_MODEL : "unknown",
+    growthImageModel: growthImageModel.configured,
+    growthImageModelResolved: growthImageModel.resolved,
     rateLimitRemaining: null,
     rateLimitSource: "provider",
     lastRequestAt,

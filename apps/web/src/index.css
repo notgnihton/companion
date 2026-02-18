@@ -1276,22 +1276,47 @@ button:disabled {
 }
 
 .daily-summary-panel {
-  border: 1px solid var(--border-soft);
-  background: var(--surface);
-  border-radius: 12px;
-  padding: 12px;
+  border: 1px solid rgba(122, 136, 188, 0.42);
+  background: linear-gradient(145deg, rgba(54, 86, 163, 0.28), rgba(90, 66, 154, 0.22));
+  border-radius: 14px;
+  padding: 14px;
   margin-bottom: 14px;
+  display: grid;
+  gap: 10px;
 }
 
 .daily-summary-meta {
   margin: 0 0 8px;
-  color: var(--muted);
+  color: color-mix(in srgb, var(--text) 72%, var(--muted));
   font-size: 0.85rem;
 }
 
 .daily-summary-text {
   margin: 0 0 8px;
   line-height: 1.5;
+}
+
+.daily-summary-visual {
+  margin: 0;
+  border: 1px solid rgba(146, 171, 237, 0.42);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(9, 18, 38, 0.72);
+}
+
+.daily-summary-visual img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.daily-summary-visual figcaption {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 0.76rem;
+  color: var(--muted);
+  background: rgba(4, 10, 24, 0.6);
 }
 
 .daily-summary-list {
@@ -1344,6 +1369,48 @@ button:disabled {
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
+}
+
+.habit-status-pill {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid var(--border-soft);
+  white-space: nowrap;
+}
+
+.habit-status-pill-done {
+  border-color: var(--ok-border);
+  background: rgba(125, 211, 168, 0.18);
+  color: var(--ok);
+}
+
+.habit-status-pill-pending {
+  border-color: color-mix(in srgb, var(--warn-border) 72%, var(--border-soft));
+  background: rgba(246, 195, 127, 0.14);
+  color: var(--warn);
+}
+
+.habit-card-automation-note {
+  margin: 8px 0 10px;
+  font-size: 0.84rem;
+  color: color-mix(in srgb, var(--text) 70%, var(--muted));
+}
+
+.habit-visual-progress {
+  width: 100%;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.habit-visual-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7dd3a8, #6ab8e5);
 }
 
 .pill-button {
@@ -1449,6 +1516,7 @@ button:disabled {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
+  justify-content: flex-end;
 }
 
 .habit-edit-form {
@@ -3457,6 +3525,24 @@ body.keyboard-open .pull-to-refresh-container {
   align-items: center;
 }
 
+.nutrition-tool-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nutrition-tool-header-actions button {
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  padding: 6px 10px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
 .nutrition-custom-food-header button {
   border: 1px solid var(--border-soft);
   border-radius: 9px;
@@ -4841,6 +4927,32 @@ label small.muted {
   gap: 10px;
 }
 
+.analytics-summary-hero {
+  grid-template-columns: minmax(0, 1fr);
+  background: linear-gradient(145deg, rgba(49, 84, 164, 0.28), rgba(95, 63, 156, 0.24));
+  border-color: rgba(130, 147, 201, 0.48);
+}
+
+.analytics-summary-content {
+  display: grid;
+  gap: 10px;
+}
+
+.analytics-visual {
+  margin: 0;
+  border: 1px solid rgba(146, 171, 237, 0.42);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(9, 18, 38, 0.72);
+}
+
+.analytics-visual img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
 .analytics-summary-card p {
   margin: 0;
   line-height: 1.45;
@@ -4888,6 +5000,11 @@ label small.muted {
 @media (min-width: 768px) {
   .analytics-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .analytics-summary-hero {
+    grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);
+    align-items: stretch;
   }
 }
 

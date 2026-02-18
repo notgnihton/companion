@@ -98,12 +98,19 @@ export function AnalyticsDashboard(): JSX.Element {
 
       {insight && (
         <>
-          <section className="analytics-summary-card">
-            <div className="analytics-summary-meta">
-              <span>{insight.source === "gemini" ? "Gemini insight" : "Fallback insight"}</span>
-              <span>{formatGeneratedAt(insight.generatedAt)}</span>
+          <section className="analytics-summary-card analytics-summary-hero">
+            {insight.visual && (
+              <figure className="analytics-visual">
+                <img src={insight.visual.dataUrl} alt={insight.visual.alt} loading="lazy" />
+              </figure>
+            )}
+            <div className="analytics-summary-content">
+              <div className="analytics-summary-meta">
+                <span>{insight.source === "gemini" ? "Gemini insight" : "Fallback insight"}</span>
+                <span>{formatGeneratedAt(insight.generatedAt)}</span>
+              </div>
+              <p>{insight.summary}</p>
             </div>
-            <p>{insight.summary}</p>
           </section>
 
           <section className="analytics-metrics-grid">

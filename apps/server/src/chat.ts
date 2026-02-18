@@ -751,7 +751,27 @@ function detectHabitGoalAutocaptureSuggestion(
   };
 }
 
-function buildFunctionCallingSystemInstruction(userName: string): string {
+function buildHabitGoalNudgeContext(store: RuntimeStore): string {
+  const habits = store.getHabitsWithStatus();
+  const goals = store.getGoalsWithStatus();
+  const pendingHabits = habits.filter((habit) => !habit.todayCompleted);
+  const pendingGoals = goals.filter((goal) => !goal.todayCompleted);
+  const pendingHabitNames = pendingHabits.slice(0, 3).map((habit) => habit.name);
+  const pendingGoalTitles = pendingGoals.slice(0, 3).map((goal) => goal.title);
+
+  return [
+    `Habits tracked today: ${habits.length}; pending check-ins: ${pendingHabits.length}`,
+    pendingHabitNames.length > 0
+      ? `Pending habits: ${pendingHabitNames.join(", ")}${pendingHabits.length > pendingHabitNames.length ? ", ..." : ""}`
+      : "Pending habits: none",
+    `Goals tracked today: ${goals.length}; pending check-ins: ${pendingGoals.length}`,
+    pendingGoalTitles.length > 0
+      ? `Pending goals: ${pendingGoalTitles.join(", ")}${pendingGoals.length > pendingGoalTitles.length ? ", ..." : ""}`
+      : "Pending goals: none"
+  ].join("\n");
+}
+
+function buildFunctionCallingSystemInstruction(userName: string, habitGoalNudge: string): string {
   return `You are Companion, a personal AI assistant for ${userName}, a university student at UiS (University of Stavanger).
 
 Core behavior:
@@ -767,6 +787,11 @@ Core behavior:
 - For deadline completion and snooze/extension requests, use queueDeadlineAction and apply immediately (no confirmation step).
 - For schedule mutations, execute immediately with createScheduleBlock/updateScheduleBlock/deleteScheduleBlock/clearScheduleWindow.
 - For recurring routine preferences from conversation (for example "I go gym every day at 07:00"), create or update routine presets immediately with queueCreateRoutinePreset/queueUpdateRoutinePreset.
+- Treat habits/goals as conversation-managed: you should proactively ask lightweight check-in questions during natural pauses instead of directing users to manual check-in buttons.
+- If habits/goals are pending today, include one brief check-in prompt in suitable replies (at most one per reply).
+- When the user responds with yes/no/not yet/already done for a habit/goal check-in, call updateHabitCheckIn/updateGoalCheckIn immediately with the inferred item.
+- If user intent is clear from context, do not ask for extra confirmation before logging a habit/goal check-in.
+- Never tell the user to use the habits/goals tab for check-ins; handle it in chat.
 - If user asks to "clear", "free up", or remove the rest of today's plan, prefer clearScheduleWindow.
 - For journal-save requests, call createJournalEntry directly and do not ask for confirm/cancel commands.
 - When user intent to mutate data is clear, execute the available mutation tool directly instead of asking for extra permission.
@@ -784,7 +809,10 @@ Core behavior:
   - plain paragraphs separated by blank lines
 - Do not use HTML, tables, headings (#), blockquotes, or code fences.
 - If multiple intents are present, choose the smallest useful set of tools and then synthesize one clear answer.
-- Tool routing is model-driven: decide what tools to call based on the user request and tool descriptions.`;
+- Tool routing is model-driven: decide what tools to call based on the user request and tool descriptions.
+
+Habit/goal context for this conversation:
+${habitGoalNudge}`;
 }
 
 function extractPendingActions(value: unknown): ChatPendingAction[] {
@@ -3239,7 +3267,7 @@ export async function sendChatMessage(
   let streamedTokenChars = 0;
   const contextWindow = "";
   const history = recentHistoryForIntent;
-  const systemInstruction = buildFunctionCallingSystemInstruction(config.USER_NAME);
+  const systemInstruction = buildFunctionCallingSystemInstruction(config.USER_NAME, buildHabitGoalNudgeContext(store));
 
   const messages = toGeminiMessages(history, userInput, attachments);
   const userMessage = store.recordChatMessage("user", userInput, userMetadata);

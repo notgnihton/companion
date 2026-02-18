@@ -5,8 +5,6 @@ import {
   getDailyJournalSummary,
   getGoals,
   getHabits,
-  toggleGoalCheckIn,
-  toggleHabitCheckIn,
   updateGoal,
   updateHabit
 } from "../lib/api";
@@ -134,48 +132,6 @@ export function HabitsGoalsView(): JSX.Element {
       disposed = true;
     };
   }, []);
-
-  const handleHabitToggle = async (habit: Habit): Promise<void> => {
-    setBusy({ type: "habit", id: habit.id });
-    setHabitMessage("");
-    const result = await toggleHabitCheckIn(habit.id, !habit.todayCompleted);
-    const next = result.item;
-    if (next) {
-      const merged = habits.map((existing) => (existing.id === habit.id ? next : existing));
-      setHabits(merged);
-      saveHabits(merged);
-      if (next.todayCompleted && !habit.todayCompleted) {
-        hapticSuccess();
-      }
-      if (result.queued) {
-        setHabitMessage("Saved offline. Habit check-in queued and will sync automatically.");
-      }
-    } else {
-      setHabitMessage("Could not update habit right now. Try again soon.");
-    }
-    setBusy(null);
-  };
-
-  const handleGoalToggle = async (goal: Goal): Promise<void> => {
-    setBusy({ type: "goal", id: goal.id });
-    setGoalMessage("");
-    const result = await toggleGoalCheckIn(goal.id, !goal.todayCompleted);
-    const next = result.item;
-    if (next) {
-      const merged = goals.map((existing) => (existing.id === goal.id ? next : existing));
-      setGoals(merged);
-      saveGoals(merged);
-      if (next.todayCompleted && !goal.todayCompleted) {
-        hapticSuccess();
-      }
-      if (result.queued) {
-        setGoalMessage("Saved offline. Goal check-in queued and will sync automatically.");
-      }
-    } else {
-      setGoalMessage("Could not update goal check-in right now.");
-    }
-    setBusy(null);
-  };
 
   const beginHabitEdit = (habit: Habit): void => {
     setHabitMessage("");
@@ -336,6 +292,7 @@ export function HabitsGoalsView(): JSX.Element {
   const renderHabit = (habit: Habit): JSX.Element => {
     const isEditing = editingHabitId === habit.id && habitDraft !== null;
     const isBusy = busy?.type === "habit" && busy.id === habit.id;
+    const completionPercent = Math.max(0, Math.min(100, Math.round(habit.completionRate7d)));
 
     if (isEditing && habitDraft) {
       return (
@@ -425,18 +382,17 @@ export function HabitsGoalsView(): JSX.Element {
               {habit.cadence === "daily" ? "Daily" : "Weekly target"} • {habit.targetPerWeek}/week
             </p>
           </div>
+          <span className={`habit-status-pill ${habit.todayCompleted ? "habit-status-pill-done" : "habit-status-pill-pending"}`}>
+            {habit.todayCompleted ? "Done today" : "Awaiting check-in"}
+          </span>
         </header>
+        <p className="habit-card-automation-note">Gemini tracks check-ins for you in chat.</p>
+        <div className="habit-visual-progress">
+          <div className="habit-visual-progress-fill" style={{ width: `${completionPercent}%` }} />
+        </div>
         <ProgressLabel streak={habit.streak} completionRate={habit.completionRate7d} />
         <CheckInStrip recent={habit.recentCheckIns} />
         <div className="habit-card-actions">
-          <button
-            type="button"
-            onClick={() => void handleHabitToggle(habit)}
-            className={`pill-button ${habit.todayCompleted ? "pill-active" : ""}`}
-            disabled={isBusy}
-          >
-            {habit.todayCompleted ? "Checked in" : "Check in"}
-          </button>
           <button type="button" className="ghost-button" onClick={() => beginHabitEdit(habit)} disabled={isBusy}>
             Edit
           </button>
@@ -559,7 +515,11 @@ export function HabitsGoalsView(): JSX.Element {
               Target {goal.targetCount} check-ins {dueLabel ? `• due ${dueLabel}` : ""}
             </p>
           </div>
+          <span className={`habit-status-pill ${goal.todayCompleted ? "habit-status-pill-done" : "habit-status-pill-pending"}`}>
+            {goal.todayCompleted ? "Progress logged" : "Awaiting check-in"}
+          </span>
         </header>
+        <p className="habit-card-automation-note">Gemini handles goal check-ins directly while you chat.</p>
         <div className="goal-progress">
           <div className="goal-progress-bar">
             <div className="goal-progress-fill" style={{ width: `${progressPercent}%` }} />
@@ -574,14 +534,6 @@ export function HabitsGoalsView(): JSX.Element {
         <ProgressLabel streak={goal.streak} completionRate={goal.completionRate7d} />
         <CheckInStrip recent={goal.recentCheckIns} />
         <div className="habit-card-actions">
-          <button
-            type="button"
-            onClick={() => void handleGoalToggle(goal)}
-            className={`pill-button ${goal.todayCompleted ? "pill-active" : ""}`}
-            disabled={isBusy}
-          >
-            {goal.todayCompleted ? "Logged today" : "Log progress"}
-          </button>
           <button type="button" className="ghost-button" onClick={() => beginGoalEdit(goal)} disabled={isBusy}>
             Edit
           </button>
@@ -607,6 +559,7 @@ export function HabitsGoalsView(): JSX.Element {
           <span className="pill-muted">{goals.length} goals</span>
         </div>
       </header>
+      <p className="muted">Check-ins are chat-driven now. Gemini asks naturally during conversation and updates progress for you.</p>
       {habitMessage && <p className="warning-text">{habitMessage}</p>}
       {goalMessage && <p className="warning-text">{goalMessage}</p>}
       {summaryMessage && <p className="warning-text">{summaryMessage}</p>}
@@ -631,6 +584,14 @@ export function HabitsGoalsView(): JSX.Element {
         {summaryLoading && <p className="muted">Generating today's summary...</p>}
         {!summaryLoading && dailySummary && (
           <>
+            {dailySummary.visual && (
+              <figure className="daily-summary-visual">
+                <img src={dailySummary.visual.dataUrl} alt={dailySummary.visual.alt} loading="lazy" />
+                <figcaption>
+                  {dailySummary.visual.model} • {new Date(dailySummary.visual.generatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false })}
+                </figcaption>
+              </figure>
+            )}
             <p className="daily-summary-meta">
               {dailySummary.chatMessageCount} chat notes • {dailySummary.journalEntryCount} journal entries
             </p>

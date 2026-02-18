@@ -121,6 +121,11 @@ export function IntegrationStatusView(): JSX.Element {
             <div>
               <p className="muted">Model</p>
               <strong>{geminiStatus.model}</strong>
+              {geminiStatus.growthImageModelResolved && (
+                <p className="muted-small">
+                  Growth image model: {geminiStatus.growthImageModel} ({geminiStatus.growthImageModelResolved})
+                </p>
+              )}
             </div>
           </div>
 

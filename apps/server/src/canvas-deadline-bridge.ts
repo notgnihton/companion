@@ -74,17 +74,24 @@ export class CanvasDeadlineBridge {
       const existingDeadline = canvasDeadlineMap.get(assignment.id);
 
       if (existingDeadline) {
+        const existingSourceDueDate = existingDeadline.sourceDueDate ?? existingDeadline.dueDate;
+        const userOverrodeDueDate = existingDeadline.dueDate !== existingSourceDueDate;
+        const sourceDueDateChanged = existingSourceDueDate !== assignment.due_at;
+        const nextDueDate = sourceDueDateChanged && !userOverrodeDueDate ? assignment.due_at : existingDeadline.dueDate;
+
         // Update existing Canvas-sourced deadline
-        const needsUpdate = 
+        const needsUpdate =
           existingDeadline.task !== assignment.name ||
-          existingDeadline.dueDate !== assignment.due_at ||
+          existingDeadline.sourceDueDate !== assignment.due_at ||
+          existingDeadline.dueDate !== nextDueDate ||
           existingDeadline.course !== courseName ||
           existingDeadline.completed !== isSubmitted;
 
         if (needsUpdate) {
           this.store.updateDeadline(existingDeadline.id, {
             task: assignment.name,
-            dueDate: assignment.due_at,
+            dueDate: nextDueDate,
+            sourceDueDate: assignment.due_at,
             course: courseName,
             completed: isSubmitted
           });
@@ -103,6 +110,7 @@ export class CanvasDeadlineBridge {
           course: courseName,
           task: assignment.name,
           dueDate: assignment.due_at,
+          sourceDueDate: assignment.due_at,
           priority,
           completed: isSubmitted,
           canvasAssignmentId: assignment.id

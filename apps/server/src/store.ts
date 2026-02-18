@@ -276,6 +276,7 @@ export class RuntimeStore {
         course TEXT NOT NULL,
         task TEXT NOT NULL,
         dueDate TEXT NOT NULL,
+        sourceDueDate TEXT,
         priority TEXT NOT NULL,
         completed INTEGER NOT NULL,
         effortHoursRemaining REAL,
@@ -657,6 +658,10 @@ export class RuntimeStore {
     const hasEffortConfidence = deadlineColumns.some((col) => col.name === "effortConfidence");
     if (!hasEffortConfidence) {
       this.db.prepare("ALTER TABLE deadlines ADD COLUMN effortConfidence TEXT").run();
+    }
+    const hasSourceDueDate = deadlineColumns.some((col) => col.name === "sourceDueDate");
+    if (!hasSourceDueDate) {
+      this.db.prepare("ALTER TABLE deadlines ADD COLUMN sourceDueDate TEXT").run();
     }
 
     const nutritionMealColumns = this.db.prepare("PRAGMA table_info(nutrition_meals)").all() as Array<{ name: string }>;
@@ -2522,14 +2527,15 @@ export class RuntimeStore {
     this.db
       .prepare(
         `INSERT INTO deadlines (
-          id, course, task, dueDate, priority, completed, canvasAssignmentId, effortHoursRemaining, effortConfidence
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          id, course, task, dueDate, sourceDueDate, priority, completed, canvasAssignmentId, effortHoursRemaining, effortConfidence
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         deadline.id,
         deadline.course,
         deadline.task,
         deadline.dueDate,
+        deadline.sourceDueDate ?? null,
         deadline.priority,
         deadline.completed ? 1 : 0,
         deadline.canvasAssignmentId ?? null,
@@ -2601,6 +2607,7 @@ export class RuntimeStore {
       course: string;
       task: string;
       dueDate: string;
+      sourceDueDate: string | null;
       priority: string;
       completed: number;
       canvasAssignmentId: number | null;
@@ -2613,6 +2620,7 @@ export class RuntimeStore {
       course: row.course,
       task: row.task,
       dueDate: row.dueDate,
+      ...(row.sourceDueDate ? { sourceDueDate: row.sourceDueDate } : {}),
       priority: row.priority as Deadline["priority"],
       completed: Boolean(row.completed),
       ...(row.canvasAssignmentId && { canvasAssignmentId: row.canvasAssignmentId }),
@@ -2645,6 +2653,7 @@ export class RuntimeStore {
           course: string;
           task: string;
           dueDate: string;
+          sourceDueDate: string | null;
           priority: string;
           completed: number;
           canvasAssignmentId: number | null;
@@ -2662,6 +2671,7 @@ export class RuntimeStore {
       course: row.course,
       task: row.task,
       dueDate: row.dueDate,
+      ...(row.sourceDueDate ? { sourceDueDate: row.sourceDueDate } : {}),
       priority: row.priority as Deadline["priority"],
       completed: Boolean(row.completed),
       ...(row.canvasAssignmentId && { canvasAssignmentId: row.canvasAssignmentId }),
@@ -2687,7 +2697,7 @@ export class RuntimeStore {
     this.db
       .prepare(
         `UPDATE deadlines SET
-          course = ?, task = ?, dueDate = ?, priority = ?, completed = ?,
+          course = ?, task = ?, dueDate = ?, sourceDueDate = ?, priority = ?, completed = ?,
           canvasAssignmentId = ?, effortHoursRemaining = ?, effortConfidence = ?
          WHERE id = ?`
       )
@@ -2695,6 +2705,7 @@ export class RuntimeStore {
         next.course,
         next.task,
         next.dueDate,
+        next.sourceDueDate ?? null,
         next.priority,
         next.completed ? 1 : 0,
         next.canvasAssignmentId ?? null,
@@ -4808,7 +4819,7 @@ export class RuntimeStore {
             this.db
               .prepare(
                 `UPDATE deadlines SET
-                  course = ?, task = ?, dueDate = ?, priority = ?, completed = ?,
+                  course = ?, task = ?, dueDate = ?, sourceDueDate = ?, priority = ?, completed = ?,
                   canvasAssignmentId = ?, effortHoursRemaining = ?, effortConfidence = ?
                  WHERE id = ?`
               )
@@ -4816,6 +4827,7 @@ export class RuntimeStore {
                 normalizedDeadline.course,
                 normalizedDeadline.task,
                 normalizedDeadline.dueDate,
+                normalizedDeadline.sourceDueDate ?? null,
                 normalizedDeadline.priority,
                 normalizedDeadline.completed ? 1 : 0,
                 normalizedDeadline.canvasAssignmentId ?? null,
@@ -4828,14 +4840,15 @@ export class RuntimeStore {
             this.db
               .prepare(
                 `INSERT INTO deadlines (
-                  id, course, task, dueDate, priority, completed, canvasAssignmentId, effortHoursRemaining, effortConfidence
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                  id, course, task, dueDate, sourceDueDate, priority, completed, canvasAssignmentId, effortHoursRemaining, effortConfidence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
               )
               .run(
                 normalizedDeadline.id,
                 normalizedDeadline.course,
                 normalizedDeadline.task,
                 normalizedDeadline.dueDate,
+                normalizedDeadline.sourceDueDate ?? null,
                 normalizedDeadline.priority,
                 normalizedDeadline.completed ? 1 : 0,
                 normalizedDeadline.canvasAssignmentId ?? null,

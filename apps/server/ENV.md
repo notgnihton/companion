@@ -33,6 +33,8 @@ This file documents all environment variables required to run the Companion serv
 ### AI / LLM
 - `GEMINI_USE_LIVE_API` (default: `true`) — Use Gemini Live API (WebSocket) for chat + tool calling
 - `GEMINI_LIVE_MODEL` (default: `gemini-2.5-flash`) — Vertex model name for chat/tool calling
+- `GEMINI_GROWTH_IMAGE_MODEL` (default: `nano-banana-pro`) — Growth visual model alias for daily/long-term summary images
+  - Alias mapping: `nano-banana-pro` -> `gemini-3-pro-image-preview`
 - `GEMINI_LIVE_ENDPOINT` (optional) — Override Vertex Live WebSocket endpoint
 - `GEMINI_VERTEX_PROJECT_ID` (required unless `GEMINI_LIVE_MODEL` is already a full `projects/...` model resource)
   - Alias supported: `GCP_PROJECT_ID`
@@ -43,6 +45,8 @@ This file documents all environment variables required to run the Companion serv
   - Alias supported: `GOOGLE_APPLICATION_CREDENTIALS_JSON`
 - `GOOGLE_APPLICATION_CREDENTIALS` (recommended for `vertex`) — Service-account JSON path for Google IAM auth (or use other ADC methods)
 - `GEMINI_LIVE_TIMEOUT_MS` (default: `25000`) — Live socket read timeout in milliseconds
+- `GROWTH_DAILY_SUMMARY_MIN_REFRESH_MINUTES` (default: `180`) — Minimum interval before regenerating daily summary inference
+- `GROWTH_ANALYTICS_MIN_REFRESH_MINUTES` (default: `480`) — Minimum interval before regenerating long-term analytics inference
 
 ### Authentication
 - `AUTH_REQUIRED` (default: `true` in production, otherwise `false`) — Require login for all `/api/*` routes except health and auth bootstrap endpoints
@@ -134,9 +138,12 @@ VAPID_SUBJECT=mailto:companion@example.com
 # AI (Vertex Live API)
 GEMINI_USE_LIVE_API=true
 GEMINI_LIVE_MODEL=gemini-2.5-flash
+GEMINI_GROWTH_IMAGE_MODEL=nano-banana-pro
 GEMINI_VERTEX_PROJECT_ID=your-gcp-project-id
 GEMINI_VERTEX_LOCATION=us-central1
 GEMINI_LIVE_TIMEOUT_MS=25000
+GROWTH_DAILY_SUMMARY_MIN_REFRESH_MINUTES=180
+GROWTH_ANALYTICS_MIN_REFRESH_MINUTES=480
 
 # Auth
 AUTH_REQUIRED=true

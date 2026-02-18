@@ -1,4 +1,5 @@
 import { GeminiClient, getGeminiClient } from "./gemini.js";
+import { maybeGenerateAnalyticsVisual } from "./growth-visuals.js";
 import { RuntimeStore } from "./store.js";
 import {
   AnalyticsCoachInsight,
@@ -438,6 +439,7 @@ export async function generateAnalyticsCoachInsight(
     return fallback;
   }
 
+  let insight: AnalyticsCoachInsight = fallback;
   try {
     const response = await gemini.generateChatResponse({
       systemInstruction:
@@ -452,19 +454,29 @@ export async function generateAnalyticsCoachInsight(
 
     const parsed = parseInsightJson(response.text);
     if (!parsed) {
-      return fallback;
+      insight = fallback;
+    } else {
+      insight = {
+        ...fallback,
+        generatedAt: nowIso(),
+        source: "gemini",
+        summary: enforceSecondPersonVoice(parsed.summary),
+        strengths: mergeListWithFallback(parsed.strengths, fallback.strengths, 2, 5),
+        risks: mergeListWithFallback(parsed.risks, fallback.risks, 2, 5),
+        recommendations: mergeListWithFallback(parsed.recommendations, fallback.recommendations, 3, 5)
+      };
     }
-
-    return {
-      ...fallback,
-      generatedAt: nowIso(),
-      source: "gemini",
-      summary: enforceSecondPersonVoice(parsed.summary),
-      strengths: mergeListWithFallback(parsed.strengths, fallback.strengths, 2, 5),
-      risks: mergeListWithFallback(parsed.risks, fallback.risks, 2, 5),
-      recommendations: mergeListWithFallback(parsed.recommendations, fallback.recommendations, 3, 5)
-    };
   } catch {
-    return fallback;
+    insight = fallback;
   }
+
+  const visual = await maybeGenerateAnalyticsVisual(gemini, insight);
+  if (!visual) {
+    return insight;
+  }
+
+  return {
+    ...insight,
+    visual
+  };
 }

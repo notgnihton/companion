@@ -1,4 +1,5 @@
 import { GeminiClient, getGeminiClient } from "./gemini.js";
+import { maybeGenerateDailySummaryVisual } from "./growth-visuals.js";
 import { RuntimeStore } from "./store.js";
 import { ChatMessage, DailyJournalSummary, JournalEntry } from "./types.js";
 import { nowIso } from "./utils.js";
@@ -193,6 +194,7 @@ export async function generateDailyJournalSummary(
     return fallback;
   }
 
+  let summary: DailyJournalSummary = fallback;
   try {
     const response = await gemini.generateChatResponse({
       systemInstruction:
@@ -207,16 +209,26 @@ export async function generateDailyJournalSummary(
 
     const parsed = parseJsonInsights(response.text);
     if (!parsed) {
-      return fallback;
+      summary = fallback;
+    } else {
+      summary = {
+        ...fallback,
+        generatedAt: nowIso(),
+        summary: enforceSecondPersonVoice(parsed.summary),
+        highlights: parsed.highlights.length > 0 ? parsed.highlights : fallback.highlights
+      };
     }
-
-    return {
-      ...fallback,
-      generatedAt: nowIso(),
-      summary: enforceSecondPersonVoice(parsed.summary),
-      highlights: parsed.highlights.length > 0 ? parsed.highlights : fallback.highlights
-    };
   } catch {
-    return fallback;
+    summary = fallback;
   }
+
+  const visual = await maybeGenerateDailySummaryVisual(gemini, summary);
+  if (!visual) {
+    return summary;
+  }
+
+  return {
+    ...summary,
+    visual
+  };
 }

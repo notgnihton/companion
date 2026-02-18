@@ -26,6 +26,12 @@ export interface GeminiChatResponse {
   functionCalls?: FunctionCall[];
 }
 
+export interface GeminiImageGenerationResponse {
+  dataUrl: string;
+  mimeType: string;
+  model: string;
+}
+
 export interface GeminiLiveFunctionCall {
   id?: string;
   name: string;
@@ -134,6 +140,14 @@ export class GeminiClient {
     return base;
   }
 
+  private resolveGrowthImageModelAlias(modelName: string): string {
+    const normalized = modelName.trim().toLowerCase().replace(/\s+/g, "-");
+    if (normalized === "nano-banana-pro") {
+      return "gemini-3-pro-image-preview";
+    }
+    return modelName.trim();
+  }
+
   private normalizeVertexLiveModelName(): string {
     const trimmed = this.liveModelName.trim();
     if (trimmed.startsWith("projects/")) {
@@ -146,6 +160,26 @@ export class GeminiClient {
       );
     }
     const location = config.GEMINI_VERTEX_LOCATION.trim();
+    return `projects/${projectId}/locations/${location}/publishers/google/models/${trimmed}`;
+  }
+
+  private normalizeVertexModelNameForGenerateContent(
+    modelName: string,
+    locationOverride?: string
+  ): string {
+    const trimmed = modelName.trim();
+    if (trimmed.startsWith("projects/")) {
+      return trimmed;
+    }
+
+    const projectId = config.GEMINI_VERTEX_PROJECT_ID?.trim();
+    if (!projectId) {
+      throw new GeminiError(
+        "GEMINI_VERTEX_PROJECT_ID is required for Vertex chat requests when model is not a full model resource path."
+      );
+    }
+
+    const location = locationOverride?.trim() || config.GEMINI_VERTEX_LOCATION.trim();
     return `projects/${projectId}/locations/${location}/publishers/google/models/${trimmed}`;
   }
 
@@ -211,19 +245,17 @@ export class GeminiClient {
     return token;
   }
 
-  private normalizeVertexModelNameForGenerateContent(): string {
-    const trimmed = this.liveModelName.trim();
-    if (trimmed.startsWith("projects/")) {
-      return trimmed;
-    }
-    const projectId = config.GEMINI_VERTEX_PROJECT_ID?.trim();
-    if (!projectId) {
-      throw new GeminiError(
-        "GEMINI_VERTEX_PROJECT_ID is required for Vertex chat requests when GEMINI_LIVE_MODEL is not a full model resource path."
-      );
-    }
-    const location = config.GEMINI_VERTEX_LOCATION.trim();
-    return `projects/${projectId}/locations/${location}/publishers/google/models/${trimmed}`;
+  private normalizeVertexModelNameForCurrentChatModel(): string {
+    return this.normalizeVertexModelNameForGenerateContent(this.liveModelName);
+  }
+
+  getGrowthImageModel(): { configured: string; resolved: string } {
+    const configured = config.GEMINI_GROWTH_IMAGE_MODEL.trim();
+    const resolved = this.resolveGrowthImageModelAlias(configured);
+    return {
+      configured,
+      resolved
+    };
   }
 
   private toVertexPart(part: Part): Record<string, unknown> | null {
@@ -371,7 +403,7 @@ export class GeminiClient {
       throw new GeminiError("At least one message is required");
     }
 
-    const modelName = this.normalizeVertexModelNameForGenerateContent();
+    const modelName = this.normalizeVertexModelNameForCurrentChatModel();
     const location = config.GEMINI_VERTEX_LOCATION.trim();
     const host = this.resolveVertexApiHost(location);
     const url = `https://${host}/v1/${modelName}:generateContent`;
@@ -491,12 +523,128 @@ export class GeminiClient {
     }
   }
 
+  async generateGrowthImage(
+    prompt: string,
+    options: {
+      model?: string;
+    } = {}
+  ): Promise<GeminiImageGenerationResponse | null> {
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt) {
+      throw new GeminiError("Image generation prompt cannot be empty");
+    }
+
+    const configuredModel = (options.model?.trim() || config.GEMINI_GROWTH_IMAGE_MODEL.trim());
+    const resolvedModel = this.resolveGrowthImageModelAlias(configuredModel);
+    const effectiveLocation =
+      !resolvedModel.startsWith("projects/") && resolvedModel.toLowerCase().startsWith("gemini-3")
+        ? "global"
+        : config.GEMINI_VERTEX_LOCATION.trim();
+    const modelName = this.normalizeVertexModelNameForGenerateContent(resolvedModel, effectiveLocation);
+    const host = this.resolveVertexApiHost(effectiveLocation);
+    const url = `https://${host}/v1/${modelName}:generateContent`;
+    const body = {
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: trimmedPrompt }]
+        }
+      ],
+      generation_config: {
+        response_modalities: ["IMAGE"]
+      }
+    };
+
+    const maxAttempts = 3;
+    let rawResponse: Response | null = null;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const accessToken = await this.getVertexAccessToken();
+      rawResponse = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (rawResponse.ok || rawResponse.status !== 429 || attempt === maxAttempts - 1) {
+        break;
+      }
+
+      const backoffMs = 200 * 2 ** attempt + Math.floor(Math.random() * 120);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    }
+
+    if (!rawResponse) {
+      throw new GeminiError("Gemini image API error: no response generated");
+    }
+
+    if (!rawResponse.ok) {
+      const errorBody = await rawResponse.text();
+      if (rawResponse.status === 429) {
+        throw new RateLimitError(
+          `Gemini image API rate limit exceeded: ${errorBody || rawResponse.statusText}`,
+          errorBody
+        );
+      }
+      if (rawResponse.status === 401 || rawResponse.status === 403) {
+        throw new GeminiError(
+          `Invalid Vertex credentials or missing IAM permissions: ${errorBody || rawResponse.statusText}`,
+          rawResponse.status,
+          errorBody
+        );
+      }
+      if (rawResponse.status === 404) {
+        throw new GeminiError(
+          this.buildVertexModelNotFoundMessage(errorBody, rawResponse.statusText),
+          rawResponse.status,
+          errorBody
+        );
+      }
+      throw new GeminiError(
+        `Gemini image API error (${rawResponse.status}): ${errorBody || rawResponse.statusText}`,
+        rawResponse.status,
+        errorBody
+      );
+    }
+
+    const payload = (await rawResponse.json()) as {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{
+            inlineData?: { mimeType?: string; data?: string };
+            inline_data?: { mime_type?: string; data?: string };
+          }>;
+        };
+      }>;
+    };
+
+    const parts = payload.candidates?.[0]?.content?.parts ?? [];
+    for (const part of parts) {
+      const inlineData = part.inlineData;
+      const inlineDataSnake = part.inline_data;
+      const mimeType = inlineData?.mimeType ?? inlineDataSnake?.mime_type;
+      const data = inlineData?.data ?? inlineDataSnake?.data;
+      if (typeof mimeType === "string" && mimeType.trim().length > 0 && typeof data === "string" && data.length > 0) {
+        return {
+          dataUrl: `data:${mimeType};base64,${data}`,
+          mimeType,
+          model: resolvedModel
+        };
+      }
+    }
+
+    return null;
+  }
+
   async generateChatResponseStream(request: GeminiStreamChatRequest): Promise<GeminiChatResponse> {
     if (request.messages.length === 0) {
       throw new GeminiError("At least one message is required");
     }
 
-    const modelName = this.normalizeVertexModelNameForGenerateContent();
+    const modelName = this.normalizeVertexModelNameForCurrentChatModel();
     const location = config.GEMINI_VERTEX_LOCATION.trim();
     const host = this.resolveVertexApiHost(location);
     const url = `https://${host}/v1/${modelName}:streamGenerateContent?alt=sse`;

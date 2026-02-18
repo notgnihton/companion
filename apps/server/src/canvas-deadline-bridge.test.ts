@@ -53,6 +53,7 @@ describe("CanvasDeadlineBridge", () => {
       expect(deadlines[0].task).toBe("Lab 1: UDP Echo Server");
       expect(deadlines[0].course).toBe("DAT520-1");
       expect(deadlines[0].dueDate).toBe("2026-01-15T22:59:00.000Z");
+      expect(deadlines[0].sourceDueDate).toBe("2026-01-15T22:59:00.000Z");
       expect(deadlines[0].completed).toBe(false);
       expect(deadlines[0].canvasAssignmentId).toBe(12345);
     });
@@ -185,7 +186,55 @@ describe("CanvasDeadlineBridge", () => {
       expect(deadlines).toHaveLength(1);
       expect(deadlines[0].task).toBe("Lab 1: UDP Echo Server (Extended)");
       expect(deadlines[0].dueDate).toBe("2026-01-20T22:59:00.000Z");
+      expect(deadlines[0].sourceDueDate).toBe("2026-01-20T22:59:00.000Z");
       expect(deadlines[0].completed).toBe(true);
+    });
+
+    it("preserves user-adjusted dueDate when Canvas source due date changes", () => {
+      const courses: CanvasCourse[] = [
+        {
+          id: 17649,
+          name: "DAT520-1",
+          course_code: "DAT520-1",
+          workflow_state: "available"
+        }
+      ];
+
+      bridge.syncAssignments(courses, [
+        {
+          id: 12345,
+          name: "Lab 1: UDP Echo Server",
+          description: null,
+          due_at: "2026-01-15T22:59:00.000Z",
+          points_possible: 100,
+          course_id: 17649,
+          submission_types: ["online_upload"],
+          has_submitted_submissions: false
+        }
+      ]);
+
+      const created = store.getDeadlines(new Date(), false)[0];
+      store.updateDeadline(created.id, {
+        dueDate: "2026-01-18T22:59:00.000Z"
+      });
+
+      const result = bridge.syncAssignments(courses, [
+        {
+          id: 12345,
+          name: "Lab 1: UDP Echo Server",
+          description: null,
+          due_at: "2026-01-20T22:59:00.000Z",
+          points_possible: 100,
+          course_id: 17649,
+          submission_types: ["online_upload"],
+          has_submitted_submissions: false
+        }
+      ]);
+
+      expect(result.updated).toBe(1);
+      const updated = store.getDeadlines(new Date(), false)[0];
+      expect(updated.dueDate).toBe("2026-01-18T22:59:00.000Z");
+      expect(updated.sourceDueDate).toBe("2026-01-20T22:59:00.000Z");
     });
 
     it("should not update Canvas-sourced deadline if nothing changed", () => {

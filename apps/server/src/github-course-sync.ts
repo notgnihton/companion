@@ -736,15 +736,31 @@ export class GitHubCourseSyncService {
 
             if (!existing) {
               // Create new deadline
-              const created = this.store.createDeadline(newDeadline);
+              const created = this.store.createDeadline({
+                ...newDeadline,
+                sourceDueDate: newDeadline.dueDate
+              });
               deadlinesCreated++;
               createdDeadlines.push(created);
-            } else if (existing.dueDate !== newDeadline.dueDate && !existing.completed) {
-              // Update deadline if date changed and it's not completed
-              this.store.updateDeadline(existing.id, {
-                dueDate: newDeadline.dueDate
-              });
-              deadlinesUpdated++;
+            } else if (!existing.completed) {
+              const existingSourceDueDate = existing.sourceDueDate ?? existing.dueDate;
+              const sourceDueDateChanged = existingSourceDueDate !== newDeadline.dueDate;
+              const missingSourceDueDate = !existing.sourceDueDate;
+              const userOverrodeDueDate = existing.dueDate !== existingSourceDueDate;
+              const shouldTrackSourceDueDate = sourceDueDateChanged || missingSourceDueDate;
+
+              if (shouldTrackSourceDueDate) {
+                const patch: Partial<Omit<Deadline, "id">> = {
+                  sourceDueDate: newDeadline.dueDate
+                };
+
+                if (!userOverrodeDueDate) {
+                  patch.dueDate = newDeadline.dueDate;
+                }
+
+                this.store.updateDeadline(existing.id, patch);
+                deadlinesUpdated++;
+              }
             }
           }
 
