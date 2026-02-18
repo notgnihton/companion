@@ -1745,10 +1745,42 @@ export async function sendChatMessageStream(
   return finalPayload.message;
 }
 
-export async function getChatHistory(limit = 50, offset = 0): Promise<GetChatHistoryResponse> {
-  const params = new URLSearchParams();
-  params.set("limit", limit.toString());
-  params.set("offset", offset.toString());
+export async function getChatHistory(limit = 500, offset = 0): Promise<GetChatHistoryResponse> {
+  const targetLimit = Math.max(1, Math.round(limit));
+  const targetOffset = Math.max(0, Math.round(offset));
+  const pageSize = 50;
 
-  return await jsonOrThrow<GetChatHistoryResponse>(`/api/chat/history?${params.toString()}`);
+  let page = 1;
+  let total = 0;
+  let hasMore = true;
+  const allMessages: ChatMessage[] = [];
+
+  while (hasMore && allMessages.length < targetOffset + targetLimit) {
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
+
+    const response = await jsonOrThrow<GetChatHistoryResponse>(`/api/chat/history?${params.toString()}`);
+    const pageMessages = response.history.messages ?? [];
+
+    if (page === 1) {
+      total = response.history.total;
+    }
+
+    allMessages.push(...pageMessages);
+    hasMore = response.history.hasMore && pageMessages.length > 0;
+    page += 1;
+  }
+
+  const messages = allMessages.slice(targetOffset, targetOffset + targetLimit);
+
+  return {
+    history: {
+      messages,
+      page: 1,
+      pageSize: messages.length,
+      total,
+      hasMore: targetOffset + targetLimit < total
+    }
+  };
 }
