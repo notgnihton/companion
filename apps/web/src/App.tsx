@@ -176,7 +176,7 @@ export default function App(): JSX.Element {
       const keyboardOpen =
         mobileChatInputFocused &&
         (keyboardGap > KEYBOARD_GAP_THRESHOLD_PX || viewportDrop > VIEWPORT_DROP_THRESHOLD_PX);
-      const effectiveKeyboardGap = keyboardOpen ? Math.max(keyboardGap, viewportDrop) : 0;
+      const effectiveKeyboardGap = keyboardOpen ? keyboardGap : 0;
       root.style.setProperty("--keyboard-gap", `${effectiveKeyboardGap}px`);
       document.body.classList.toggle("keyboard-open", keyboardOpen);
     };
