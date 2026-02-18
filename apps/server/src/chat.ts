@@ -710,6 +710,7 @@ Core behavior:
 - For email follow-ups like "what did it contain?" after inbox discussion, call getEmails again and answer from sender/subject/snippet.
 - For mutating requests that change schedule/deadlines, use queue* action tools and require explicit user confirmation.
 - For journal-save requests, call createJournalEntry directly and do not ask for confirm/cancel commands.
+- If a tool call is needed, emit tool calls only first and wait to write user-facing text until tool results are available.
 - Keep replies practical and conversational, and adapt response length to user intent:
   - be brief for quick operational questions
   - be fuller and reflective when the user wants to talk things through
@@ -2683,6 +2684,17 @@ export async function sendChatMessage(
   }
 
   const gemini = options.geminiClient ?? getGeminiClient();
+  const streamCapableGemini = gemini as GeminiClient & {
+    generateChatResponseStream?: (request: {
+      messages: GeminiMessage[];
+      systemInstruction?: string;
+      tools?: typeof functionDeclarations;
+      onTextChunk?: (chunk: string) => void;
+    }) => Promise<Awaited<ReturnType<GeminiClient["generateChatResponse"]>>>;
+  };
+  const useNativeStreaming =
+    Boolean(options.onTextChunk) && typeof streamCapableGemini.generateChatResponseStream === "function";
+  let streamedTokenChars = 0;
   const contextWindow = "";
   const history = recentHistoryForIntent;
   const systemInstruction = buildFunctionCallingSystemInstruction(config.USER_NAME);
@@ -2699,11 +2711,24 @@ export async function sendChatMessage(
 
   try {
     for (let round = 0; round < maxFunctionRounds; round += 1) {
-      const roundResponse = await gemini.generateChatResponse({
-        messages: workingMessages,
-        systemInstruction,
-        tools: functionDeclarations
-      });
+      const roundResponse = useNativeStreaming
+        ? await streamCapableGemini.generateChatResponseStream!({
+            messages: workingMessages,
+            systemInstruction,
+            tools: functionDeclarations,
+            onTextChunk: (chunk: string) => {
+              if (chunk.length === 0) {
+                return;
+              }
+              streamedTokenChars += chunk.length;
+              options.onTextChunk?.(chunk);
+            }
+          })
+        : await gemini.generateChatResponse({
+            messages: workingMessages,
+            systemInstruction,
+            tools: functionDeclarations
+          });
       totalUsage = addGeminiUsage(totalUsage, roundResponse.usageMetadata);
 
       const functionCalls = roundResponse.functionCalls ?? [];
@@ -2785,7 +2810,9 @@ export async function sendChatMessage(
         )
       : buildPendingActionFallbackReply(pendingActionsFromTooling);
 
-  emitTextChunks(finalReply, options.onTextChunk);
+  if (!useNativeStreaming || streamedTokenChars === 0) {
+    emitTextChunks(finalReply, options.onTextChunk);
+  }
 
   const assistantMetadata: ChatMessageMetadata = {
     contextWindow,

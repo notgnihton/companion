@@ -44,6 +44,10 @@ export interface GeminiLiveChatRequest extends GeminiChatRequest {
   timeoutMs?: number;
 }
 
+export interface GeminiStreamChatRequest extends GeminiChatRequest {
+  onTextChunk?: (chunk: string) => void;
+}
+
 export interface ContextWindow {
   todaySchedule: LectureEvent[];
   upcomingDeadlines: Deadline[];
@@ -411,6 +415,243 @@ export class GeminiClient {
         throw new GeminiError(`Gemini API error: ${error.message}`, statusCode, error);
       }
       throw new GeminiError("Unknown Gemini API error", statusCode, error);
+    }
+  }
+
+  async generateChatResponseStream(request: GeminiStreamChatRequest): Promise<GeminiChatResponse> {
+    if (request.messages.length === 0) {
+      throw new GeminiError("At least one message is required");
+    }
+
+    const modelName = this.normalizeVertexModelNameForGenerateContent();
+    const location = config.GEMINI_VERTEX_LOCATION.trim();
+    const url = `https://${location}-aiplatform.googleapis.com/v1/${modelName}:streamGenerateContent?alt=sse`;
+    const contents = this.toVertexContents(request.messages);
+    const body: Record<string, unknown> = {
+      contents
+    };
+
+    if (request.systemInstruction && request.systemInstruction.trim().length > 0) {
+      body.system_instruction = {
+        parts: [{ text: request.systemInstruction }]
+      };
+    }
+
+    if (request.tools && request.tools.length > 0) {
+      body.tools = [{ function_declarations: request.tools }];
+    }
+
+    try {
+      const maxAttempts = 3;
+      let rawResponse: Response | null = null;
+
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const accessToken = await this.getVertexAccessToken();
+        rawResponse = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(body)
+        });
+
+        if (rawResponse.ok || rawResponse.status !== 429 || attempt === maxAttempts - 1) {
+          break;
+        }
+
+        const backoffMs = 200 * 2 ** attempt + Math.floor(Math.random() * 120);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+
+      if (!rawResponse) {
+        throw new GeminiError("Gemini API error: no response generated");
+      }
+
+      if (!rawResponse.ok) {
+        const errorBody = await rawResponse.text();
+        if (rawResponse.status === 429) {
+          throw new RateLimitError(
+            `Gemini API rate limit exceeded: ${errorBody || rawResponse.statusText}`,
+            errorBody
+          );
+        }
+        if (rawResponse.status === 401 || rawResponse.status === 403) {
+          throw new GeminiError(
+            `Invalid Vertex credentials or missing IAM permissions: ${errorBody || rawResponse.statusText}`,
+            rawResponse.status,
+            errorBody
+          );
+        }
+        throw new GeminiError(
+          `Gemini API error (${rawResponse.status}): ${errorBody || rawResponse.statusText}`,
+          rawResponse.status,
+          errorBody
+        );
+      }
+
+      if (!rawResponse.body) {
+        throw new GeminiError("Gemini stream response body is not available.");
+      }
+
+      const reader = rawResponse.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let text = "";
+      let finishReason: string | undefined;
+      let usageMetadata: GeminiChatResponse["usageMetadata"] | undefined;
+      const functionCalls: FunctionCall[] = [];
+      const functionCallKeys = new Set<string>();
+
+      const consumeSseBlock = (block: string): void => {
+        const lines = block.split(/\r?\n/);
+        const dataLines: string[] = [];
+
+        for (const line of lines) {
+          if (line.startsWith("data:")) {
+            dataLines.push(line.slice(5).trimStart());
+          }
+        }
+
+        if (dataLines.length === 0) {
+          return;
+        }
+
+        const data = dataLines.join("\n").trim();
+        if (!data || data === "[DONE]") {
+          return;
+        }
+
+        let payload: {
+          candidates?: Array<{
+            finishReason?: string;
+            finish_reason?: string;
+            content?: { parts?: unknown[] };
+          }>;
+          usageMetadata?: unknown;
+          usage_metadata?: unknown;
+        };
+
+        try {
+          payload = JSON.parse(data) as {
+            candidates?: Array<{
+              finishReason?: string;
+              finish_reason?: string;
+              content?: { parts?: unknown[] };
+            }>;
+            usageMetadata?: unknown;
+            usage_metadata?: unknown;
+          };
+        } catch {
+          return;
+        }
+
+        const firstCandidate = payload.candidates?.[0];
+        const parts = firstCandidate?.content?.parts ?? [];
+        const combinedChunkText = parts
+          .map((part) => {
+            if (part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string") {
+              return (part as { text: string }).text;
+            }
+            return "";
+          })
+          .join("");
+
+        if (combinedChunkText.length > 0) {
+          let delta = combinedChunkText;
+          if (combinedChunkText.startsWith(text)) {
+            delta = combinedChunkText.slice(text.length);
+            text = combinedChunkText;
+          } else if (!text.endsWith(combinedChunkText)) {
+            text += combinedChunkText;
+          } else {
+            delta = "";
+          }
+
+          if (delta.length > 0) {
+            request.onTextChunk?.(delta);
+          }
+        }
+
+        const parsedFunctionCalls = this.parseFunctionCallsFromParts(parts);
+        parsedFunctionCalls.forEach((call) => {
+          const args = call.args && typeof call.args === "object" && !Array.isArray(call.args)
+            ? (call.args as Record<string, unknown>)
+            : {};
+          const key = `${call.name}:${JSON.stringify(args)}`;
+          if (!functionCallKeys.has(key)) {
+            functionCallKeys.add(key);
+            functionCalls.push({
+              name: call.name,
+              args
+            } as FunctionCall);
+          }
+        });
+
+        const nextUsage = this.toUsageMetadata(payload.usageMetadata ?? payload.usage_metadata);
+        if (nextUsage) {
+          usageMetadata = nextUsage;
+        }
+
+        const nextFinishReason = firstCandidate?.finishReason ?? firstCandidate?.finish_reason;
+        if (typeof nextFinishReason === "string" && nextFinishReason.length > 0) {
+          finishReason = nextFinishReason;
+        }
+      };
+
+      const processBuffer = (): void => {
+        while (true) {
+          const separatorMatch = buffer.match(/\r?\n\r?\n/);
+          if (!separatorMatch || separatorMatch.index === undefined) {
+            return;
+          }
+
+          const separatorIndex = separatorMatch.index;
+          const separatorLength = separatorMatch[0].length;
+          const block = buffer.slice(0, separatorIndex);
+          buffer = buffer.slice(separatorIndex + separatorLength);
+          consumeSseBlock(block);
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        processBuffer();
+      }
+
+      buffer += decoder.decode();
+      processBuffer();
+      if (buffer.trim().length > 0) {
+        consumeSseBlock(buffer);
+      }
+
+      return {
+        text,
+        finishReason,
+        usageMetadata,
+        functionCalls: functionCalls.length > 0 ? functionCalls : undefined
+      };
+    } catch (error) {
+      if (error instanceof RateLimitError || error instanceof GeminiError) {
+        throw error;
+      }
+
+      const statusCode = this.extractStatusCode(error);
+      if (statusCode === 429) {
+        const providerMessage = error instanceof Error ? error.message : "Too many requests";
+        throw new RateLimitError(`Gemini API rate limit exceeded: ${providerMessage}`, error);
+      }
+      if (statusCode === 401 || statusCode === 403) {
+        throw new GeminiError("Invalid Vertex credentials or missing IAM permissions", statusCode, error);
+      }
+      if (error instanceof Error) {
+        throw new GeminiError(`Gemini API streaming error: ${error.message}`, statusCode, error);
+      }
+      throw new GeminiError("Unknown Gemini API streaming error", statusCode, error);
     }
   }
 

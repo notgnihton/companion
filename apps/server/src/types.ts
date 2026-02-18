@@ -37,6 +37,8 @@ export type ChatActionType =
   | "snooze-deadline"
   | "create-schedule-block"
   | "update-schedule-block"
+  | "delete-schedule-block"
+  | "clear-schedule-window"
   | "create-routine-preset"
   | "update-routine-preset"
   | "create-journal-draft"

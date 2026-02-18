@@ -436,6 +436,8 @@ export type ChatActionType =
   | "snooze-deadline"
   | "create-schedule-block"
   | "update-schedule-block"
+  | "delete-schedule-block"
+  | "clear-schedule-window"
   | "create-journal-draft"
   | "create-habit"
   | "update-habit"

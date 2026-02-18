@@ -594,6 +594,53 @@ export const functionDeclarations: FunctionDeclaration[] = [
     }
   },
   {
+    name: "queueDeleteScheduleBlock",
+    description:
+      "Queue deletion of one schedule block that REQUIRES explicit user confirmation before execution.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        scheduleId: {
+          type: SchemaType.STRING,
+          description: "Existing schedule block ID (preferred)."
+        },
+        scheduleTitle: {
+          type: SchemaType.STRING,
+          description: "Existing schedule block title hint when ID is unknown."
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "queueClearScheduleWindow",
+    description:
+      "Queue clearing multiple schedule blocks in a time window (for example freeing up the rest of today). REQUIRES explicit user confirmation.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        startTime: {
+          type: SchemaType.STRING,
+          description: "Window start ISO datetime. Defaults to now."
+        },
+        endTime: {
+          type: SchemaType.STRING,
+          description: "Window end ISO datetime. Defaults to end of the same day."
+        },
+        titleQuery: {
+          type: SchemaType.STRING,
+          description: "Optional text filter matched against schedule block title."
+        },
+        includeAcademicBlocks: {
+          type: SchemaType.BOOLEAN,
+          description:
+            "Set true to include lecture/lab/forelesning/undervisning blocks. Default false to protect core classes."
+        }
+      },
+      required: []
+    }
+  },
+  {
     name: "queueCreateRoutinePreset",
     description:
       "Queue creation of a reusable routine preset that REQUIRES explicit user confirmation before execution.",
@@ -1019,6 +1066,11 @@ function resolveScheduleTarget(
     };
   }
   return matches[0]!;
+}
+
+function isAcademicScheduleBlockTitle(title: string): boolean {
+  const normalized = normalizeSearchText(title);
+  return /(lecture|forelesning|lab|laboratorium|undervisning|seminar|class)/.test(normalized);
 }
 
 function parseRoutinePreferredStartTime(value: unknown): string | null {
@@ -2026,6 +2078,88 @@ export function handleQueueUpdateScheduleBlock(
   return toPendingActionResponse(pending, "Action queued. Ask user for explicit confirmation before executing.");
 }
 
+export function handleQueueDeleteScheduleBlock(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): PendingActionToolResponse | { error: string } {
+  const resolved = resolveScheduleTarget(store, args);
+  if ("error" in resolved) {
+    return resolved;
+  }
+
+  const pending = store.createPendingChatAction({
+    actionType: "delete-schedule-block",
+    summary: `Delete schedule block "${resolved.title}"`,
+    payload: {
+      scheduleIds: [resolved.id]
+    }
+  });
+
+  return toPendingActionResponse(pending, "Action queued. Ask user for explicit confirmation before executing.");
+}
+
+export function handleQueueClearScheduleWindow(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): PendingActionToolResponse | { error: string } {
+  const now = new Date();
+  const requestedStart = asTrimmedString(args.startTime);
+  const requestedEnd = asTrimmedString(args.endTime);
+  const titleQuery = asTrimmedString(args.titleQuery);
+  const includeAcademicBlocks = args.includeAcademicBlocks === true;
+
+  let startDate = requestedStart ? new Date(requestedStart) : new Date(now);
+  if (Number.isNaN(startDate.getTime())) {
+    return { error: "startTime must be a valid ISO datetime." };
+  }
+
+  let endDate: Date;
+  if (requestedEnd) {
+    endDate = new Date(requestedEnd);
+    if (Number.isNaN(endDate.getTime())) {
+      return { error: "endTime must be a valid ISO datetime." };
+    }
+  } else {
+    endDate = new Date(startDate);
+    endDate.setHours(23, 59, 59, 999);
+  }
+
+  if (endDate.getTime() <= startDate.getTime()) {
+    return { error: "endTime must be after startTime." };
+  }
+
+  const normalizedQuery = titleQuery ? normalizeSearchText(titleQuery) : null;
+  const matchingEvents = store
+    .getScheduleEvents()
+    .filter((event) => {
+      const eventStart = new Date(event.startTime);
+      if (Number.isNaN(eventStart.getTime())) {
+        return false;
+      }
+      return eventStart.getTime() >= startDate.getTime() && eventStart.getTime() <= endDate.getTime();
+    })
+    .filter((event) => (normalizedQuery ? normalizeSearchText(event.title).includes(normalizedQuery) : true))
+    .filter((event) => (includeAcademicBlocks ? true : !isAcademicScheduleBlockTitle(event.title)));
+
+  if (matchingEvents.length === 0) {
+    return { error: "No matching schedule blocks were found in that window." };
+  }
+
+  const pending = store.createPendingChatAction({
+    actionType: "clear-schedule-window",
+    summary: `Clear ${matchingEvents.length} schedule block${matchingEvents.length === 1 ? "" : "s"} between ${startDate.toISOString()} and ${endDate.toISOString()}`,
+    payload: {
+      scheduleIds: matchingEvents.map((event) => event.id),
+      startTime: startDate.toISOString(),
+      endTime: endDate.toISOString(),
+      ...(titleQuery ? { titleQuery } : {}),
+      includeAcademicBlocks
+    }
+  });
+
+  return toPendingActionResponse(pending, "Action queued. Ask user for explicit confirmation before executing.");
+}
+
 export function handleQueueCreateRoutinePreset(
   store: RuntimeStore,
   args: Record<string, unknown> = {}
@@ -2323,6 +2457,49 @@ export function executePendingChatAction(
         success: true,
         message: `Updated schedule block "${lecture.title}".`,
         lecture
+      };
+    }
+    case "delete-schedule-block":
+    case "clear-schedule-window": {
+      const scheduleIds = Array.isArray(pendingAction.payload.scheduleIds)
+        ? pendingAction.payload.scheduleIds
+            .map((entry) => asTrimmedString(entry))
+            .filter((entry): entry is string => Boolean(entry))
+        : [];
+
+      if (scheduleIds.length === 0) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Invalid schedule delete payload."
+        };
+      }
+
+      let deletedCount = 0;
+      for (const scheduleId of new Set(scheduleIds)) {
+        if (store.deleteScheduleEvent(scheduleId)) {
+          deletedCount += 1;
+        }
+      }
+
+      if (deletedCount === 0) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "No matching schedule blocks were deleted."
+        };
+      }
+
+      return {
+        actionId: pendingAction.id,
+        actionType: pendingAction.actionType,
+        success: true,
+        message:
+          pendingAction.actionType === "delete-schedule-block"
+            ? "Deleted the schedule block."
+            : `Cleared ${deletedCount} schedule block${deletedCount === 1 ? "" : "s"} from your timeline.`
       };
     }
     case "create-routine-preset": {
@@ -2791,6 +2968,12 @@ export function executeFunctionCall(
       break;
     case "queueUpdateScheduleBlock":
       response = handleQueueUpdateScheduleBlock(store, args);
+      break;
+    case "queueDeleteScheduleBlock":
+      response = handleQueueDeleteScheduleBlock(store, args);
+      break;
+    case "queueClearScheduleWindow":
+      response = handleQueueClearScheduleWindow(store, args);
       break;
     case "queueCreateRoutinePreset":
       response = handleQueueCreateRoutinePreset(store, args);

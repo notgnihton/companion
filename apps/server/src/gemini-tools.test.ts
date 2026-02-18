@@ -25,6 +25,8 @@ import {
   handleQueueDeadlineAction,
   handleQueueScheduleBlock,
   handleQueueUpdateScheduleBlock,
+  handleQueueDeleteScheduleBlock,
+  handleQueueClearScheduleWindow,
   handleQueueCreateRoutinePreset,
   handleQueueUpdateRoutinePreset,
   handleCreateJournalEntry,
@@ -42,8 +44,8 @@ describe("gemini-tools", () => {
   });
 
   describe("functionDeclarations", () => {
-    it("should define 27 function declarations", () => {
-      expect(functionDeclarations).toHaveLength(27);
+    it("should define 29 function declarations", () => {
+      expect(functionDeclarations).toHaveLength(29);
     });
 
     it("should include getSchedule function", () => {
@@ -112,6 +114,8 @@ describe("gemini-tools", () => {
       expect(functionDeclarations.find((f) => f.name === "queueDeadlineAction")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "queueScheduleBlock")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "queueUpdateScheduleBlock")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "queueDeleteScheduleBlock")).toBeDefined();
+      expect(functionDeclarations.find((f) => f.name === "queueClearScheduleWindow")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "queueCreateRoutinePreset")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "queueUpdateRoutinePreset")).toBeDefined();
       expect(functionDeclarations.find((f) => f.name === "createJournalEntry")).toBeDefined();
@@ -731,6 +735,57 @@ describe("gemini-tools", () => {
       expect(store.getPendingChatActions()).toHaveLength(1);
     });
 
+    it("queues a schedule block delete action", () => {
+      const scheduleBlock = store.createLectureEvent({
+        title: "Optional focus block",
+        startTime: "2026-02-18T18:00:00.000Z",
+        durationMinutes: 60,
+        workload: "medium"
+      });
+
+      const result = handleQueueDeleteScheduleBlock(store, {
+        scheduleId: scheduleBlock.id
+      });
+
+      expect(result).toHaveProperty("requiresConfirmation", true);
+      if (!("pendingAction" in result)) {
+        throw new Error("Expected pendingAction in queue result");
+      }
+
+      expect(result.pendingAction.actionType).toBe("delete-schedule-block");
+      expect(store.getPendingChatActions()).toHaveLength(1);
+    });
+
+    it("queues clear schedule window while preserving classes by default", () => {
+      store.createLectureEvent({
+        title: "DAT520 Lecture",
+        startTime: "2026-02-18T10:00:00.000Z",
+        durationMinutes: 90,
+        workload: "medium"
+      });
+      const optionalBlock = store.createLectureEvent({
+        title: "Project deep work",
+        startTime: "2026-02-18T13:00:00.000Z",
+        durationMinutes: 90,
+        workload: "high"
+      });
+
+      const result = handleQueueClearScheduleWindow(store, {
+        startTime: "2026-02-18T00:00:00.000Z",
+        endTime: "2026-02-18T23:59:59.999Z"
+      });
+
+      expect(result).toHaveProperty("requiresConfirmation", true);
+      if (!("pendingAction" in result)) {
+        throw new Error("Expected pendingAction in clear-window result");
+      }
+
+      const scheduleIds = result.pendingAction.payload.scheduleIds as string[];
+      expect(result.pendingAction.actionType).toBe("clear-schedule-window");
+      expect(scheduleIds).toContain(optionalBlock.id);
+      expect(scheduleIds.length).toBe(1);
+    });
+
     it("queues routine preset create and update actions", () => {
       const createResult = handleQueueCreateRoutinePreset(store, {
         title: "Morning gym",
@@ -844,6 +899,35 @@ describe("gemini-tools", () => {
       expect(result.success).toBe(true);
       expect(result.lecture?.startTime).toContain("T08:00:00.000Z");
       expect(result.lecture?.durationMinutes).toBe(75);
+    });
+
+    it("executes queued clear schedule window action", () => {
+      const blockA = store.createLectureEvent({
+        title: "Optional deep work",
+        startTime: "2026-02-22T15:00:00.000Z",
+        durationMinutes: 60,
+        workload: "medium"
+      });
+      const blockB = store.createLectureEvent({
+        title: "Gym",
+        startTime: "2026-02-22T17:00:00.000Z",
+        durationMinutes: 60,
+        workload: "medium"
+      });
+
+      const pending = store.createPendingChatAction({
+        actionType: "clear-schedule-window",
+        summary: "Clear the evening",
+        payload: {
+          scheduleIds: [blockA.id, blockB.id]
+        }
+      });
+
+      const result = executePendingChatAction(pending, store);
+      expect(result.success).toBe(true);
+      expect(result.message).toContain("Cleared 2 schedule blocks");
+      expect(store.getScheduleEventById(blockA.id)).toBeNull();
+      expect(store.getScheduleEventById(blockB.id)).toBeNull();
     });
 
     it("executes queued routine preset create and update", () => {
@@ -1110,6 +1194,37 @@ describe("gemini-tools", () => {
 
       expect(result.name).toBe("queueUpdateScheduleBlock");
       expect(result.response).toHaveProperty("requiresConfirmation", true);
+    });
+
+    it("should execute schedule delete queue functions", () => {
+      const scheduleBlock = store.createLectureEvent({
+        title: "Unblockable item",
+        startTime: "2026-02-24T12:00:00.000Z",
+        durationMinutes: 60,
+        workload: "medium"
+      });
+
+      const deleteResult = executeFunctionCall(
+        "queueDeleteScheduleBlock",
+        { scheduleId: scheduleBlock.id },
+        store
+      );
+
+      expect(deleteResult.name).toBe("queueDeleteScheduleBlock");
+      expect(deleteResult.response).toHaveProperty("requiresConfirmation", true);
+
+      const clearResult = executeFunctionCall(
+        "queueClearScheduleWindow",
+        {
+          startTime: "2026-02-24T00:00:00.000Z",
+          endTime: "2026-02-24T23:59:59.999Z",
+          includeAcademicBlocks: true
+        },
+        store
+      );
+
+      expect(clearResult.name).toBe("queueClearScheduleWindow");
+      expect(clearResult.response).toHaveProperty("requiresConfirmation", true);
     });
 
     it("should execute routine preset queue functions", () => {
