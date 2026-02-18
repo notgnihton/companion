@@ -462,23 +462,25 @@ export class GeminiClient {
 
     try {
       await waitForOpen();
+      const nativeAudioModel = this.liveModelName.toLowerCase().includes("native-audio");
 
       sendJson({
         setup: {
           model: this.normalizeLiveModelName(),
-          generation_config: {
-            response_modalities: ["TEXT"]
+          generationConfig: {
+            responseModalities: [nativeAudioModel ? "AUDIO" : "TEXT"]
           },
+          ...(nativeAudioModel ? { outputAudioTranscription: {} } : {}),
           ...(request.systemInstruction && request.systemInstruction.trim().length > 0
             ? {
-                system_instruction: {
+                systemInstruction: {
                   parts: [{ text: request.systemInstruction }]
                 }
               }
             : {}),
           ...(request.tools && request.tools.length > 0
             ? {
-                tools: [{ function_declarations: request.tools }]
+                tools: [{ functionDeclarations: request.tools }]
               }
             : {})
         }
@@ -515,9 +517,9 @@ export class GeminiClient {
         .filter((message): message is { role: "user" | "model"; parts: Array<Record<string, unknown>> } => Boolean(message));
 
       sendJson({
-        client_content: {
+        clientContent: {
           turns,
-          turn_complete: true
+          turnComplete: true
         }
       });
 
@@ -530,11 +532,13 @@ export class GeminiClient {
           | {
               serverContent?: {
                 modelTurn?: { parts?: Array<Record<string, unknown>> };
+                outputTranscription?: { text?: string };
                 turnComplete?: boolean;
                 interrupted?: boolean;
               };
               server_content?: {
                 model_turn?: { parts?: Array<Record<string, unknown>> };
+                output_transcription?: { text?: string };
                 turn_complete?: boolean;
                 interrupted?: boolean;
               };
@@ -574,8 +578,8 @@ export class GeminiClient {
           const toolResponses = await request.onToolCall(toolCalls);
           const functionResponses = this.buildLiveFunctionResponses(toolCalls, toolResponses);
           sendJson({
-            tool_response: {
-              function_responses: functionResponses
+            toolResponse: {
+              functionResponses
             }
           });
         }
@@ -584,6 +588,8 @@ export class GeminiClient {
           | {
               modelTurn?: { parts?: Array<Record<string, unknown>> };
               model_turn?: { parts?: Array<Record<string, unknown>> };
+              outputTranscription?: { text?: string };
+              output_transcription?: { text?: string };
               turnComplete?: boolean;
               turn_complete?: boolean;
               interrupted?: boolean;
@@ -597,6 +603,12 @@ export class GeminiClient {
               request.onTextChunk?.(part.text);
             }
           }
+        }
+        const transcriptionText =
+          serverContent?.outputTranscription?.text ?? serverContent?.output_transcription?.text;
+        if (typeof transcriptionText === "string" && transcriptionText.length > 0) {
+          text += transcriptionText;
+          request.onTextChunk?.(transcriptionText);
         }
 
         if (serverContent?.interrupted) {
