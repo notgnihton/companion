@@ -31,11 +31,14 @@ This file documents all environment variables required to run the Companion serv
 > Generate VAPID keys: `npx web-push generate-vapid-keys`
 
 ### AI / LLM
-- `GEMINI_API_KEY` (required for chat) — Google Gemini API key
-  - Get key: https://ai.google.dev/
 - `GEMINI_USE_LIVE_API` (default: `true`) — Use Gemini Live API (WebSocket) for chat + tool calling
-- `GEMINI_LIVE_MODEL` (default: `gemini-2.5-flash-native-audio-preview-12-2025`) — Live model name
-- `GEMINI_LIVE_ENDPOINT` (default: Google BidiGenerateContent WebSocket endpoint) — Override only for advanced routing/testing
+- `GEMINI_LIVE_PLATFORM` (default: `vertex`) — Live platform (`vertex` or `developer`)
+- `GEMINI_LIVE_MODEL` (default: `gemini-live-2.5-flash-native-audio`) — Live model name
+- `GEMINI_LIVE_ENDPOINT` (optional) — Override WebSocket endpoint; default is computed from platform
+- `GEMINI_VERTEX_PROJECT_ID` (required for `vertex` unless `GEMINI_LIVE_MODEL` is already a full `projects/...` model resource)
+- `GEMINI_VERTEX_LOCATION` (default: `us-central1`) — Vertex model region for endpoint/model path
+- `GEMINI_API_KEY` (required for `developer`) — Gemini Developer API key
+- `GOOGLE_APPLICATION_CREDENTIALS` (recommended for `vertex`) — Service-account JSON path for Google IAM auth (or use other ADC methods)
 - `GEMINI_LIVE_TIMEOUT_MS` (default: `25000`) — Live socket read timeout in milliseconds
 
 ### Authentication
@@ -83,7 +86,7 @@ This file documents all environment variables required to run the Companion serv
 
 ## Deployment Checklist
 
-1. **Set required variables**: `TIMEZONE`, `USER_NAME`, `GEMINI_API_KEY`
+1. **Set required variables**: `TIMEZONE`, `USER_NAME`, and Live auth vars (`GEMINI_LIVE_PLATFORM=vertex` with Vertex IAM or `GEMINI_LIVE_PLATFORM=developer` with `GEMINI_API_KEY`)
 2. **Generate VAPID keys**: `npx web-push generate-vapid-keys`
 3. **Set VAPID keys**: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
 4. **Configure auth**: Set `AUTH_ADMIN_EMAIL` and `AUTH_ADMIN_PASSWORD` (and optionally `AUTH_REQUIRED=true`)
@@ -116,10 +119,12 @@ VAPID_PUBLIC_KEY=your-vapid-public-key
 VAPID_PRIVATE_KEY=your-vapid-private-key
 VAPID_SUBJECT=mailto:companion@example.com
 
-# AI
-GEMINI_API_KEY=your-gemini-api-key
+# AI (Vertex Live API)
 GEMINI_USE_LIVE_API=true
-GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
+GEMINI_LIVE_PLATFORM=vertex
+GEMINI_LIVE_MODEL=gemini-live-2.5-flash-native-audio
+GEMINI_VERTEX_PROJECT_ID=your-gcp-project-id
+GEMINI_VERTEX_LOCATION=us-central1
 GEMINI_LIVE_TIMEOUT_MS=25000
 
 # Auth

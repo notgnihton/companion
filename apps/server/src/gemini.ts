@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult, FunctionDeclaration, FunctionCall, Part } from "@google/generative-ai";
+import { google } from "googleapis";
 import WebSocket, { RawData } from "ws";
 import { config } from "./config.js";
 import { Deadline, JournalEntry, LectureEvent, UserContext } from "./types.js";
@@ -93,6 +94,9 @@ export class GeminiClient {
   }
 
   canUseLiveApi(): boolean {
+    if (config.GEMINI_LIVE_PLATFORM === "vertex") {
+      return true;
+    }
     return Boolean(this.apiKey);
   }
 
@@ -119,12 +123,55 @@ export class GeminiClient {
     return undefined;
   }
 
-  private normalizeLiveModelName(): string {
+  private normalizeDeveloperLiveModelName(): string {
     const trimmed = this.liveModelName.trim();
     if (trimmed.startsWith("models/")) {
       return trimmed;
     }
     return `models/${trimmed}`;
+  }
+
+  private normalizeVertexLiveModelName(): string {
+    const trimmed = this.liveModelName.trim();
+    if (trimmed.startsWith("projects/")) {
+      return trimmed;
+    }
+    const projectId = config.GEMINI_VERTEX_PROJECT_ID?.trim();
+    if (!projectId) {
+      throw new GeminiError(
+        "GEMINI_VERTEX_PROJECT_ID is required for Vertex Live API when GEMINI_LIVE_MODEL is not a full model resource path."
+      );
+    }
+    const location = config.GEMINI_VERTEX_LOCATION.trim();
+    return `projects/${projectId}/locations/${location}/publishers/google/models/${trimmed}`;
+  }
+
+  private resolveDeveloperLiveEndpoint(): string {
+    return (
+      config.GEMINI_LIVE_ENDPOINT ??
+      "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+    );
+  }
+
+  private resolveVertexLiveEndpoint(): string {
+    if (config.GEMINI_LIVE_ENDPOINT) {
+      return config.GEMINI_LIVE_ENDPOINT;
+    }
+    const location = config.GEMINI_VERTEX_LOCATION.trim();
+    return `wss://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
+  }
+
+  private async getVertexAccessToken(): Promise<string> {
+    const auth = new google.auth.GoogleAuth({
+      scopes: ["https://www.googleapis.com/auth/cloud-platform"]
+    });
+    const client = await auth.getClient();
+    const accessToken = await client.getAccessToken();
+    const token = typeof accessToken === "string" ? accessToken : accessToken?.token;
+    if (!token || token.trim().length === 0) {
+      throw new GeminiError("Failed to acquire Vertex IAM access token. Check GOOGLE_APPLICATION_CREDENTIALS/ADC.");
+    }
+    return token;
   }
 
   async generateChatResponse(request: GeminiChatRequest): Promise<GeminiChatResponse> {
@@ -335,132 +382,74 @@ export class GeminiClient {
       promptTokenCount?: unknown;
       candidatesTokenCount?: unknown;
       totalTokenCount?: unknown;
+      prompt_token_count?: unknown;
+      candidates_token_count?: unknown;
+      total_token_count?: unknown;
     };
+    const promptTokenCount =
+      typeof payload.promptTokenCount === "number"
+        ? payload.promptTokenCount
+        : typeof payload.prompt_token_count === "number"
+          ? payload.prompt_token_count
+          : undefined;
+    const candidatesTokenCount =
+      typeof payload.candidatesTokenCount === "number"
+        ? payload.candidatesTokenCount
+        : typeof payload.candidates_token_count === "number"
+          ? payload.candidates_token_count
+          : undefined;
+    const totalTokenCount =
+      typeof payload.totalTokenCount === "number"
+        ? payload.totalTokenCount
+        : typeof payload.total_token_count === "number"
+          ? payload.total_token_count
+          : undefined;
     if (
-      typeof payload.promptTokenCount !== "number" ||
-      typeof payload.candidatesTokenCount !== "number" ||
-      typeof payload.totalTokenCount !== "number"
+      typeof promptTokenCount !== "number" ||
+      typeof candidatesTokenCount !== "number" ||
+      typeof totalTokenCount !== "number"
     ) {
       return undefined;
     }
 
     return {
-      promptTokenCount: payload.promptTokenCount,
-      candidatesTokenCount: payload.candidatesTokenCount,
-      totalTokenCount: payload.totalTokenCount
+      promptTokenCount,
+      candidatesTokenCount,
+      totalTokenCount
     };
-  }
-
-  private hasAudioInput(messages: GeminiMessage[]): boolean {
-    return messages.some((message) =>
-      message.parts.some((part) => {
-        const mimeType = part.inlineData?.mimeType;
-        return typeof mimeType === "string" && mimeType.toLowerCase().startsWith("audio/");
-      })
-    );
-  }
-
-  private addUsageMetadata(
-    current: GeminiChatResponse["usageMetadata"],
-    next: GeminiChatResponse["usageMetadata"]
-  ): GeminiChatResponse["usageMetadata"] {
-    if (!next) {
-      return current;
-    }
-    if (!current) {
-      return { ...next };
-    }
-    return {
-      promptTokenCount: current.promptTokenCount + next.promptTokenCount,
-      candidatesTokenCount: current.candidatesTokenCount + next.candidatesTokenCount,
-      totalTokenCount: current.totalTokenCount + next.totalTokenCount
-    };
-  }
-
-  private async generateStandardToolLoopResponse(request: GeminiLiveChatRequest): Promise<GeminiChatResponse> {
-    const maxRounds = 8;
-    let rounds = 0;
-    let usageMetadata: GeminiChatResponse["usageMetadata"] = undefined;
-    const workingMessages: GeminiMessage[] = request.messages.map((message) => ({
-      role: message.role,
-      parts: [...message.parts]
-    }));
-
-    while (true) {
-      const response = await this.generateChatResponse({
-        messages: workingMessages,
-        systemInstruction: request.systemInstruction,
-        tools: request.tools
-      });
-      usageMetadata = this.addUsageMetadata(usageMetadata, response.usageMetadata);
-
-      const functionCalls = response.functionCalls ?? [];
-      if (functionCalls.length === 0) {
-        if (response.text.length > 0) {
-          request.onTextChunk?.(response.text);
-        }
-        return {
-          ...response,
-          usageMetadata
-        };
-      }
-
-      if (!request.onToolCall) {
-        throw new GeminiError("Gemini requested tool calls but no onToolCall handler was provided");
-      }
-
-      if (rounds >= maxRounds) {
-        throw new GeminiError("Gemini exceeded maximum function-call rounds");
-      }
-      rounds += 1;
-
-      const liveCalls: GeminiLiveFunctionCall[] = functionCalls.map((call, index) => ({
-        id: `${rounds}-${index}`,
-        name: call.name,
-        args: call.args && typeof call.args === "object" && !Array.isArray(call.args)
-          ? (call.args as Record<string, unknown>)
-          : {}
-      }));
-
-      const toolResponses = await request.onToolCall(liveCalls);
-      const functionResponses = this.buildLiveFunctionResponses(liveCalls, toolResponses);
-
-      workingMessages.push({
-        role: "model",
-        parts: functionCalls.map((call) => ({ functionCall: call }))
-      });
-      workingMessages.push({
-        role: "function",
-        parts: functionResponses.map((responseEntry) => ({
-          functionResponse: {
-            name: responseEntry.name,
-            response: responseEntry.response
-          }
-        })) as Part[]
-      });
-    }
   }
 
   async generateLiveChatResponse(request: GeminiLiveChatRequest): Promise<GeminiChatResponse> {
-    if (!this.canUseLiveApi() || !this.apiKey) {
-      throw new GeminiError("Gemini API key not configured. Set GEMINI_API_KEY environment variable.");
+    if (!this.canUseLiveApi()) {
+      if (config.GEMINI_LIVE_PLATFORM === "developer") {
+        throw new GeminiError("Gemini API key not configured. Set GEMINI_API_KEY for developer Live API.");
+      }
+      throw new GeminiError("Vertex Live API is enabled but configuration is incomplete.");
     }
     if (request.messages.length === 0) {
       throw new GeminiError("At least one message is required");
     }
 
-    const nativeAudioModel = this.liveModelName.toLowerCase().includes("native-audio");
-    if (nativeAudioModel && !this.hasAudioInput(request.messages)) {
-      // Native-audio models are optimized for true realtime audio I/O. For text-only chat
-      // requests, use the standard text function-calling loop to avoid audio-specific failures.
-      return await this.generateStandardToolLoopResponse(request);
-    }
-
-    const liveUrl = `${config.GEMINI_LIVE_ENDPOINT}?key=${encodeURIComponent(this.apiKey)}`;
-    const ws = new WebSocket(liveUrl, {
-      headers: {
-        "x-goog-api-key": this.apiKey
+    const vertexMode = config.GEMINI_LIVE_PLATFORM === "vertex";
+    const liveUrl = (() => {
+      if (vertexMode) {
+        return this.resolveVertexLiveEndpoint();
       }
+      const endpoint = this.resolveDeveloperLiveEndpoint();
+      const separator = endpoint.includes("?") ? "&" : "?";
+      return `${endpoint}${separator}key=${encodeURIComponent(this.apiKey ?? "")}`;
+    })();
+    const modelName = vertexMode ? this.normalizeVertexLiveModelName() : this.normalizeDeveloperLiveModelName();
+    const wsHeaders: Record<string, string> = vertexMode
+      ? {
+          Authorization: `Bearer ${await this.getVertexAccessToken()}`
+        }
+      : {
+          "x-goog-api-key": this.apiKey ?? ""
+        };
+
+    const ws = new WebSocket(liveUrl, {
+      headers: wsHeaders
     });
 
     const timeoutMs = request.timeoutMs ?? config.GEMINI_LIVE_TIMEOUT_MS;
@@ -559,27 +548,49 @@ export class GeminiClient {
 
     try {
       await waitForOpen();
-      sendJson({
-        setup: {
-          model: this.normalizeLiveModelName(),
-          generationConfig: {
-            responseModalities: [nativeAudioModel ? "AUDIO" : "TEXT"]
-          },
-          ...(nativeAudioModel ? { outputAudioTranscription: {} } : {}),
-          ...(request.systemInstruction && request.systemInstruction.trim().length > 0
-            ? {
-                systemInstruction: {
-                  parts: [{ text: request.systemInstruction }]
+      if (vertexMode) {
+        sendJson({
+          setup: {
+            model: modelName,
+            generation_config: {
+              response_modalities: ["TEXT"]
+            },
+            ...(request.systemInstruction && request.systemInstruction.trim().length > 0
+              ? {
+                  system_instruction: {
+                    parts: [{ text: request.systemInstruction }]
+                  }
                 }
-              }
-            : {}),
-          ...(request.tools && request.tools.length > 0
-            ? {
-                tools: [{ functionDeclarations: request.tools }]
-              }
-            : {})
-        }
-      });
+              : {}),
+            ...(request.tools && request.tools.length > 0
+              ? {
+                  tools: [{ function_declarations: request.tools }]
+                }
+              : {})
+          }
+        });
+      } else {
+        sendJson({
+          setup: {
+            model: modelName,
+            generationConfig: {
+              responseModalities: ["TEXT"]
+            },
+            ...(request.systemInstruction && request.systemInstruction.trim().length > 0
+              ? {
+                  systemInstruction: {
+                    parts: [{ text: request.systemInstruction }]
+                  }
+                }
+              : {}),
+            ...(request.tools && request.tools.length > 0
+              ? {
+                  tools: [{ functionDeclarations: request.tools }]
+                }
+              : {})
+          }
+        });
+      }
 
       while (true) {
         const setupMessage = (await nextMessageWithTimeout()) as
@@ -611,12 +622,21 @@ export class GeminiClient {
         .map((message) => this.toLiveTurn(message))
         .filter((message): message is { role: "user" | "model"; parts: Array<Record<string, unknown>> } => Boolean(message));
 
-      sendJson({
-        clientContent: {
-          turns,
-          turnComplete: true
-        }
-      });
+      sendJson(
+        vertexMode
+          ? {
+              client_content: {
+                turns,
+                turn_complete: true
+              }
+            }
+          : {
+              clientContent: {
+                turns,
+                turnComplete: true
+              }
+            }
+      );
 
       let text = "";
       let finishReason: string | undefined = undefined;
@@ -672,11 +692,19 @@ export class GeminiClient {
           }
           const toolResponses = await request.onToolCall(toolCalls);
           const functionResponses = this.buildLiveFunctionResponses(toolCalls, toolResponses);
-          sendJson({
-            toolResponse: {
-              functionResponses
-            }
-          });
+          sendJson(
+            vertexMode
+              ? {
+                  tool_response: {
+                    function_responses: functionResponses
+                  }
+                }
+              : {
+                  toolResponse: {
+                    functionResponses
+                  }
+                }
+          );
         }
 
         const serverContent = (envelope?.serverContent ?? envelope?.server_content) as

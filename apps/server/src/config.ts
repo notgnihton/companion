@@ -54,11 +54,11 @@ const schema = z.object({
   GEMINI_USE_LIVE_API: z
     .preprocess((value) => parseBooleanEnv(value), z.boolean())
     .default(true),
-  GEMINI_LIVE_MODEL: z.string().default("gemini-2.5-flash-native-audio-preview-12-2025"),
-  GEMINI_LIVE_ENDPOINT: z
-    .string()
-    .url()
-    .default("wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"),
+  GEMINI_LIVE_PLATFORM: z.enum(["vertex", "developer"]).default("vertex"),
+  GEMINI_LIVE_MODEL: z.string().default("gemini-live-2.5-flash-native-audio"),
+  GEMINI_LIVE_ENDPOINT: z.string().url().optional(),
+  GEMINI_VERTEX_PROJECT_ID: z.string().optional(),
+  GEMINI_VERTEX_LOCATION: z.string().default("us-central1"),
   GEMINI_LIVE_TIMEOUT_MS: z.coerce.number().int().min(3000).max(120000).default(25000),
   YOUTUBE_API_KEY: z.string().optional(),
   YOUTUBE_CHANNEL_IDS: z.string().optional(),
