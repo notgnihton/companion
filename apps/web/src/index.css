@@ -3457,6 +3457,24 @@ body.keyboard-open .pull-to-refresh-container {
   align-items: center;
 }
 
+.nutrition-tool-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nutrition-tool-header-actions button {
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  padding: 6px 10px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
 .nutrition-custom-food-header button {
   border: 1px solid var(--border-soft);
   border-radius: 9px;

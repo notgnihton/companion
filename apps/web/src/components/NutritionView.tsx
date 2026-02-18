@@ -1463,9 +1463,9 @@ export function NutritionView(): JSX.Element {
             <section className="nutrition-tool-panel">
               <div className="nutrition-custom-food-header">
                 <h4>Custom foods</h4>
-                <div className="nutrition-inline-actions">
+                <div className="nutrition-tool-header-actions">
                   {editingCustomFoodId && (
-                    <button type="button" className="nutrition-secondary-button" onClick={resetCustomFoodDraft}>
+                    <button type="button" onClick={resetCustomFoodDraft}>
                       Cancel edit
                     </button>
                   )}
