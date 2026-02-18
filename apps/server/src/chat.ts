@@ -760,6 +760,7 @@ Core behavior:
 - For habits and goals questions, call getHabitsGoalsStatus first. For create/delete requests, use createHabit/deleteHabit/createGoal/deleteGoal. For check-ins, use updateHabitCheckIn/updateGoalCheckIn.
 - For nutrition requests, use nutrition tools and focus on macro tracking only: calories, protein, carbs, and fat.
 - You can control the full Food tab via tools: nutrition targets, meals, meal items, and custom foods.
+- For image-based meal logging, estimate a realistic food weight in grams and pass quantity/estimatedWeightGrams so items are not logged as 1g placeholders.
 - For body metrics, weight trends, or sleep questions, call getWithingsHealthSummary.
 - Do not hallucinate user-specific data. If data is unavailable, say so explicitly and suggest the next sync step.
 - For email follow-ups like "what did it contain?" after inbox discussion, call getEmails again and answer from sender/subject/snippet.
