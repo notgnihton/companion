@@ -1357,20 +1357,68 @@ export async function getSyncQueueStatus(): Promise<{
   status: SyncQueueStatus;
   isProcessing: boolean;
 }> {
-  try {
-    return await jsonOrThrow<{ status: SyncQueueStatus; isProcessing: boolean }>("/api/sync/status");
-  } catch {
-    const queue = loadSyncQueue();
+  const parseQueueStatus = (
+    value: unknown
+  ): { status: SyncQueueStatus; isProcessing: boolean } | null => {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+
+    const record = value as Record<string, unknown>;
+    const status = record.status as Record<string, unknown> | undefined;
+    if (!status || typeof status !== "object") {
+      return null;
+    }
+
+    const pending = typeof status.pending === "number" ? status.pending : null;
+    const processing = typeof status.processing === "number" ? status.processing : null;
+    const failed = typeof status.failed === "number" ? status.failed : null;
+    const recentItems = Array.isArray(status.recentItems) ? status.recentItems : null;
+    const isProcessing = typeof record.isProcessing === "boolean" ? record.isProcessing : false;
+
+    if (pending === null || processing === null || failed === null || recentItems === null) {
+      return null;
+    }
+
     return {
       status: {
-        pending: queue.length,
-        processing: 0,
-        failed: 0,
-        recentItems: []
+        pending,
+        processing,
+        failed,
+        recentItems: recentItems as SyncQueueStatus["recentItems"]
       },
-      isProcessing: false
+      isProcessing
     };
+  };
+
+  try {
+    const queueStatus = parseQueueStatus(await jsonOrThrow<unknown>("/api/sync/queue-status"));
+    if (queueStatus) {
+      return queueStatus;
+    }
+  } catch {
+    // fallback to legacy endpoint
   }
+
+  try {
+    const legacyStatus = parseQueueStatus(await jsonOrThrow<unknown>("/api/sync/status"));
+    if (legacyStatus) {
+      return legacyStatus;
+    }
+  } catch {
+    // fallback to local queue
+  }
+
+  const queue = loadSyncQueue();
+  return {
+    status: {
+      pending: queue.length,
+      processing: 0,
+      failed: 0,
+      recentItems: []
+    },
+    isProcessing: false
+  };
 }
 
 export async function getCanvasStatus(): Promise<CanvasStatus> {

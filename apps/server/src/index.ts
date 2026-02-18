@@ -2397,6 +2397,13 @@ app.post("/api/sync/process", async (_req, res) => {
   }
 });
 
+app.get("/api/sync/queue-status", (_req, res) => {
+  return res.json({
+    status: store.getSyncQueueStatus(),
+    isProcessing: syncService.isCurrentlyProcessing()
+  });
+});
+
 app.get("/api/sync/status", (_req, res) => {
   // Get data from various integrations
   const storage = storageDiagnostics();
