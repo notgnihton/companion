@@ -509,8 +509,12 @@ export class GeminiClient {
       body.tools = [{ function_declarations: request.tools }];
     }
 
+    const maxAttempts = 3;
+    const timeoutMs = config.GEMINI_LIVE_TIMEOUT_MS;
+    const timeoutController = new AbortController();
+    const timeoutHandle = setTimeout(() => timeoutController.abort(), timeoutMs);
+
     try {
-      const maxAttempts = 3;
       let rawResponse: Response | null = null;
 
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -521,7 +525,8 @@ export class GeminiClient {
             Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify(body)
+          body: JSON.stringify(body),
+          signal: timeoutController.signal
         });
 
         if (rawResponse.ok || rawResponse.status !== 429 || attempt === maxAttempts - 1) {
@@ -807,6 +812,10 @@ export class GeminiClient {
         functionCalls: sanitizedFunctionCalls.length > 0 ? sanitizedFunctionCalls : undefined
       };
     } catch (error) {
+      clearTimeout(timeoutHandle);
+      if (timeoutController?.signal.aborted) {
+        throw new GeminiError("Gemini API stream timed out waiting for a response", 504, error);
+      }
       if (error instanceof RateLimitError || error instanceof GeminiError) {
         throw error;
       }
@@ -823,6 +832,8 @@ export class GeminiClient {
         throw new GeminiError(`Gemini API streaming error: ${error.message}`, statusCode, error);
       }
       throw new GeminiError("Unknown Gemini API streaming error", statusCode, error);
+    } finally {
+      clearTimeout(timeoutHandle);
     }
   }
 

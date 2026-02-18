@@ -1261,7 +1261,9 @@ function buildToolDataFallbackReply(
   });
 
   if (sections.length === 0) {
-    return "I couldn't finish the response from tool data right now. Please try again in a moment.";
+    const toolNames = Array.from(new Set(functionResponses.map((result) => result.name))).slice(0, 5);
+    const label = toolNames.length > 0 ? toolNames.join(", ") : "tool calls";
+    return `I fetched data from ${label}, but couldn't format it into a final reply. Please retry.`;
   }
 
   return [
@@ -2893,6 +2895,29 @@ export async function sendChatMessage(
             }
           })) as Part[]
       });
+    }
+
+    if (useNativeStreaming && (!response || response.text.trim().length === 0) && executedFunctionResponses.length > 0) {
+      const synthesisResponse = useNativeStreaming
+        ? await streamCapableGemini.generateChatResponseStream!({
+            messages: workingMessages,
+            systemInstruction,
+            onTextChunk: (chunk: string) => {
+              if (chunk.length === 0) {
+                return;
+              }
+              streamedTokenChars += chunk.length;
+              options.onTextChunk?.(chunk);
+            }
+          })
+        : await gemini.generateChatResponse({
+            messages: workingMessages,
+            systemInstruction
+          });
+      totalUsage = addGeminiUsage(totalUsage, synthesisResponse.usageMetadata);
+      if (synthesisResponse.text.trim().length > 0) {
+        response = synthesisResponse;
+      }
     }
   } catch (error) {
     if (error instanceof RateLimitError) {
