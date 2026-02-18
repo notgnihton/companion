@@ -124,6 +124,16 @@ export class GeminiClient {
     return undefined;
   }
 
+  private buildVertexModelNotFoundMessage(errorBody: string, statusText: string): string {
+    const base = `Gemini API error (404): ${errorBody || statusText}`;
+    const model = this.liveModelName.trim().toLowerCase();
+    const location = config.GEMINI_VERTEX_LOCATION.trim().toLowerCase();
+    if (model.startsWith("gemini-3") && location !== "global") {
+      return `${base}. Gemini 3 preview models on Vertex require GEMINI_VERTEX_LOCATION=global.`;
+    }
+    return base;
+  }
+
   private normalizeVertexLiveModelName(): string {
     const trimmed = this.liveModelName.trim();
     if (trimmed.startsWith("projects/")) {
@@ -378,6 +388,13 @@ export class GeminiClient {
             errorBody
           );
         }
+        if (rawResponse.status === 404) {
+          throw new GeminiError(
+            this.buildVertexModelNotFoundMessage(errorBody, rawResponse.statusText),
+            rawResponse.status,
+            errorBody
+          );
+        }
         throw new GeminiError(
           `Gemini API error (${rawResponse.status}): ${errorBody || rawResponse.statusText}`,
           rawResponse.status,
@@ -494,6 +511,13 @@ export class GeminiClient {
         if (rawResponse.status === 401 || rawResponse.status === 403) {
           throw new GeminiError(
             `Invalid Vertex credentials or missing IAM permissions: ${errorBody || rawResponse.statusText}`,
+            rawResponse.status,
+            errorBody
+          );
+        }
+        if (rawResponse.status === 404) {
+          throw new GeminiError(
+            this.buildVertexModelNotFoundMessage(errorBody, rawResponse.statusText),
             rawResponse.status,
             errorBody
           );
