@@ -1,16 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import { confirmDeadlineStatus, getDeadlines, updateDeadline } from "../lib/api";
-import { hapticNotice, hapticSuccess } from "../lib/haptics";
+import { useEffect, useState } from "react";
+import { confirmDeadlineStatus, getDeadlines } from "../lib/api";
+import { hapticSuccess } from "../lib/haptics";
 import { Deadline } from "../types";
 import { loadDeadlines, loadDeadlinesCachedAt, saveDeadlines } from "../lib/storage";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "./PullToRefreshIndicator";
-import { SwipeableListItem } from "./SwipeableListItem";
-
-interface UndoToast {
-  message: string;
-  onUndo: () => void;
-}
 
 interface DeadlineListProps {
   focusDeadlineId?: string;
@@ -62,9 +56,7 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
   const [isOnline, setIsOnline] = useState<boolean>(() => navigator.onLine);
   const [syncMessage, setSyncMessage] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [undoToast, setUndoToast] = useState<UndoToast | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const undoTimerRef = useRef<number | null>(null);
 
   const handleRefresh = async (): Promise<void> => {
     setRefreshing(true);
@@ -107,14 +99,6 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
   }, []);
 
   useEffect(() => {
-    return () => {
-      if (undoTimerRef.current) {
-        window.clearTimeout(undoTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     if (!focusDeadlineId) {
       return;
     }
@@ -128,17 +112,6 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
       window.clearTimeout(timer);
     };
   }, [focusDeadlineId, deadlines]);
-
-  const showUndoToast = (message: string, onUndo: () => void): void => {
-    if (undoTimerRef.current) {
-      window.clearTimeout(undoTimerRef.current);
-    }
-    setUndoToast({ message, onUndo });
-    undoTimerRef.current = window.setTimeout(() => {
-      setUndoToast(null);
-      undoTimerRef.current = null;
-    }, 5000);
-  };
 
   const formatTimeRemaining = (dueDate: string): string => {
     const due = dueTimestamp(dueDate);
@@ -214,73 +187,6 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
     return true;
   };
 
-  const restoreDueDate = async (id: string, dueDate: string): Promise<void> => {
-    const restored = await updateDeadline(id, { dueDate });
-    if (!restored) {
-      setSyncMessage("Could not undo snooze.");
-      return;
-    }
-
-    const next = deadlines.map((deadline) => (deadline.id === id ? restored : deadline));
-    setDeadlines(next);
-    saveDeadlines(next);
-    setCachedAt(loadDeadlinesCachedAt());
-    setSyncMessage("Snooze undone.");
-  };
-
-  const snoozeDeadline = async (deadline: Deadline): Promise<boolean> => {
-    setUpdatingId(deadline.id);
-    setSyncMessage("");
-
-    const originalDeadlines = deadlines;
-    const snoozedDueDate = new Date(dueTimestamp(deadline.dueDate) + 24 * 60 * 60 * 1000).toISOString();
-    const optimistic = deadlines.map((item) => (
-      item.id === deadline.id ? { ...item, dueDate: snoozedDueDate } : item
-    ));
-    setDeadlines(optimistic);
-    saveDeadlines(optimistic);
-    setCachedAt(loadDeadlinesCachedAt());
-
-    const updated = await updateDeadline(deadline.id, { dueDate: snoozedDueDate });
-    if (!updated) {
-      setDeadlines(originalDeadlines);
-      saveDeadlines(originalDeadlines);
-      setCachedAt(loadDeadlinesCachedAt());
-      setSyncMessage("Could not snooze deadline right now.");
-      setUpdatingId(null);
-      return false;
-    }
-
-    const synced = optimistic.map((item) => (item.id === updated.id ? updated : item));
-    setDeadlines(synced);
-    saveDeadlines(synced);
-    setCachedAt(loadDeadlinesCachedAt());
-    setSyncMessage("Snoozed by 24 hours.");
-    hapticNotice();
-    setUpdatingId(null);
-    return true;
-  };
-
-  const handleSwipeComplete = async (deadline: Deadline): Promise<void> => {
-    if (deadline.completed || updatingId === deadline.id) return;
-    const success = await setCompletion(deadline.id, true);
-    if (!success) return;
-
-    showUndoToast("Deadline marked complete.", () => {
-      void setCompletion(deadline.id, false);
-    });
-  };
-
-  const handleSwipeSnooze = async (deadline: Deadline): Promise<void> => {
-    if (deadline.completed || updatingId === deadline.id) return;
-    const success = await snoozeDeadline(deadline);
-    if (!success) return;
-
-    showUndoToast("Deadline snoozed 24h.", () => {
-      void restoreDueDate(deadline.id, deadline.dueDate);
-    });
-  };
-
   const sortedDeadlines = [...deadlines].sort((a, b) => {
     if (a.completed !== b.completed) return a.completed ? 1 : -1;
     return dueTimestamp(a.dueDate) - dueTimestamp(b.dueDate);
@@ -324,14 +230,9 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
         {sortedDeadlines.length > 0 ? (
           <ul className="deadline-list">
             {sortedDeadlines.map((deadline) => (
-              <SwipeableListItem
+              <li
                 key={deadline.id}
                 className={`deadline-item ${getUrgencyClass(deadline.dueDate)} ${deadline.completed ? "deadline-completed" : ""} ${focusDeadlineId === deadline.id ? "deadline-item-focused" : ""}`}
-                onSwipeRight={() => { void handleSwipeComplete(deadline); }}
-                onSwipeLeft={() => { void handleSwipeSnooze(deadline); }}
-                rightActionLabel="Complete"
-                leftActionLabel="Snooze +24h"
-                disabled={updatingId === deadline.id || deadline.completed}
               >
                 <div className="deadline-checkbox-wrapper" id={`deadline-${deadline.id}`}>
                   <input
@@ -373,32 +274,13 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
                     </button>
                   </div>
                 )}
-              </SwipeableListItem>
+              </li>
             ))}
           </ul>
         ) : (
           <p className="deadline-empty">No deadlines tracked. Add assignments to stay on top of your work.</p>
         )}
       </div>
-
-      {undoToast && (
-        <div className="swipe-undo-toast" role="status" aria-live="polite">
-          <span>{undoToast.message}</span>
-          <button
-            type="button"
-            onClick={() => {
-              undoToast.onUndo();
-              setUndoToast(null);
-              if (undoTimerRef.current) {
-                window.clearTimeout(undoTimerRef.current);
-                undoTimerRef.current = null;
-              }
-            }}
-          >
-            Undo
-          </button>
-        </div>
-      )}
     </section>
   );
 }
