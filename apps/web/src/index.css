@@ -3444,14 +3444,65 @@ body.keyboard-open .pull-to-refresh-container {
   }
 }
 
-.nutrition-target-preview-grid {
+.nutrition-target-dashboard {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 @media (min-width: 920px) {
-  .nutrition-target-preview-grid {
+  .nutrition-target-dashboard {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+}
+
+.nutrition-target-card {
+  border-color: var(--border-soft);
+}
+
+.nutrition-target-card-protein {
+  background: linear-gradient(140deg, rgba(67, 115, 201, 0.3), rgba(48, 72, 120, 0.34));
+}
+
+.nutrition-target-card-carbs {
+  background: linear-gradient(140deg, rgba(40, 130, 131, 0.28), rgba(34, 88, 103, 0.32));
+}
+
+.nutrition-target-card-fat {
+  background: linear-gradient(140deg, rgba(122, 110, 74, 0.32), rgba(74, 68, 66, 0.34));
+}
+
+.nutrition-target-card-calories {
+  background: linear-gradient(140deg, rgba(92, 78, 152, 0.3), rgba(75, 62, 131, 0.34));
+}
+
+.nutrition-daily-dashboard {
+  background: linear-gradient(145deg, rgba(56, 81, 154, 0.24), rgba(92, 62, 140, 0.26));
+  border-color: rgba(122, 136, 188, 0.35);
+}
+
+.nutrition-daily-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (min-width: 920px) {
+  .nutrition-daily-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.nutrition-daily-metric {
+  display: grid;
+  gap: 4px;
+}
+
+.nutrition-daily-metric .summary-value {
+  font-size: 1.5rem;
+}
+
+.nutrition-daily-delta {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .nutrition-inline-actions {
