@@ -858,6 +858,62 @@ describe("gemini-tools", () => {
       expect(logged.meal.fatGrams).toBe(6);
     });
 
+    it("estimates realistic grams when custom food macros are packed into a 1g gram-unit item", () => {
+      const created = handleCreateNutritionCustomFood(store, {
+        name: "Lasagne",
+        unitLabel: "g",
+        caloriesPerUnit: 620,
+        proteinGramsPerUnit: 34,
+        carbsGramsPerUnit: 58,
+        fatGramsPerUnit: 22
+      });
+      if ("error" in created) {
+        throw new Error(created.error);
+      }
+
+      const logged = handleLogMeal(store, {
+        customFoodId: created.food.id
+      });
+      if ("error" in logged) {
+        throw new Error(logged.error);
+      }
+
+      const [item] = logged.meal.items;
+      expect(item).toBeDefined();
+      expect(item?.unitLabel).toBe("g");
+      expect(item?.quantity ?? 0).toBeGreaterThan(80);
+      expect(item?.caloriesPerUnit ?? 99).toBeLessThan(10);
+      expect(logged.meal.calories).toBeGreaterThan(300);
+    });
+
+    it("normalizes createNutritionMeal gram items when quantity=1 but per-gram density is implausible", () => {
+      const created = handleCreateNutritionMeal(store, {
+        name: "Image meal",
+        mealType: "dinner",
+        items: [
+          {
+            name: "Lasagne",
+            quantity: 1,
+            unitLabel: "g",
+            caloriesPerUnit: 620,
+            proteinGramsPerUnit: 34,
+            carbsGramsPerUnit: 58,
+            fatGramsPerUnit: 22
+          }
+        ]
+      });
+      if ("error" in created) {
+        throw new Error(created.error);
+      }
+
+      const [item] = created.meal.items;
+      expect(item).toBeDefined();
+      expect(item?.unitLabel).toBe("g");
+      expect(item?.quantity ?? 0).toBeGreaterThan(80);
+      expect(item?.caloriesPerUnit ?? 99).toBeLessThan(10);
+      expect(created.meal.calories).toBeGreaterThan(300);
+    });
+
   });
 
   describe("handleGetGitHubCourseContent", () => {
