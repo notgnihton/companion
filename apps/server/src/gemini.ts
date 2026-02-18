@@ -139,12 +139,21 @@ export class GeminiClient {
     return `projects/${projectId}/locations/${location}/publishers/google/models/${trimmed}`;
   }
 
+  private resolveVertexApiHost(location: string): string {
+    const normalizedLocation = location.trim().toLowerCase();
+    if (normalizedLocation === "global") {
+      return "aiplatform.googleapis.com";
+    }
+    return `${location}-aiplatform.googleapis.com`;
+  }
+
   private resolveVertexLiveEndpoint(): string {
     if (config.GEMINI_LIVE_ENDPOINT) {
       return config.GEMINI_LIVE_ENDPOINT;
     }
     const location = config.GEMINI_VERTEX_LOCATION.trim();
-    return `wss://${location}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
+    const host = this.resolveVertexApiHost(location);
+    return `wss://${host}/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent`;
   }
 
   private async getVertexAccessToken(): Promise<string> {
@@ -312,7 +321,8 @@ export class GeminiClient {
 
     const modelName = this.normalizeVertexModelNameForGenerateContent();
     const location = config.GEMINI_VERTEX_LOCATION.trim();
-    const url = `https://${location}-aiplatform.googleapis.com/v1/${modelName}:generateContent`;
+    const host = this.resolveVertexApiHost(location);
+    const url = `https://${host}/v1/${modelName}:generateContent`;
     const contents = this.toVertexContents(request.messages);
     const body: Record<string, unknown> = {
       contents
@@ -429,7 +439,8 @@ export class GeminiClient {
 
     const modelName = this.normalizeVertexModelNameForGenerateContent();
     const location = config.GEMINI_VERTEX_LOCATION.trim();
-    const url = `https://${location}-aiplatform.googleapis.com/v1/${modelName}:streamGenerateContent?alt=sse`;
+    const host = this.resolveVertexApiHost(location);
+    const url = `https://${host}/v1/${modelName}:streamGenerateContent?alt=sse`;
     const contents = this.toVertexContents(request.messages);
     const body: Record<string, unknown> = {
       contents

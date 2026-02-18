@@ -38,6 +38,7 @@ This file documents all environment variables required to run the Companion serv
   - Alias supported: `GCP_PROJECT_ID`
 - `GEMINI_VERTEX_LOCATION` (default: `us-central1`) — Vertex region for endpoint/model path
   - Alias supported: `GCP_LOCATION`
+  - For `gemini-3-flash-preview`, use `global`
 - `GOOGLE_SERVICE_ACCOUNT_JSON` (optional) — Raw service-account JSON credentials (Railway-friendly alternative to credentials file)
   - Alias supported: `GOOGLE_APPLICATION_CREDENTIALS_JSON`
 - `GOOGLE_APPLICATION_CREDENTIALS` (recommended for `vertex`) — Service-account JSON path for Google IAM auth (or use other ADC methods)

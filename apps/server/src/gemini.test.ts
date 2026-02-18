@@ -103,6 +103,16 @@ describe("GeminiClient", () => {
       vi.unstubAllGlobals();
     });
 
+    it("uses global Vertex host when location is global", () => {
+      const client = new GeminiClient("test-api-key");
+      const asInternals = client as unknown as {
+        resolveVertexApiHost: (location: string) => string;
+      };
+
+      expect(asInternals.resolveVertexApiHost("global")).toBe("aiplatform.googleapis.com");
+      expect(asInternals.resolveVertexApiHost("us-central1")).toBe("us-central1-aiplatform.googleapis.com");
+    });
+
     it("wraps non-object function responses for Vertex compatibility", async () => {
       const client = new GeminiClient("test-api-key");
       const fetchMock = vi.fn().mockResolvedValue({
