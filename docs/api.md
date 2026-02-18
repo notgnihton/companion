@@ -184,10 +184,6 @@ Updates a meal log. Provide `items` to replace the meal composition; totals are 
 
 Deletes a meal log. Response `204` or `404`.
 
-### Legacy compatibility: `/api/nutrition/plan*`
-
-`GET /api/nutrition/plan`, `POST /api/nutrition/plan`, `PUT /api/nutrition/plan/:id`, and `DELETE /api/nutrition/plan/:id` are legacy compatibility endpoints. The active nutrition workflow is item-based meal logging plus custom-food templates.
-
 ### `GET /api/nutrition/custom-foods?query=...&limit=200`
 
 Returns saved custom foods (macro-only templates) for quick reuse in meal logging.

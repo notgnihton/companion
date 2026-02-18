@@ -103,8 +103,7 @@ Response:
       "fatGrams": 6.4
     },
     "mealsLogged": 3,
-    "meals": [],
-    "mealPlanBlocks": []
+    "meals": []
   }
 }
 ```
@@ -260,30 +259,6 @@ Response:
     "fatGrams": 3.8,
     "createdAt": "2026-02-17T10:00:01.000Z"
   }
-}
-```
-
-### Legacy compatibility: GET `/api/nutrition/plan?date=YYYY-MM-DD`
-
-Meal-plan endpoints remain for backward compatibility only. Active nutrition flow is item-based meal logging (`/api/nutrition/meals`) plus custom foods (`/api/nutrition/custom-foods`).
-
-Response:
-
-```json
-{
-  "blocks": [
-    {
-      "id": "meal-plan-1",
-      "title": "Post-workout meal",
-      "scheduledFor": "2026-02-17T08:30:00.000Z",
-      "targetCalories": 700,
-      "targetProteinGrams": 45,
-      "targetCarbsGrams": 70,
-      "targetFatGrams": 18,
-      "createdAt": "2026-02-17T07:00:00.000Z",
-      "updatedAt": "2026-02-17T07:00:00.000Z"
-    }
-  ]
 }
 ```
 

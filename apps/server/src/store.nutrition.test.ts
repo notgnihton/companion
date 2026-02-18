@@ -100,40 +100,6 @@ describe("RuntimeStore - nutrition", () => {
     expect(updated?.fatGrams).toBe(3.8);
   });
 
-  it("upserts meal plan blocks and includes them in daily summary", () => {
-    const created = store.upsertNutritionMealPlanBlock({
-      title: "Pre-workout snack",
-      scheduledFor: "2026-02-17T06:30:00.000Z",
-      targetCalories: 280,
-      targetProteinGrams: 20
-    });
-
-    expect(created.id).toContain("meal-plan");
-    expect(created.targetCalories).toBe(280);
-
-    const updated = store.upsertNutritionMealPlanBlock({
-      id: created.id,
-      title: "Post-workout meal",
-      scheduledFor: "2026-02-17T08:45:00.000Z",
-      targetCalories: 620,
-      targetProteinGrams: 42,
-      targetCarbsGrams: 70,
-      targetFatGrams: 14
-    });
-
-    expect(updated.id).toBe(created.id);
-    expect(updated.title).toBe("Post-workout meal");
-    expect(updated.createdAt).toBe(created.createdAt);
-    expect(updated.targetCarbsGrams).toBe(70);
-
-    const summary = store.getNutritionDailySummary("2026-02-17");
-    expect(summary.mealPlanBlocks).toHaveLength(1);
-    expect(summary.mealPlanBlocks[0]?.title).toBe("Post-workout meal");
-
-    expect(store.deleteNutritionMealPlanBlock(created.id)).toBe(true);
-    expect(store.getNutritionMealPlanBlockById(created.id)).toBeNull();
-  });
-
   it("stores daily nutrition target profile and derives macro targets from settings", () => {
     const profile = store.upsertNutritionTargetProfile({
       date: "2026-02-17",

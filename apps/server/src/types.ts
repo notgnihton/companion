@@ -514,19 +514,6 @@ export interface NutritionMeal extends NutritionMacros {
   createdAt: string;
 }
 
-export interface NutritionMealPlanBlock {
-  id: string;
-  title: string;
-  scheduledFor: string;
-  targetCalories?: number;
-  targetProteinGrams?: number;
-  targetCarbsGrams?: number;
-  targetFatGrams?: number;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface NutritionCustomFood {
   id: string;
   name: string;
@@ -559,7 +546,6 @@ export interface NutritionDailySummary {
   remainingToTarget: NutritionMacros | null;
   mealsLogged: number;
   meals: NutritionMeal[];
-  mealPlanBlocks: NutritionMealPlanBlock[];
 }
 
 export interface PushSubscriptionRecord {

@@ -41,7 +41,6 @@ import {
   NutritionCustomFood,
   NutritionMeal,
   NutritionMealItem,
-  NutritionMealPlanBlock,
   NutritionTargetProfile,
   NutritionMealType,
   StudyPlanSession,
@@ -102,7 +101,6 @@ export class RuntimeStore {
   private readonly maxHabits = 100;
   private readonly maxGoals = 100;
   private readonly maxNutritionMeals = 5000;
-  private readonly maxNutritionMealPlanBlocks = 600;
   private readonly maxNutritionCustomFoods = 1200;
   private readonly maxNutritionTargetProfiles = 4000;
   private readonly maxContextHistory = 500;
@@ -327,23 +325,6 @@ export class RuntimeStore {
 
       CREATE INDEX IF NOT EXISTS idx_nutrition_meals_consumedAt
         ON nutrition_meals(consumedAt DESC);
-
-      CREATE TABLE IF NOT EXISTS nutrition_meal_plan_blocks (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        scheduledFor TEXT NOT NULL,
-        targetCalories REAL,
-        targetProteinGrams REAL,
-        targetCarbsGrams REAL,
-        targetFatGrams REAL,
-        notes TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
-        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_nutrition_meal_plan_blocks_scheduledFor
-        ON nutrition_meal_plan_blocks(scheduledFor DESC);
 
       CREATE TABLE IF NOT EXISTS nutrition_custom_foods (
         id TEXT PRIMARY KEY,
@@ -3596,209 +3577,6 @@ export class RuntimeStore {
     return result.changes > 0;
   }
 
-  upsertNutritionMealPlanBlock(
-    entry: Omit<NutritionMealPlanBlock, "id" | "createdAt" | "updatedAt"> &
-      Partial<Pick<NutritionMealPlanBlock, "id" | "createdAt" | "updatedAt">>
-  ): NutritionMealPlanBlock {
-    const existing = entry.id ? this.getNutritionMealPlanBlockById(entry.id) : null;
-    const id = entry.id ?? makeId("meal-plan");
-    const timestamp = nowIso();
-    const scheduledFor = this.normalizeIsoOrNow(entry.scheduledFor);
-
-    const block: NutritionMealPlanBlock = {
-      id,
-      title: entry.title.trim(),
-      scheduledFor,
-      ...(typeof entry.targetCalories === "number"
-        ? { targetCalories: this.clampNutritionMetric(entry.targetCalories, 0, 10000) }
-        : {}),
-      ...(typeof entry.targetProteinGrams === "number"
-        ? { targetProteinGrams: this.clampNutritionMetric(entry.targetProteinGrams, 0, 1000) }
-        : {}),
-      ...(typeof entry.targetCarbsGrams === "number"
-        ? { targetCarbsGrams: this.clampNutritionMetric(entry.targetCarbsGrams, 0, 1500) }
-        : {}),
-      ...(typeof entry.targetFatGrams === "number"
-        ? { targetFatGrams: this.clampNutritionMetric(entry.targetFatGrams, 0, 600) }
-        : {}),
-      ...(entry.notes && entry.notes.trim().length > 0 ? { notes: entry.notes.trim() } : {}),
-      createdAt: existing?.createdAt ?? this.normalizeIsoOrNow(entry.createdAt),
-      updatedAt: this.normalizeIsoOrNow(entry.updatedAt ?? timestamp)
-    };
-
-    if (existing) {
-      this.db
-        .prepare(
-          `UPDATE nutrition_meal_plan_blocks SET
-            title = ?, scheduledFor = ?, targetCalories = ?, targetProteinGrams = ?,
-            targetCarbsGrams = ?, targetFatGrams = ?, notes = ?, updatedAt = ?
-           WHERE id = ?`
-        )
-        .run(
-          block.title,
-          block.scheduledFor,
-          block.targetCalories ?? null,
-          block.targetProteinGrams ?? null,
-          block.targetCarbsGrams ?? null,
-          block.targetFatGrams ?? null,
-          block.notes ?? null,
-          block.updatedAt,
-          block.id
-        );
-    } else {
-      this.db
-        .prepare(
-          `INSERT INTO nutrition_meal_plan_blocks (
-            id, title, scheduledFor, targetCalories, targetProteinGrams,
-            targetCarbsGrams, targetFatGrams, notes, createdAt, updatedAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-        .run(
-          block.id,
-          block.title,
-          block.scheduledFor,
-          block.targetCalories ?? null,
-          block.targetProteinGrams ?? null,
-          block.targetCarbsGrams ?? null,
-          block.targetFatGrams ?? null,
-          block.notes ?? null,
-          block.createdAt,
-          block.updatedAt
-        );
-      this.trimNutritionMealPlanBlocks();
-    }
-
-    return this.getNutritionMealPlanBlockById(block.id) ?? block;
-  }
-
-  getNutritionMealPlanBlockById(id: string): NutritionMealPlanBlock | null {
-    const row = this.db.prepare("SELECT * FROM nutrition_meal_plan_blocks WHERE id = ?").get(id) as
-      | {
-          id: string;
-          title: string;
-          scheduledFor: string;
-          targetCalories: number | null;
-          targetProteinGrams: number | null;
-          targetCarbsGrams: number | null;
-          targetFatGrams: number | null;
-          notes: string | null;
-          createdAt: string;
-          updatedAt: string;
-        }
-      | undefined;
-
-    if (!row) {
-      return null;
-    }
-
-    return {
-      id: row.id,
-      title: row.title,
-      scheduledFor: row.scheduledFor,
-      ...(typeof row.targetCalories === "number"
-        ? { targetCalories: this.clampNutritionMetric(row.targetCalories, 0, 10000) }
-        : {}),
-      ...(typeof row.targetProteinGrams === "number"
-        ? { targetProteinGrams: this.clampNutritionMetric(row.targetProteinGrams, 0, 1000) }
-        : {}),
-      ...(typeof row.targetCarbsGrams === "number"
-        ? { targetCarbsGrams: this.clampNutritionMetric(row.targetCarbsGrams, 0, 1500) }
-        : {}),
-      ...(typeof row.targetFatGrams === "number"
-        ? { targetFatGrams: this.clampNutritionMetric(row.targetFatGrams, 0, 600) }
-        : {}),
-      ...(row.notes ? { notes: row.notes } : {}),
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt
-    };
-  }
-
-  getNutritionMealPlanBlocks(options: {
-    date?: string;
-    from?: string;
-    to?: string;
-    limit?: number;
-  } = {}): NutritionMealPlanBlock[] {
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-
-    if (typeof options.date === "string" && options.date.trim().length > 0) {
-      const start = new Date(`${options.date.trim()}T00:00:00.000Z`);
-      if (!Number.isNaN(start.getTime())) {
-        const end = new Date(start);
-        end.setUTCDate(end.getUTCDate() + 1);
-        clauses.push("scheduledFor >= ?", "scheduledFor < ?");
-        params.push(start.toISOString(), end.toISOString());
-      }
-    } else {
-      if (typeof options.from === "string" && options.from.trim().length > 0) {
-        const fromDate = new Date(options.from);
-        if (!Number.isNaN(fromDate.getTime())) {
-          clauses.push("scheduledFor >= ?");
-          params.push(fromDate.toISOString());
-        }
-      }
-      if (typeof options.to === "string" && options.to.trim().length > 0) {
-        const toDate = new Date(options.to);
-        if (!Number.isNaN(toDate.getTime())) {
-          clauses.push("scheduledFor <= ?");
-          params.push(toDate.toISOString());
-        }
-      }
-    }
-
-    let query = "SELECT * FROM nutrition_meal_plan_blocks";
-    if (clauses.length > 0) {
-      query += ` WHERE ${clauses.join(" AND ")}`;
-    }
-    query += " ORDER BY scheduledFor ASC, insertOrder ASC";
-
-    const limit = typeof options.limit === "number" ? Math.min(Math.max(Math.round(options.limit), 1), 1000) : null;
-    if (limit !== null) {
-      query += " LIMIT ?";
-      params.push(limit);
-    }
-
-    const rows = this.db.prepare(query).all(...params) as Array<{
-      id: string;
-      title: string;
-      scheduledFor: string;
-      targetCalories: number | null;
-      targetProteinGrams: number | null;
-      targetCarbsGrams: number | null;
-      targetFatGrams: number | null;
-      notes: string | null;
-      createdAt: string;
-      updatedAt: string;
-    }>;
-
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      scheduledFor: row.scheduledFor,
-      ...(typeof row.targetCalories === "number"
-        ? { targetCalories: this.clampNutritionMetric(row.targetCalories, 0, 10000) }
-        : {}),
-      ...(typeof row.targetProteinGrams === "number"
-        ? { targetProteinGrams: this.clampNutritionMetric(row.targetProteinGrams, 0, 1000) }
-        : {}),
-      ...(typeof row.targetCarbsGrams === "number"
-        ? { targetCarbsGrams: this.clampNutritionMetric(row.targetCarbsGrams, 0, 1500) }
-        : {}),
-      ...(typeof row.targetFatGrams === "number"
-        ? { targetFatGrams: this.clampNutritionMetric(row.targetFatGrams, 0, 600) }
-        : {}),
-      ...(row.notes ? { notes: row.notes } : {}),
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt
-    }));
-  }
-
-  deleteNutritionMealPlanBlock(id: string): boolean {
-    const result = this.db.prepare("DELETE FROM nutrition_meal_plan_blocks WHERE id = ?").run(id);
-    return result.changes > 0;
-  }
-
   getNutritionTargetProfile(date: string | Date = new Date()): NutritionTargetProfile | null {
     const dateKey = this.toDateKey(date);
     const row = this.db.prepare("SELECT * FROM nutrition_target_profiles WHERE dateKey = ?").get(dateKey) as
@@ -3980,7 +3758,6 @@ export class RuntimeStore {
   getNutritionDailySummary(date: string | Date = new Date()): NutritionDailySummary {
     const dateKey = this.toDateKey(date);
     const meals = this.getNutritionMeals({ date: dateKey, limit: 1000 });
-    const mealPlanBlocks = this.getNutritionMealPlanBlocks({ date: dateKey, limit: 500 });
     const targetProfile = this.getNutritionTargetProfile(dateKey);
 
     const totals = meals.reduce(
@@ -4022,8 +3799,7 @@ export class RuntimeStore {
             }
           : null,
       mealsLogged: meals.length,
-      meals,
-      mealPlanBlocks
+      meals
     };
   }
 
@@ -5343,21 +5119,6 @@ export class RuntimeStore {
         )`
       )
       .run(count - this.maxNutritionMeals);
-  }
-
-  private trimNutritionMealPlanBlocks(): void {
-    const count = (this.db.prepare("SELECT COUNT(*) as count FROM nutrition_meal_plan_blocks").get() as { count: number }).count;
-    if (count <= this.maxNutritionMealPlanBlocks) {
-      return;
-    }
-
-    this.db
-      .prepare(
-        `DELETE FROM nutrition_meal_plan_blocks WHERE id IN (
-          SELECT id FROM nutrition_meal_plan_blocks ORDER BY insertOrder ASC LIMIT ?
-        )`
-      )
-      .run(count - this.maxNutritionMealPlanBlocks);
   }
 
   private trimNutritionCustomFoods(): void {

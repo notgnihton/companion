@@ -51,7 +51,6 @@ import type {
   Habit,
   NutritionCustomFood,
   NutritionMeal,
-  NutritionMealPlanBlock,
   IntegrationSyncName,
   IntegrationSyncRootCause
 } from "./types.js";
@@ -1104,27 +1103,6 @@ const nutritionTargetProfileUpsertSchema = z
       ].some((field) => Object.prototype.hasOwnProperty.call(value, field)),
     "At least one target profile field is required"
   );
-
-const nutritionMealPlanCreateSchema = z.object({
-  title: z.string().trim().min(1).max(160),
-  scheduledFor: z.string().datetime(),
-  targetCalories: z.number().min(0).max(10000).optional(),
-  targetProteinGrams: z.number().min(0).max(1000).optional(),
-  targetCarbsGrams: z.number().min(0).max(1500).optional(),
-  targetFatGrams: z.number().min(0).max(600).optional(),
-  notes: z.string().trim().max(300).optional()
-});
-
-const nutritionMealPlanUpdateSchema = nutritionMealPlanCreateSchema
-  .partial()
-  .refine((value) => Object.keys(value).length > 0, "At least one field is required");
-
-const nutritionMealPlanQuerySchema = z.object({
-  date: nutritionDateSchema.optional(),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
-  limit: z.coerce.number().int().min(1).max(1000).optional()
-});
 
 const pushSubscriptionSchema = z.object({
   endpoint: z.string().url(),
@@ -2183,66 +2161,6 @@ app.delete("/api/nutrition/meals/:id", (req, res) => {
   const deleted = store.deleteNutritionMeal(req.params.id);
   if (!deleted) {
     return res.status(404).json({ error: "Meal not found" });
-  }
-  return res.status(204).send();
-});
-
-app.get("/api/nutrition/plan", (req, res) => {
-  const parsed = nutritionMealPlanQuerySchema.safeParse(req.query ?? {});
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid nutrition meal-plan query", issues: parsed.error.issues });
-  }
-
-  const blocks = store.getNutritionMealPlanBlocks(parsed.data);
-  return res.json({ blocks });
-});
-
-app.post("/api/nutrition/plan", (req, res) => {
-  const parsed = nutritionMealPlanCreateSchema.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid nutrition meal-plan payload", issues: parsed.error.issues });
-  }
-
-  const block: NutritionMealPlanBlock = store.upsertNutritionMealPlanBlock(parsed.data);
-  return res.status(201).json({ block });
-});
-
-app.put("/api/nutrition/plan/:id", (req, res) => {
-  const parsed = nutritionMealPlanUpdateSchema.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid nutrition meal-plan payload", issues: parsed.error.issues });
-  }
-
-  const existing = store.getNutritionMealPlanBlockById(req.params.id);
-  if (!existing && (!parsed.data.title || !parsed.data.scheduledFor)) {
-    return res.status(400).json({
-      error: "title and scheduledFor are required when creating a new meal-plan block via PUT."
-    });
-  }
-
-  const merged = {
-    ...(existing ?? {}),
-    ...parsed.data
-  };
-
-  const block: NutritionMealPlanBlock = store.upsertNutritionMealPlanBlock({
-    id: req.params.id,
-    title: merged.title as string,
-    scheduledFor: merged.scheduledFor as string,
-    targetCalories: merged.targetCalories,
-    targetProteinGrams: merged.targetProteinGrams,
-    targetCarbsGrams: merged.targetCarbsGrams,
-    targetFatGrams: merged.targetFatGrams,
-    notes: merged.notes
-  });
-
-  return res.json({ block });
-});
-
-app.delete("/api/nutrition/plan/:id", (req, res) => {
-  const deleted = store.deleteNutritionMealPlanBlock(req.params.id);
-  if (!deleted) {
-    return res.status(404).json({ error: "Meal-plan block not found" });
   }
   return res.status(204).send();
 });

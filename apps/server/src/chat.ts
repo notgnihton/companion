@@ -181,8 +181,8 @@ function buildContentRecommendationSummary(store: RuntimeStore, now: Date = new 
 
 function buildNutritionContextSummary(store: RuntimeStore, now: Date = new Date()): string {
   const summary = store.getNutritionDailySummary(now);
-  if (summary.mealsLogged === 0 && summary.mealPlanBlocks.length === 0) {
-    return "Nutrition: no meals logged or planned for today yet.";
+  if (summary.mealsLogged === 0) {
+    return "Nutrition: no meals logged for today yet.";
   }
 
   const parts: string[] = [
@@ -194,14 +194,6 @@ function buildNutritionContextSummary(store: RuntimeStore, now: Date = new Date(
     parts.push("**Recent meals:**");
     summary.meals.slice(0, 4).forEach((meal) => {
       parts.push(`- ${meal.name}: ${meal.calories} kcal (${meal.proteinGrams}P/${meal.carbsGrams}C/${meal.fatGrams}F)`);
-    });
-  }
-
-  if (summary.mealPlanBlocks.length > 0) {
-    parts.push("");
-    parts.push("**Meal plan blocks:**");
-    summary.mealPlanBlocks.slice(0, 3).forEach((block) => {
-      parts.push(`- ${block.title} (${block.scheduledFor})`);
     });
   }
 
