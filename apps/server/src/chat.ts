@@ -703,7 +703,7 @@ function buildFunctionCallingSystemInstruction(userName: string): string {
   return `You are Companion, a personal AI assistant for ${userName}, a university student at UiS (University of Stavanger).
 
 Core behavior:
-- For factual questions about schedule, deadlines, journal, email, social updates, or GitHub course materials, use tools before answering.
+- For factual questions about schedule, deadlines, journal, email, or GitHub course materials, use tools before answering.
 - For habits and goals questions, call getHabitsGoalsStatus first. For create/delete requests, use createHabit/deleteHabit/createGoal/deleteGoal. For check-ins, use updateHabitCheckIn/updateGoalCheckIn.
 - For nutrition requests, use nutrition tools and focus on macro tracking only: calories, protein, carbs, and fat.
 - Do not hallucinate user-specific data. If data is unavailable, say so explicitly and suggest the next sync step.
@@ -712,6 +712,7 @@ Core behavior:
 - For schedule mutations, execute immediately with createScheduleBlock/updateScheduleBlock/deleteScheduleBlock/clearScheduleWindow.
 - If user asks to "clear", "free up", or remove the rest of today's plan, prefer clearScheduleWindow.
 - For journal-save requests, call createJournalEntry directly and do not ask for confirm/cancel commands.
+- Never claim a write action succeeded unless a tool call in this turn returned success.
 - If a tool call is needed, emit tool calls only first and wait to write user-facing text until tool results are available.
 - Keep replies practical and conversational, and adapt response length to user intent:
   - be brief for quick operational questions
@@ -2545,6 +2546,37 @@ function emitTextChunks(text: string, onTextChunk?: (chunk: string) => void): vo
   });
 }
 
+function extractCourseCodesFromText(input: string): string[] {
+  const matches = Array.from(input.matchAll(/\bDAT[\s-]?(\d{3})\b/gi));
+  const codes = matches
+    .map((match) => `DAT${match[1]}`)
+    .filter((value): value is string => value.length === 6);
+  return Array.from(new Set(codes));
+}
+
+function hydrateFunctionArgsForRequest(
+  functionName: string,
+  args: Record<string, unknown>,
+  userInput: string
+): Record<string, unknown> {
+  if (functionName !== "getDeadlines") {
+    return args;
+  }
+
+  const hydrated: Record<string, unknown> = { ...args };
+  const hasCourseCode = typeof hydrated.courseCode === "string" && hydrated.courseCode.trim().length > 0;
+  if (!hasCourseCode) {
+    const inferredCourses = extractCourseCodesFromText(userInput);
+    if (inferredCourses.length === 1) {
+      hydrated.courseCode = inferredCourses[0];
+    } else if (inferredCourses.length > 1 && (typeof hydrated.query !== "string" || hydrated.query.trim().length === 0)) {
+      hydrated.query = inferredCourses.join(" ");
+    }
+  }
+
+  return hydrated;
+}
+
 export async function sendChatMessage(
   store: RuntimeStore,
   userInput: string,
@@ -2740,10 +2772,11 @@ export async function sendChatMessage(
       }
 
       const roundResponses = functionCalls.map((call, callIndex) => {
-        const args =
+        const callArgs =
           call.args && typeof call.args === "object" && !Array.isArray(call.args)
             ? (call.args as Record<string, unknown>)
             : {};
+        const args = hydrateFunctionArgsForRequest(call.name, callArgs, userInput);
         const result = executeFunctionCall(call.name, args, store);
         const nextCitations = collectToolCitations(store, result.name, result.response);
         nextCitations.forEach((citation) => addCitation(citations, citation));

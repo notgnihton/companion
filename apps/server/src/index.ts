@@ -2506,7 +2506,7 @@ app.get("/api/sync/status", (_req, res) => {
     },
     gemini: {
       status: geminiClient.isConfigured() ? "ok" : "not_configured",
-      model: "gemini-2.0-flash",
+      model: config.GEMINI_LIVE_MODEL,
       requestsToday: null,
       dailyLimit: null,
       rateLimitSource: "provider"

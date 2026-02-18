@@ -372,7 +372,7 @@ Response:
   "context": {
     "scheduledEvents": 2,
     "upcomingDeadlines": 3,
-    "model": "gemini-2.0-flash"
+    "model": "gemini-3-flash-preview"
   }
 }
 ```
@@ -656,7 +656,7 @@ Response:
   },
   "gemini": {
     "status": "ok",
-    "model": "gemini-2.0-flash",
+    "model": "gemini-3-flash-preview",
     "requestsToday": 42,
     "dailyLimit": 1500
   },

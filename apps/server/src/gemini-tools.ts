@@ -758,6 +758,75 @@ function minutesBetween(start: Date, end: Date): number {
   return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
 }
 
+function parseFlexibleDateTime(value: string, referenceDate: Date = new Date()): Date | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const direct = new Date(trimmed);
+  if (!Number.isNaN(direct.getTime())) {
+    return direct;
+  }
+
+  const normalized = trimmed
+    .toLowerCase()
+    .replace(/,/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const relativeMatch = normalized.match(/^in\s+(\d+)\s*(minute|minutes|min|mins|hour|hours|hr|hrs|h)$/);
+  if (relativeMatch) {
+    const amount = Number.parseInt(relativeMatch[1] ?? "0", 10);
+    const unit = relativeMatch[2] ?? "";
+    if (amount > 0) {
+      const deltaMinutes = unit.startsWith("h") ? amount * 60 : amount;
+      return new Date(referenceDate.getTime() + deltaMinutes * 60 * 1000);
+    }
+  }
+
+  const hasToday = /\btoday\b/.test(normalized);
+  const hasTomorrow = /\btomorrow\b/.test(normalized);
+  const timeMatch = normalized.match(/\b(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);
+  if (!timeMatch) {
+    return null;
+  }
+
+  let hours = Number.parseInt(timeMatch[1] ?? "0", 10);
+  const minutes = Number.parseInt(timeMatch[2] ?? "0", 10);
+  const meridiem = timeMatch[3] ?? null;
+  if (Number.isNaN(hours) || Number.isNaN(minutes) || minutes < 0 || minutes > 59) {
+    return null;
+  }
+
+  if (meridiem) {
+    if (hours < 1 || hours > 12) {
+      return null;
+    }
+    if (meridiem === "pm" && hours !== 12) {
+      hours += 12;
+    }
+    if (meridiem === "am" && hours === 12) {
+      hours = 0;
+    }
+  } else if (hours < 0 || hours > 23) {
+    return null;
+  }
+
+  const candidate = new Date(referenceDate);
+  candidate.setSeconds(0, 0);
+  if (hasTomorrow) {
+    candidate.setDate(candidate.getDate() + 1);
+  }
+  candidate.setHours(hours, minutes, 0, 0);
+
+  if (!hasToday && !hasTomorrow && candidate.getTime() < referenceDate.getTime() - 5 * 60 * 1000) {
+    candidate.setDate(candidate.getDate() + 1);
+  }
+
+  return candidate;
+}
+
 function isPlannedSuggestionMuted(start: Date, end: Date, muteWindows: Array<{ startTime: string; endTime: string }>): boolean {
   return muteWindows.some((muteWindow) => {
     const muteStart = new Date(muteWindow.startTime);
@@ -2144,9 +2213,9 @@ export function handleCreateScheduleBlock(
     return { error: "title and startTime are required." };
   }
 
-  const startDate = new Date(startTime);
-  if (Number.isNaN(startDate.getTime())) {
-    return { error: "startTime must be a valid ISO datetime." };
+  const startDate = parseFlexibleDateTime(startTime, new Date());
+  if (!startDate) {
+    return { error: "startTime must be a valid datetime (ISO or natural time like 'today 16:00')." };
   }
 
   const workload: LectureEvent["workload"] =
@@ -2186,9 +2255,9 @@ export function handleUpdateScheduleBlock(
 
   let normalizedStartTime: string | undefined;
   if (nextStartTime) {
-    const startDate = new Date(nextStartTime);
-    if (Number.isNaN(startDate.getTime())) {
-      return { error: "startTime must be a valid ISO datetime." };
+    const startDate = parseFlexibleDateTime(nextStartTime, new Date());
+    if (!startDate) {
+      return { error: "startTime must be a valid datetime (ISO or natural time like 'today 16:00')." };
     }
     normalizedStartTime = startDate.toISOString();
   }
@@ -2249,17 +2318,18 @@ export function handleClearScheduleWindow(
   const titleQuery = asTrimmedString(args.titleQuery);
   const includeAcademicBlocks = args.includeAcademicBlocks === true;
 
-  const startDate = requestedStart ? new Date(requestedStart) : new Date(now);
-  if (Number.isNaN(startDate.getTime())) {
-    return { error: "startTime must be a valid ISO datetime." };
+  const startDate = requestedStart ? parseFlexibleDateTime(requestedStart, now) : new Date(now);
+  if (!startDate) {
+    return { error: "startTime must be a valid datetime." };
   }
 
   let endDate: Date;
   if (requestedEnd) {
-    endDate = new Date(requestedEnd);
-    if (Number.isNaN(endDate.getTime())) {
-      return { error: "endTime must be a valid ISO datetime." };
+    const parsedEnd = parseFlexibleDateTime(requestedEnd, startDate);
+    if (!parsedEnd) {
+      return { error: "endTime must be a valid datetime." };
     }
+    endDate = parsedEnd;
   } else {
     endDate = new Date(startDate);
     endDate.setHours(23, 59, 59, 999);
@@ -2329,9 +2399,9 @@ export function handleQueueScheduleBlock(
     return { error: "title and startTime are required." };
   }
 
-  const startDate = new Date(startTime);
-  if (Number.isNaN(startDate.getTime())) {
-    return { error: "startTime must be a valid ISO datetime." };
+  const startDate = parseFlexibleDateTime(startTime, new Date());
+  if (!startDate) {
+    return { error: "startTime must be a valid datetime." };
   }
 
   const workload: LectureEvent["workload"] =
@@ -2371,9 +2441,9 @@ export function handleQueueUpdateScheduleBlock(
 
   let normalizedStartTime: string | undefined;
   if (nextStartTime) {
-    const startDate = new Date(nextStartTime);
-    if (Number.isNaN(startDate.getTime())) {
-      return { error: "startTime must be a valid ISO datetime." };
+    const startDate = parseFlexibleDateTime(nextStartTime, new Date());
+    if (!startDate) {
+      return { error: "startTime must be a valid datetime." };
     }
     normalizedStartTime = startDate.toISOString();
   }
@@ -2429,17 +2499,18 @@ export function handleQueueClearScheduleWindow(
   const titleQuery = asTrimmedString(args.titleQuery);
   const includeAcademicBlocks = args.includeAcademicBlocks === true;
 
-  let startDate = requestedStart ? new Date(requestedStart) : new Date(now);
-  if (Number.isNaN(startDate.getTime())) {
-    return { error: "startTime must be a valid ISO datetime." };
+  const startDate = requestedStart ? parseFlexibleDateTime(requestedStart, now) : new Date(now);
+  if (!startDate) {
+    return { error: "startTime must be a valid datetime." };
   }
 
   let endDate: Date;
   if (requestedEnd) {
-    endDate = new Date(requestedEnd);
-    if (Number.isNaN(endDate.getTime())) {
-      return { error: "endTime must be a valid ISO datetime." };
+    const parsedEnd = parseFlexibleDateTime(requestedEnd, startDate);
+    if (!parsedEnd) {
+      return { error: "endTime must be a valid datetime." };
     }
+    endDate = parsedEnd;
   } else {
     endDate = new Date(startDate);
     endDate.setHours(23, 59, 59, 999);
@@ -2672,8 +2743,8 @@ export function executePendingChatAction(
         };
       }
 
-      const startDate = new Date(startTime);
-      if (Number.isNaN(startDate.getTime())) {
+      const startDate = parseFlexibleDateTime(startTime, new Date());
+      if (!startDate) {
         return {
           actionId: pendingAction.id,
           actionType: pendingAction.actionType,
@@ -2732,8 +2803,8 @@ export function executePendingChatAction(
 
       const startTime = asTrimmedString(pendingAction.payload.startTime);
       if (startTime) {
-        const startDate = new Date(startTime);
-        if (Number.isNaN(startDate.getTime())) {
+        const startDate = parseFlexibleDateTime(startTime, new Date());
+        if (!startDate) {
           return {
             actionId: pendingAction.id,
             actionType: pendingAction.actionType,

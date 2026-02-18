@@ -32,7 +32,7 @@ This file documents all environment variables required to run the Companion serv
 
 ### AI / LLM
 - `GEMINI_USE_LIVE_API` (default: `true`) — Use Gemini Live API (WebSocket) for chat + tool calling
-- `GEMINI_LIVE_MODEL` (default: `gemini-2.5-flash`) — Vertex model name for chat/tool calling
+- `GEMINI_LIVE_MODEL` (default: `gemini-3-flash-preview`) — Vertex model name for chat/tool calling
 - `GEMINI_LIVE_ENDPOINT` (optional) — Override Vertex Live WebSocket endpoint
 - `GEMINI_VERTEX_PROJECT_ID` (required unless `GEMINI_LIVE_MODEL` is already a full `projects/...` model resource)
   - Alias supported: `GCP_PROJECT_ID`
@@ -123,7 +123,7 @@ VAPID_SUBJECT=mailto:companion@example.com
 
 # AI (Vertex Live API)
 GEMINI_USE_LIVE_API=true
-GEMINI_LIVE_MODEL=gemini-2.5-flash
+GEMINI_LIVE_MODEL=gemini-3-flash-preview
 GEMINI_VERTEX_PROJECT_ID=your-gcp-project-id
 GEMINI_VERTEX_LOCATION=us-central1
 GEMINI_LIVE_TIMEOUT_MS=25000

@@ -424,45 +424,21 @@ describe("chat service", () => {
     expect(result.assistantMessage.metadata?.citations).toEqual(result.citations);
   });
 
-  it("adds social citations when getSocialDigest tool is used", async () => {
-    const nowIso = new Date().toISOString();
-
-    store.setYouTubeData({
-      channels: [],
-      videos: [
-        {
-          id: "yt-1",
-          channelId: "ch-1",
-          channelTitle: "ML Weekly",
-          title: "Transformer fine-tuning walkthrough",
-          description: "Guide for DAT560 prep",
-          publishedAt: nowIso,
-          thumbnailUrl: "https://example.com/thumb.jpg",
-          duration: "PT8M",
-          viewCount: 1200,
-          likeCount: 90,
-          commentCount: 12
-        }
-      ],
-      lastSyncedAt: nowIso
+  it("hydrates generic getDeadlines calls with inferred course code from user text", async () => {
+    const dueSoon = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    const dat560 = store.createDeadline({
+      course: "DAT560",
+      task: "Assignment 2",
+      dueDate: dueSoon,
+      priority: "high",
+      completed: false
     });
-
-    store.setXData({
-      tweets: [
-        {
-          id: "tweet-1",
-          text: "New thread on practical gradient descent debugging.",
-          authorId: "author-1",
-          authorUsername: "mlnotes",
-          authorName: "ML Notes",
-          createdAt: nowIso,
-          likeCount: 44,
-          retweetCount: 9,
-          replyCount: 3,
-          conversationId: "conv-1"
-        }
-      ],
-      lastSyncedAt: nowIso
+    store.createDeadline({
+      course: "DAT520",
+      task: "Lab 4",
+      dueDate: dueSoon,
+      priority: "high",
+      completed: false
     });
 
     generateChatResponse = vi
@@ -472,13 +448,13 @@ describe("chat service", () => {
         finishReason: "stop",
         functionCalls: [
           {
-            name: "getSocialDigest",
-            args: { daysBack: 3 }
+            name: "getDeadlines",
+            args: {}
           }
         ]
       })
       .mockResolvedValueOnce({
-        text: "You have one relevant video and one X thread to review.",
+        text: "You have one DAT560 deadline coming up.",
         finishReason: "stop"
       });
     fakeGemini = {
@@ -486,16 +462,23 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await sendChatMessage(store, "Anything useful from social today?", {
+    await sendChatMessage(store, "What deadlines do I have for DAT560?", {
       geminiClient: fakeGemini,
     });
 
-    expect(result.citations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: "yt-1", type: "social-youtube" }),
-        expect.objectContaining({ id: "tweet-1", type: "social-x" })
-      ])
-    );
+    const secondRequest = generateChatResponse.mock.calls[1][0] as {
+      messages: Array<{ role: string; parts: Array<Record<string, unknown>> }>;
+    };
+    const functionResponseMessage = secondRequest.messages[secondRequest.messages.length - 1];
+    const fnResponse = functionResponseMessage.parts[0]?.functionResponse as
+      | { name: string; response: Record<string, unknown> }
+      | undefined;
+
+    expect(functionResponseMessage.role).toBe("function");
+    expect(fnResponse?.name).toBe("getDeadlines");
+    expect(fnResponse?.response?.total).toBe(1);
+    const deadlines = fnResponse?.response?.deadlines as Array<Record<string, unknown>>;
+    expect(deadlines[0]?.id).toBe(dat560.id);
   });
 
   it("adds GitHub course citations when getGitHubCourseContent tool is used", async () => {

@@ -69,7 +69,7 @@ describe("config", () => {
       delete process.env.GEMINI_VERTEX_LOCATION;
       const { config } = await import("./config.js");
       expect(config.GEMINI_USE_LIVE_API).toBe(true);
-      expect(config.GEMINI_LIVE_MODEL).toBe("gemini-2.5-flash");
+      expect(config.GEMINI_LIVE_MODEL).toBe("gemini-3-flash-preview");
       expect(config.GEMINI_VERTEX_LOCATION).toBe("us-central1");
     });
 

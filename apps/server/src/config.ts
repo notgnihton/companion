@@ -58,7 +58,7 @@ const schema = z.object({
   GEMINI_USE_LIVE_API: z
     .preprocess((value) => parseBooleanEnv(value), z.boolean())
     .default(true),
-  GEMINI_LIVE_MODEL: z.string().default("gemini-2.5-flash"),
+  GEMINI_LIVE_MODEL: z.string().default("gemini-3-flash-preview"),
   GEMINI_LIVE_ENDPOINT: z.string().url().optional(),
   GEMINI_VERTEX_PROJECT_ID: z.string().optional(),
   GEMINI_VERTEX_LOCATION: z.string().default("us-central1"),
