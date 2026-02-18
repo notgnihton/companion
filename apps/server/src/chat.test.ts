@@ -644,6 +644,48 @@ describe("chat service", () => {
     expect(result.reply).toContain("Schedule today");
   });
 
+  it("returns routine preset fallback details when getRoutinePresets is called and model returns empty text", async () => {
+    store.createRoutinePreset({
+      title: "Morning gym",
+      preferredStartTime: "07:00",
+      durationMinutes: 60,
+      workload: "medium",
+      weekdays: [1, 2, 3, 4, 5],
+      active: true
+    });
+
+    generateChatResponse = vi
+      .fn()
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop",
+        functionCalls: [
+          {
+            name: "getRoutinePresets",
+            args: {}
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        text: "",
+        finishReason: "stop"
+      });
+    fakeGemini = {
+      generateChatResponse,
+      generateLiveChatResponse
+    } as unknown as GeminiClient;
+
+    const result = await sendChatMessage(store, "What routines do I have?", {
+      geminiClient: fakeGemini,
+    });
+
+    expect(generateChatResponse).toHaveBeenCalledTimes(2);
+    expect(result.reply).toContain("I fetched your data");
+    expect(result.reply).toContain("Routine presets");
+    expect(result.reply).toContain("Morning gym");
+    expect(result.reply).not.toContain("I couldn't finish the response from tool data right now");
+  });
+
   it("uses model-driven tool routing instruction without local intent markers", async () => {
     await sendChatMessage(store, "What's my lecture schedule today?", {
       geminiClient: fakeGemini,

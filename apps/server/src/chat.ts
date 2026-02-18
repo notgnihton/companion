@@ -1111,6 +1111,59 @@ function buildGitHubCourseFallbackSection(response: unknown): string | null {
   return lines.join("\n");
 }
 
+function buildRoutinePresetsFallbackSection(response: unknown): string | null {
+  if (!Array.isArray(response)) {
+    return null;
+  }
+  if (response.length === 0) {
+    return "Routine presets: none yet.";
+  }
+
+  const lines: string[] = [`Routine presets (${response.length}):`];
+  response.slice(0, 4).forEach((value) => {
+    const record = asRecord(value);
+    if (!record) {
+      return;
+    }
+    const title = asNonEmptyString(record.title) ?? "Routine";
+    const preferredStartTime = asNonEmptyString(record.preferredStartTime) ?? "unscheduled";
+    const durationMinutes =
+      typeof record.durationMinutes === "number" && Number.isFinite(record.durationMinutes)
+        ? `${Math.max(0, Math.round(record.durationMinutes))}m`
+        : "unknown duration";
+    lines.push(`- ${title} at ${preferredStartTime} (${durationMinutes})`);
+  });
+  if (response.length > 4) {
+    lines.push(`- +${response.length - 4} more`);
+  }
+  return lines.join("\n");
+}
+
+function buildGenericToolFallbackSection(name: string, response: unknown): string | null {
+  const payload = asRecord(response);
+  if (payload) {
+    if (typeof payload.error === "string" && payload.error.trim().length > 0) {
+      return `${name}: ${payload.error}`;
+    }
+    if (typeof payload.message === "string" && payload.message.trim().length > 0) {
+      return payload.message;
+    }
+    if (payload.success === true) {
+      return `${name} completed.`;
+    }
+  }
+
+  if (Array.isArray(response)) {
+    return `${name} returned ${response.length} item${response.length === 1 ? "" : "s"}.`;
+  }
+
+  if (response === null || response === undefined) {
+    return null;
+  }
+
+  return `${name} completed.`;
+}
+
 function buildToolRateLimitFallbackReply(
   functionResponses: ExecutedFunctionResponse[],
   pendingActions: ChatPendingAction[]
@@ -1186,8 +1239,19 @@ function buildToolDataFallbackReply(
       case "getGitHubCourseContent":
         section = buildGitHubCourseFallbackSection(result.rawResponse);
         break;
+      case "getRoutinePresets":
+        section = buildRoutinePresetsFallbackSection(result.rawResponse);
+        break;
+      case "createScheduleBlock":
+      case "updateScheduleBlock":
+      case "deleteScheduleBlock":
+      case "clearScheduleWindow":
+      case "queueCreateRoutinePreset":
+      case "queueUpdateRoutinePreset":
+        section = buildGenericToolFallbackSection(result.name, result.rawResponse);
+        break;
       default:
-        section = null;
+        section = buildGenericToolFallbackSection(result.name, result.rawResponse);
         break;
     }
 
