@@ -1,25 +1,20 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   createNutritionCustomFood,
   createNutritionMeal,
-  createNutritionMealPlanBlock,
   deleteNutritionCustomFood,
   deleteNutritionMeal,
-  deleteNutritionMealPlanBlock,
   getNutritionCustomFoods,
-  getNutritionMealPlan,
   getNutritionMeals,
   getNutritionSummary,
   upsertNutritionTargetProfile,
   updateNutritionCustomFood,
-  updateNutritionMeal,
-  upsertNutritionMealPlanBlock
+  updateNutritionMeal
 } from "../lib/api";
 import {
   NutritionCustomFood,
   NutritionDailySummary,
   NutritionMeal,
-  NutritionMealPlanBlock,
   NutritionTargetProfile,
   NutritionMealType
 } from "../types";
@@ -32,16 +27,6 @@ interface MealDraft {
   proteinGrams: string;
   carbsGrams: string;
   fatGrams: string;
-  notes: string;
-}
-
-interface MealPlanDraft {
-  title: string;
-  scheduledFor: string;
-  targetCalories: string;
-  targetProteinGrams: string;
-  targetCarbsGrams: string;
-  targetFatGrams: string;
   notes: string;
 }
 
@@ -75,22 +60,11 @@ interface NutritionDaySnapshotMeal {
   consumedTime: string;
 }
 
-interface NutritionDaySnapshotPlanBlock {
-  title: string;
-  scheduledTime: string;
-  targetCalories?: number;
-  targetProteinGrams?: number;
-  targetCarbsGrams?: number;
-  targetFatGrams?: number;
-  notes?: string;
-}
-
 interface NutritionDaySnapshot {
   id: string;
   name: string;
   createdAt: string;
   meals: NutritionDaySnapshotMeal[];
-  mealPlanBlocks: NutritionDaySnapshotPlanBlock[];
 }
 
 const DAY_SNAPSHOT_STORAGE_KEY = "companion:nutrition-day-snapshots";
@@ -98,31 +72,6 @@ const MAX_DAY_SNAPSHOTS = 24;
 
 function toDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
-}
-
-function toIsoFromDatetimeLocal(value: string): string | null {
-  if (!value.trim()) {
-    return null;
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-  return parsed.toISOString();
-}
-
-function toLocalDatetimeInput(iso: string): string {
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) {
-    return "";
-  }
-
-  const yyyy = parsed.getFullYear();
-  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
-  const dd = String(parsed.getDate()).padStart(2, "0");
-  const hh = String(parsed.getHours()).padStart(2, "0");
-  const min = String(parsed.getMinutes()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
 }
 
 function toTimeHHmm(iso: string): string {
@@ -372,18 +321,6 @@ function formatSignedDelta(value: number, unit: string): string {
   return `${rounded > 0 ? "+" : ""}${formatMetric(rounded)}${unit}`;
 }
 
-function inferMealTypeFromTime(iso: string): NutritionMealType {
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) {
-    return "other";
-  }
-  const hour = parsed.getHours();
-  if (hour < 10) return "breakfast";
-  if (hour < 14) return "lunch";
-  if (hour < 19) return "dinner";
-  return "snack";
-}
-
 function deltaToneClass(value: number): string {
   const rounded = roundToTenth(value);
   if (Math.abs(rounded) < 0.1) {
@@ -396,7 +333,6 @@ export function NutritionView(): JSX.Element {
   const todayKey = useMemo(() => toDateKey(new Date()), []);
   const [summary, setSummary] = useState<NutritionDailySummary | null>(null);
   const [meals, setMeals] = useState<NutritionMeal[]>([]);
-  const [mealPlanBlocks, setMealPlanBlocks] = useState<NutritionMealPlanBlock[]>([]);
   const [customFoods, setCustomFoods] = useState<NutritionCustomFood[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -408,7 +344,6 @@ export function NutritionView(): JSX.Element {
   const [daySnapshotName, setDaySnapshotName] = useState("");
   const [selectedDaySnapshotId, setSelectedDaySnapshotId] = useState("");
   const [dayControlBusy, setDayControlBusy] = useState(false);
-  const mealFormRef = useRef<HTMLElement | null>(null);
 
   const [mealDraft, setMealDraft] = useState<MealDraft>({
     name: "",
@@ -417,16 +352,6 @@ export function NutritionView(): JSX.Element {
     proteinGrams: "",
     carbsGrams: "",
     fatGrams: "",
-    notes: ""
-  });
-
-  const [planDraft, setPlanDraft] = useState<MealPlanDraft>({
-    title: "",
-    scheduledFor: toLocalDatetimeInput(new Date().toISOString()),
-    targetCalories: "",
-    targetProteinGrams: "",
-    targetCarbsGrams: "",
-    targetFatGrams: "",
     notes: ""
   });
 
@@ -459,16 +384,14 @@ export function NutritionView(): JSX.Element {
 
   const refresh = async (): Promise<void> => {
     setLoading(true);
-    const [nextSummary, nextMeals, nextPlanBlocks, nextCustomFoods] = await Promise.all([
+    const [nextSummary, nextMeals, nextCustomFoods] = await Promise.all([
       getNutritionSummary(todayKey),
       getNutritionMeals({ date: todayKey }),
-      getNutritionMealPlan({ date: todayKey }),
       getNutritionCustomFoods({ limit: 200 })
     ]);
 
     setSummary(nextSummary);
     setMeals(nextMeals);
-    setMealPlanBlocks(nextPlanBlocks);
     setCustomFoods(nextCustomFoods);
     if (!targetDraftDirty) {
       setTargetDraft(toTargetDraft(nextSummary?.targetProfile ?? null));
@@ -504,19 +427,7 @@ export function NutritionView(): JSX.Element {
         fatGrams: meal.fatGrams,
         notes: meal.notes,
         consumedTime: toTimeHHmm(meal.consumedAt)
-      })),
-      mealPlanBlocks: mealPlanBlocks
-        .slice()
-        .sort((left, right) => new Date(left.scheduledFor).getTime() - new Date(right.scheduledFor).getTime())
-        .map((block) => ({
-          title: block.title,
-          scheduledTime: toTimeHHmm(block.scheduledFor),
-          targetCalories: block.targetCalories,
-          targetProteinGrams: block.targetProteinGrams,
-          targetCarbsGrams: block.targetCarbsGrams,
-          targetFatGrams: block.targetFatGrams,
-          notes: block.notes
-        }))
+      }))
     };
 
     const nextSnapshots = [nextSnapshot, ...daySnapshots.filter((snapshot) => snapshot.id !== nextSnapshot.id)].slice(
@@ -531,11 +442,8 @@ export function NutritionView(): JSX.Element {
   };
 
   const clearCurrentDayData = async (): Promise<boolean> => {
-    const [deletedMeals, deletedBlocks] = await Promise.all([
-      Promise.all(meals.map((meal) => deleteNutritionMeal(meal.id))),
-      Promise.all(mealPlanBlocks.map((block) => deleteNutritionMealPlanBlock(block.id)))
-    ]);
-    return deletedMeals.every(Boolean) && deletedBlocks.every(Boolean);
+    const deletedMeals = await Promise.all(meals.map((meal) => deleteNutritionMeal(meal.id)));
+    return deletedMeals.every(Boolean);
   };
 
   const handleLoadDaySnapshot = async (): Promise<void> => {
@@ -556,21 +464,6 @@ export function NutritionView(): JSX.Element {
     }
 
     let allCreated = true;
-    for (const block of snapshot.mealPlanBlocks) {
-      const created = await createNutritionMealPlanBlock({
-        title: block.title,
-        scheduledFor: toIsoForDateTime(todayKey, block.scheduledTime),
-        ...(typeof block.targetCalories === "number" ? { targetCalories: block.targetCalories } : {}),
-        ...(typeof block.targetProteinGrams === "number" ? { targetProteinGrams: block.targetProteinGrams } : {}),
-        ...(typeof block.targetCarbsGrams === "number" ? { targetCarbsGrams: block.targetCarbsGrams } : {}),
-        ...(typeof block.targetFatGrams === "number" ? { targetFatGrams: block.targetFatGrams } : {}),
-        ...(block.notes ? { notes: block.notes } : {})
-      });
-      if (!created) {
-        allCreated = false;
-      }
-    }
-
     for (const meal of snapshot.meals) {
       const created = await createNutritionMeal({
         name: meal.name,
@@ -598,7 +491,7 @@ export function NutritionView(): JSX.Element {
   };
 
   const handleResetDay = async (): Promise<void> => {
-    if (!window.confirm("Clear all meals and meal-plan blocks for today?")) {
+    if (!window.confirm("Clear all meals for today?")) {
       return;
     }
 
@@ -747,109 +640,6 @@ export function NutritionView(): JSX.Element {
       setSummary((current) => withMealsSummary(current, nextMeals));
       return nextMeals;
     });
-  };
-
-  const handlePlanSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-    setMessage("");
-
-    const scheduledFor = toIsoFromDatetimeLocal(planDraft.scheduledFor);
-    if (!planDraft.title.trim() || !scheduledFor) {
-      setMessage("Enter a meal-plan title and valid time.");
-      return;
-    }
-
-    const created = await createNutritionMealPlanBlock({
-      title: planDraft.title.trim(),
-      scheduledFor,
-      ...(planDraft.targetCalories.trim()
-        ? { targetCalories: Number.parseFloat(planDraft.targetCalories) || 0 }
-        : {}),
-      ...(planDraft.targetProteinGrams.trim()
-        ? { targetProteinGrams: Number.parseFloat(planDraft.targetProteinGrams) || 0 }
-        : {}),
-      ...(planDraft.targetCarbsGrams.trim()
-        ? { targetCarbsGrams: Number.parseFloat(planDraft.targetCarbsGrams) || 0 }
-        : {}),
-      ...(planDraft.targetFatGrams.trim()
-        ? { targetFatGrams: Number.parseFloat(planDraft.targetFatGrams) || 0 }
-        : {}),
-      notes: planDraft.notes.trim() || undefined
-    });
-
-    if (!created) {
-      setMessage("Could not create meal-plan block right now.");
-      return;
-    }
-
-    hapticSuccess();
-    setPlanDraft({
-      title: "",
-      scheduledFor: toLocalDatetimeInput(new Date().toISOString()),
-      targetCalories: "",
-      targetProteinGrams: "",
-      targetCarbsGrams: "",
-      targetFatGrams: "",
-      notes: ""
-    });
-    await refresh();
-  };
-
-  const handleDeletePlanBlock = async (blockId: string): Promise<void> => {
-    const deleted = await deleteNutritionMealPlanBlock(blockId);
-    if (!deleted) {
-      setMessage("Could not remove meal-plan block right now.");
-      return;
-    }
-    hapticSuccess();
-    await refresh();
-  };
-
-  const handleMovePlanBlock = async (blockId: string, direction: "up" | "down"): Promise<void> => {
-    const index = mealPlanBlocks.findIndex((block) => block.id === blockId);
-    if (index < 0) {
-      return;
-    }
-
-    const targetIndex = direction === "up" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= mealPlanBlocks.length) {
-      return;
-    }
-
-    const current = mealPlanBlocks[index]!;
-    const target = mealPlanBlocks[targetIndex]!;
-
-    const [currentUpdated, targetUpdated] = await Promise.all([
-      upsertNutritionMealPlanBlock(current.id, { scheduledFor: target.scheduledFor }),
-      upsertNutritionMealPlanBlock(target.id, { scheduledFor: current.scheduledFor })
-    ]);
-
-    if (!currentUpdated || !targetUpdated) {
-      setMessage("Could not reorder meal-plan blocks right now.");
-      return;
-    }
-
-    hapticSuccess();
-    setMealPlanBlocks((previous) => {
-      const next = [...previous];
-      next[index] = currentUpdated;
-      next[targetIndex] = targetUpdated;
-      return next;
-    });
-  };
-
-  const handleQuickAddFromPlanBlock = (block: NutritionMealPlanBlock): void => {
-    setMealDraft({
-      name: block.title,
-      mealType: inferMealTypeFromTime(block.scheduledFor),
-      calories: toNumberString(block.targetCalories),
-      proteinGrams: toNumberString(block.targetProteinGrams),
-      carbsGrams: toNumberString(block.targetCarbsGrams),
-      fatGrams: toNumberString(block.targetFatGrams),
-      notes: block.notes ?? ""
-    });
-    setMessage(`Loaded ${block.title} into meal form.`);
-    mealFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   const resetCustomFoodDraft = (): void => {
@@ -1171,136 +961,6 @@ export function NutritionView(): JSX.Element {
       </article>
 
       <article className="nutrition-card">
-        <h3>Meal plan</h3>
-        <form className="nutrition-form" onSubmit={(event) => void handlePlanSubmit(event)}>
-          <div className="nutrition-form-row">
-            <label>
-              Title
-              <input
-                type="text"
-                value={planDraft.title}
-                onChange={(event) => setPlanDraft({ ...planDraft, title: event.target.value })}
-                maxLength={160}
-                required
-              />
-            </label>
-            <label>
-              Time
-              <input
-                type="datetime-local"
-                value={planDraft.scheduledFor}
-                onChange={(event) => setPlanDraft({ ...planDraft, scheduledFor: event.target.value })}
-                required
-              />
-            </label>
-          </div>
-          <div className="nutrition-form-row">
-            <label>
-              Target kcal
-              <input
-                type="number"
-                min={0}
-                step="1"
-                value={planDraft.targetCalories}
-                onChange={(event) => setPlanDraft({ ...planDraft, targetCalories: event.target.value })}
-              />
-            </label>
-            <label>
-              Target protein (g)
-              <input
-                type="number"
-                min={0}
-                step="0.1"
-                value={planDraft.targetProteinGrams}
-                onChange={(event) => setPlanDraft({ ...planDraft, targetProteinGrams: event.target.value })}
-              />
-            </label>
-            <label>
-              Target carbs (g)
-              <input
-                type="number"
-                min={0}
-                step="0.1"
-                value={planDraft.targetCarbsGrams}
-                onChange={(event) => setPlanDraft({ ...planDraft, targetCarbsGrams: event.target.value })}
-              />
-            </label>
-            <label>
-              Target fat (g)
-              <input
-                type="number"
-                min={0}
-                step="0.1"
-                value={planDraft.targetFatGrams}
-                onChange={(event) => setPlanDraft({ ...planDraft, targetFatGrams: event.target.value })}
-              />
-            </label>
-          </div>
-          <label>
-            Notes
-            <input
-              type="text"
-              value={planDraft.notes}
-              onChange={(event) => setPlanDraft({ ...planDraft, notes: event.target.value })}
-              maxLength={300}
-            />
-          </label>
-          <button type="submit">Add plan block</button>
-        </form>
-
-        {mealPlanBlocks.length === 0 ? (
-          <p>No meal-plan blocks for today.</p>
-        ) : (
-          <div className="nutrition-list">
-            {mealPlanBlocks.map((block, index) => (
-              <article key={block.id} className="nutrition-list-item">
-                <div>
-                  <p className="nutrition-item-title">{block.title}</p>
-                  <p className="nutrition-item-meta">
-                    {formatDateTime(block.scheduledFor)}
-                    {(block.targetCalories ?? block.targetProteinGrams ?? block.targetCarbsGrams ?? block.targetFatGrams) !==
-                    undefined
-                      ? ` • ${block.targetCalories ?? 0} kcal, ${block.targetProteinGrams ?? 0}P/${block.targetCarbsGrams ?? 0}C/${block.targetFatGrams ?? 0}F`
-                      : ""}
-                  </p>
-                </div>
-                <div className="nutrition-list-item-actions nutrition-quick-controls nutrition-plan-actions">
-                  <button
-                    type="button"
-                    onClick={() => void handleMovePlanBlock(block.id, "up")}
-                    disabled={index === 0}
-                    aria-label="Move block up"
-                    className="nutrition-thumb-button"
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleMovePlanBlock(block.id, "down")}
-                    disabled={index === mealPlanBlocks.length - 1}
-                    aria-label="Move block down"
-                    className="nutrition-thumb-button"
-                  >
-                    ↓
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickAddFromPlanBlock(block)}
-                    className="nutrition-thumb-button nutrition-thumb-button-wide"
-                  >
-                    Quick add
-                  </button>
-                  <button type="button" onClick={() => void handleDeletePlanBlock(block.id)} className="nutrition-thumb-button">
-                    Del
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </article>
-
-      <article className="nutrition-card">
         <h3>Today&apos;s meals</h3>
         {meals.length === 0 ? (
           <p>No meals logged yet.</p>
@@ -1334,7 +994,7 @@ export function NutritionView(): JSX.Element {
         )}
       </article>
 
-      <article className="nutrition-card" ref={mealFormRef}>
+      <article className="nutrition-card">
         <h3>Log meal</h3>
         <form className="nutrition-form" onSubmit={(event) => void handleMealSubmit(event)}>
           <label>
