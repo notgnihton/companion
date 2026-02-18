@@ -1713,11 +1713,37 @@ export function handleLogMeal(
 
   const note = asTrimmedString(args.notes);
   const autoNote = customFoodMeta ? `${servings} ${customFoodMeta.unitLabel}` : null;
+  const mealItems =
+    customFoodMeta !== null
+      ? [
+          {
+            name: customFoodMeta.name,
+            quantity: servings,
+            unitLabel: customFoodMeta.unitLabel,
+            caloriesPerUnit: customFoodMeta.caloriesPerUnit,
+            proteinGramsPerUnit: customFoodMeta.proteinGramsPerUnit,
+            carbsGramsPerUnit: customFoodMeta.carbsGramsPerUnit,
+            fatGramsPerUnit: customFoodMeta.fatGramsPerUnit,
+            customFoodId: customFoodMeta.id
+          }
+        ]
+      : [
+          {
+            name: mealName,
+            quantity: 1,
+            unitLabel: "serving",
+            caloriesPerUnit: calories,
+            proteinGramsPerUnit: proteinGrams,
+            carbsGramsPerUnit: carbsGrams,
+            fatGramsPerUnit: fatGrams
+          }
+        ];
 
   const meal = store.createNutritionMeal({
     name: mealName,
     mealType: parseMealType(args.mealType),
     consumedAt: asTrimmedString(args.consumedAt) ?? new Date().toISOString(),
+    items: mealItems,
     calories,
     proteinGrams,
     carbsGrams,

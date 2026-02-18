@@ -493,11 +493,24 @@ export interface NutritionMacros {
   fatGrams: number;
 }
 
+export interface NutritionMealItem {
+  id?: string;
+  name: string;
+  quantity: number;
+  unitLabel: string;
+  caloriesPerUnit: number;
+  proteinGramsPerUnit: number;
+  carbsGramsPerUnit: number;
+  fatGramsPerUnit: number;
+  customFoodId?: string;
+}
+
 export interface NutritionMeal extends NutritionMacros {
   id: string;
   name: string;
   mealType: NutritionMealType;
   consumedAt: string;
+  items: NutritionMealItem[];
   notes?: string;
   createdAt: string;
 }

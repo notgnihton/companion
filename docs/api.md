@@ -120,10 +120,26 @@ Request:
 {
   "name": "Protein oats",
   "mealType": "breakfast",
-  "calories": 520,
-  "proteinGrams": 32,
-  "carbsGrams": 68,
-  "fatGrams": 14
+  "items": [
+    {
+      "name": "Oats",
+      "quantity": 1,
+      "unitLabel": "bowl",
+      "caloriesPerUnit": 300,
+      "proteinGramsPerUnit": 12,
+      "carbsGramsPerUnit": 54,
+      "fatGramsPerUnit": 6
+    },
+    {
+      "name": "Whey isolate",
+      "quantity": 1,
+      "unitLabel": "scoop",
+      "caloriesPerUnit": 110,
+      "proteinGramsPerUnit": 25,
+      "carbsGramsPerUnit": 2,
+      "fatGramsPerUnit": 1
+    }
+  ]
 }
 ```
 
@@ -136,6 +152,18 @@ Response `201`:
     "name": "Protein oats",
     "mealType": "breakfast",
     "consumedAt": "2026-02-17T07:15:00.000Z",
+    "items": [
+      {
+        "id": "nutrition-meal-item-1",
+        "name": "Oats",
+        "quantity": 1,
+        "unitLabel": "bowl",
+        "caloriesPerUnit": 300,
+        "proteinGramsPerUnit": 12,
+        "carbsGramsPerUnit": 54,
+        "fatGramsPerUnit": 6
+      }
+    ],
     "calories": 520,
     "proteinGrams": 32,
     "carbsGrams": 68,
@@ -147,7 +175,7 @@ Response `201`:
 
 ### `PATCH /api/nutrition/meals/:id`
 
-Updates a meal log (supports quick portion changes by patching calories/macros without full form re-entry). Response `200` with `{ "meal": ... }`.
+Updates a meal log. Provide `items` to replace the meal composition; totals are derived from `items` automatically. Response `200` with `{ "meal": ... }`.
 
 ### `DELETE /api/nutrition/meals/:id`
 

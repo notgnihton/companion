@@ -15,6 +15,7 @@ import {
   NutritionCustomFood,
   NutritionDailySummary,
   NutritionMeal,
+  NutritionMealItem,
   NutritionTargetProfile,
   NutritionMealType
 } from "../types";
@@ -23,11 +24,18 @@ import { hapticSuccess } from "../lib/haptics";
 interface MealDraft {
   name: string;
   mealType: NutritionMealType;
-  calories: string;
-  proteinGrams: string;
-  carbsGrams: string;
-  fatGrams: string;
-  notes: string;
+}
+
+interface MealItemDraft {
+  id: string;
+  name: string;
+  quantity: string;
+  unitLabel: string;
+  caloriesPerUnit: string;
+  proteinGramsPerUnit: string;
+  carbsGramsPerUnit: string;
+  fatGramsPerUnit: string;
+  customFoodId?: string;
 }
 
 interface CustomFoodDraft {
@@ -52,10 +60,7 @@ interface NutritionTargetDraft {
 interface NutritionDaySnapshotMeal {
   name: string;
   mealType: NutritionMealType;
-  calories: number;
-  proteinGrams: number;
-  carbsGrams: number;
-  fatGrams: number;
+  items: Array<Omit<NutritionMealItem, "id">>;
   notes?: string;
   consumedTime: string;
 }
@@ -140,7 +145,83 @@ function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+function toMealItemDraft(item?: Partial<MealItemDraft>): MealItemDraft {
+  return {
+    id: crypto.randomUUID(),
+    name: item?.name ?? "",
+    quantity: item?.quantity ?? "1",
+    unitLabel: item?.unitLabel ?? "serving",
+    caloriesPerUnit: item?.caloriesPerUnit ?? "",
+    proteinGramsPerUnit: item?.proteinGramsPerUnit ?? "",
+    carbsGramsPerUnit: item?.carbsGramsPerUnit ?? "",
+    fatGramsPerUnit: item?.fatGramsPerUnit ?? "",
+    ...(item?.customFoodId ? { customFoodId: item.customFoodId } : {})
+  };
+}
+
+function parseMealItemDrafts(items: MealItemDraft[]): Array<Omit<NutritionMealItem, "id">> {
+  return items
+    .map((item) => {
+      const name = item.name.trim();
+      const unitLabel = item.unitLabel.trim() || "serving";
+      const quantity = Number.parseFloat(item.quantity);
+      const caloriesPerUnit = Number.parseFloat(item.caloriesPerUnit);
+      const proteinGramsPerUnit = Number.parseFloat(item.proteinGramsPerUnit) || 0;
+      const carbsGramsPerUnit = Number.parseFloat(item.carbsGramsPerUnit) || 0;
+      const fatGramsPerUnit = Number.parseFloat(item.fatGramsPerUnit) || 0;
+
+      if (!name || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(caloriesPerUnit) || caloriesPerUnit < 0) {
+        return null;
+      }
+
+      return {
+        name,
+        quantity,
+        unitLabel,
+        caloriesPerUnit,
+        proteinGramsPerUnit,
+        carbsGramsPerUnit,
+        fatGramsPerUnit,
+        ...(item.customFoodId ? { customFoodId: item.customFoodId } : {})
+      };
+    })
+    .filter((item): item is Omit<NutritionMealItem, "id"> => item !== null);
+}
+
+function computeMealTotalsFromItems(items: Array<Pick<NutritionMealItem, "quantity" | "caloriesPerUnit" | "proteinGramsPerUnit" | "carbsGramsPerUnit" | "fatGramsPerUnit">>): NutritionDailySummary["totals"] {
+  return items.reduce(
+    (totals, item) => ({
+      calories: totals.calories + item.quantity * item.caloriesPerUnit,
+      proteinGrams: roundToTenth(totals.proteinGrams + item.quantity * item.proteinGramsPerUnit),
+      carbsGrams: roundToTenth(totals.carbsGrams + item.quantity * item.carbsGramsPerUnit),
+      fatGrams: roundToTenth(totals.fatGrams + item.quantity * item.fatGramsPerUnit)
+    }),
+    {
+      calories: 0,
+      proteinGrams: 0,
+      carbsGrams: 0,
+      fatGrams: 0
+    }
+  );
+}
+
 function scaleMealPortion(meal: NutritionMeal, factor: number): NutritionMeal {
+  if (meal.items.length > 0) {
+    const scaledItems = meal.items.map((item) => ({
+      ...item,
+      quantity: roundToTenth(item.quantity * factor)
+    }));
+    const totals = computeMealTotalsFromItems(scaledItems);
+    return {
+      ...meal,
+      items: scaledItems,
+      calories: Math.max(0, Math.round(totals.calories)),
+      proteinGrams: Math.max(0, totals.proteinGrams),
+      carbsGrams: Math.max(0, totals.carbsGrams),
+      fatGrams: Math.max(0, totals.fatGrams)
+    };
+  }
+
   return {
     ...meal,
     calories: Math.max(0, Math.round(meal.calories * factor)),
@@ -347,13 +428,9 @@ export function NutritionView(): JSX.Element {
 
   const [mealDraft, setMealDraft] = useState<MealDraft>({
     name: "",
-    mealType: "other",
-    calories: "",
-    proteinGrams: "",
-    carbsGrams: "",
-    fatGrams: "",
-    notes: ""
+    mealType: "other"
   });
+  const [mealItemDrafts, setMealItemDrafts] = useState<MealItemDraft[]>([toMealItemDraft()]);
 
   const [customFoodDraft, setCustomFoodDraft] = useState<CustomFoodDraft>({
     name: "",
@@ -381,6 +458,8 @@ export function NutritionView(): JSX.Element {
       fatGrams: roundToTenth(summary.totals.fatGrams - activeTargets.targetFatGrams)
     };
   }, [summary, activeTargets]);
+  const parsedMealItems = useMemo(() => parseMealItemDrafts(mealItemDrafts), [mealItemDrafts]);
+  const draftMealTotals = useMemo(() => computeMealTotalsFromItems(parsedMealItems), [parsedMealItems]);
 
   const refresh = async (): Promise<void> => {
     setLoading(true);
@@ -421,11 +500,16 @@ export function NutritionView(): JSX.Element {
       meals: meals.map((meal) => ({
         name: meal.name,
         mealType: meal.mealType,
-        calories: meal.calories,
-        proteinGrams: meal.proteinGrams,
-        carbsGrams: meal.carbsGrams,
-        fatGrams: meal.fatGrams,
-        notes: meal.notes,
+        items: meal.items.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unitLabel: item.unitLabel,
+          caloriesPerUnit: item.caloriesPerUnit,
+          proteinGramsPerUnit: item.proteinGramsPerUnit,
+          carbsGramsPerUnit: item.carbsGramsPerUnit,
+          fatGramsPerUnit: item.fatGramsPerUnit,
+          ...(item.customFoodId ? { customFoodId: item.customFoodId } : {})
+        })),
         consumedTime: toTimeHHmm(meal.consumedAt)
       }))
     };
@@ -469,11 +553,7 @@ export function NutritionView(): JSX.Element {
         name: meal.name,
         mealType: meal.mealType,
         consumedAt: toIsoForDateTime(todayKey, meal.consumedTime),
-        calories: meal.calories,
-        proteinGrams: meal.proteinGrams,
-        carbsGrams: meal.carbsGrams,
-        fatGrams: meal.fatGrams,
-        ...(meal.notes ? { notes: meal.notes } : {})
+        items: Array.isArray(meal.items) ? meal.items : []
       });
       if (!created) {
         allCreated = false;
@@ -566,20 +646,19 @@ export function NutritionView(): JSX.Element {
     event.preventDefault();
     setMessage("");
 
-    const calories = Number.parseFloat(mealDraft.calories);
-    if (!mealDraft.name.trim() || !Number.isFinite(calories) || calories < 0) {
-      setMessage("Enter a valid meal name and calories.");
+    if (!mealDraft.name.trim()) {
+      setMessage("Enter a meal name.");
+      return;
+    }
+    if (parsedMealItems.length === 0) {
+      setMessage("Add at least one valid food item with quantity and calories.");
       return;
     }
 
     const created = await createNutritionMeal({
       name: mealDraft.name.trim(),
       mealType: mealDraft.mealType,
-      calories,
-      proteinGrams: Number.parseFloat(mealDraft.proteinGrams) || 0,
-      carbsGrams: Number.parseFloat(mealDraft.carbsGrams) || 0,
-      fatGrams: Number.parseFloat(mealDraft.fatGrams) || 0,
-      notes: mealDraft.notes.trim() || undefined
+      items: parsedMealItems
     });
 
     if (!created) {
@@ -590,13 +669,9 @@ export function NutritionView(): JSX.Element {
     hapticSuccess();
     setMealDraft({
       name: "",
-      mealType: "other",
-      calories: "",
-      proteinGrams: "",
-      carbsGrams: "",
-      fatGrams: "",
-      notes: ""
+      mealType: "other"
     });
+    setMealItemDrafts([toMealItemDraft()]);
     await refresh();
   };
 
@@ -623,10 +698,16 @@ export function NutritionView(): JSX.Element {
     const factor = direction === "up" ? 1.25 : 0.75;
     const scaled = scaleMealPortion(currentMeal, factor);
     const updated = await updateNutritionMeal(mealId, {
-      calories: scaled.calories,
-      proteinGrams: scaled.proteinGrams,
-      carbsGrams: scaled.carbsGrams,
-      fatGrams: scaled.fatGrams
+      ...(scaled.items.length > 0
+        ? {
+            items: scaled.items.map(({ id, ...item }) => item)
+          }
+        : {
+            calories: scaled.calories,
+            proteinGrams: scaled.proteinGrams,
+            carbsGrams: scaled.carbsGrams,
+            fatGrams: scaled.fatGrams
+          })
     });
 
     if (!updated) {
@@ -639,6 +720,30 @@ export function NutritionView(): JSX.Element {
       const nextMeals = previous.map((meal) => (meal.id === mealId ? updated : meal));
       setSummary((current) => withMealsSummary(current, nextMeals));
       return nextMeals;
+    });
+  };
+
+  const handleAddMealItemDraft = (): void => {
+    setMealItemDrafts((previous) => [...previous, toMealItemDraft()]);
+  };
+
+  const handleUpdateMealItemDraft = (id: string, patch: Partial<Omit<MealItemDraft, "id">>): void => {
+    setMealItemDrafts((previous) =>
+      previous.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              ...patch
+            }
+          : item
+      )
+    );
+  };
+
+  const handleDeleteMealItemDraft = (id: string): void => {
+    setMealItemDrafts((previous) => {
+      const next = previous.filter((item) => item.id !== id);
+      return next.length > 0 ? next : [toMealItemDraft()];
     });
   };
 
@@ -717,14 +822,29 @@ export function NutritionView(): JSX.Element {
   const handleUseCustomFood = (food: NutritionCustomFood): void => {
     setMealDraft((previous) => ({
       ...previous,
-      name: food.name,
-      calories: String(food.caloriesPerUnit),
-      proteinGrams: String(food.proteinGramsPerUnit),
-      carbsGrams: String(food.carbsGramsPerUnit),
-      fatGrams: String(food.fatGramsPerUnit),
-      notes: previous.notes.trim() ? previous.notes : `1 ${food.unitLabel}`
+      name: previous.name.trim() || food.name
     }));
-    setMessage(`Loaded ${food.name} into meal form.`);
+    const nextItem = toMealItemDraft({
+      name: food.name,
+      quantity: "1",
+      unitLabel: food.unitLabel,
+      caloriesPerUnit: String(food.caloriesPerUnit),
+      proteinGramsPerUnit: String(food.proteinGramsPerUnit),
+      carbsGramsPerUnit: String(food.carbsGramsPerUnit),
+      fatGramsPerUnit: String(food.fatGramsPerUnit),
+      customFoodId: food.id
+    });
+    setMealItemDrafts((previous) => {
+      const hasSingleBlank =
+        previous.length === 1 &&
+        !previous[0]?.name.trim() &&
+        !previous[0]?.caloriesPerUnit.trim() &&
+        !previous[0]?.proteinGramsPerUnit.trim() &&
+        !previous[0]?.carbsGramsPerUnit.trim() &&
+        !previous[0]?.fatGramsPerUnit.trim();
+      return hasSingleBlank ? [nextItem] : [...previous, nextItem];
+    });
+    setMessage(`Added ${food.name} to meal items.`);
   };
 
   return (
@@ -976,6 +1096,22 @@ export function NutritionView(): JSX.Element {
                     {meal.calories} kcal • {meal.proteinGrams}P/{meal.carbsGrams}C/{meal.fatGrams}F •{" "}
                     {formatDateTime(meal.consumedAt)}
                   </p>
+                  {meal.items.length > 0 && (
+                    <ul className="nutrition-meal-item-list">
+                      {meal.items.map((item) => {
+                        const itemCalories = Math.round(item.quantity * item.caloriesPerUnit);
+                        const itemProtein = roundToTenth(item.quantity * item.proteinGramsPerUnit);
+                        const itemCarbs = roundToTenth(item.quantity * item.carbsGramsPerUnit);
+                        const itemFat = roundToTenth(item.quantity * item.fatGramsPerUnit);
+                        return (
+                          <li key={item.id}>
+                            {item.name} • {formatMetric(item.quantity)} {item.unitLabel} • {itemCalories} kcal •{" "}
+                            {itemProtein}P/{itemCarbs}C/{itemFat}F
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
                 </div>
                 <div className="nutrition-list-item-actions nutrition-quick-controls">
                   <button type="button" onClick={() => void handleAdjustMealPortion(meal.id, "down")} aria-label="Decrease portion">
@@ -997,83 +1133,135 @@ export function NutritionView(): JSX.Element {
       <article className="nutrition-card">
         <h3>Log meal</h3>
         <form className="nutrition-form" onSubmit={(event) => void handleMealSubmit(event)}>
-          <label>
-            Meal name
-            <input
-              type="text"
-              value={mealDraft.name}
-              onChange={(event) => setMealDraft({ ...mealDraft, name: event.target.value })}
-              maxLength={160}
-              required
-            />
-          </label>
-          <label>
-            Type
-            <select
-              value={mealDraft.mealType}
-              onChange={(event) =>
-                setMealDraft({ ...mealDraft, mealType: event.target.value as NutritionMealType })
-              }
-            >
-              <option value="breakfast">Breakfast</option>
-              <option value="lunch">Lunch</option>
-              <option value="dinner">Dinner</option>
-              <option value="snack">Snack</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
           <div className="nutrition-form-row">
             <label>
-              Calories
+              Meal name
               <input
-                type="number"
-                min={0}
-                step="1"
-                value={mealDraft.calories}
-                onChange={(event) => setMealDraft({ ...mealDraft, calories: event.target.value })}
+                type="text"
+                value={mealDraft.name}
+                onChange={(event) => setMealDraft({ ...mealDraft, name: event.target.value })}
+                maxLength={160}
                 required
               />
             </label>
             <label>
-              Protein (g)
-              <input
-                type="number"
-                min={0}
-                step="0.1"
-                value={mealDraft.proteinGrams}
-                onChange={(event) => setMealDraft({ ...mealDraft, proteinGrams: event.target.value })}
-              />
-            </label>
-            <label>
-              Carbs (g)
-              <input
-                type="number"
-                min={0}
-                step="0.1"
-                value={mealDraft.carbsGrams}
-                onChange={(event) => setMealDraft({ ...mealDraft, carbsGrams: event.target.value })}
-              />
-            </label>
-            <label>
-              Fat (g)
-              <input
-                type="number"
-                min={0}
-                step="0.1"
-                value={mealDraft.fatGrams}
-                onChange={(event) => setMealDraft({ ...mealDraft, fatGrams: event.target.value })}
-              />
+              Type
+              <select
+                value={mealDraft.mealType}
+                onChange={(event) =>
+                  setMealDraft({ ...mealDraft, mealType: event.target.value as NutritionMealType })
+                }
+              >
+                <option value="breakfast">Breakfast</option>
+                <option value="lunch">Lunch</option>
+                <option value="dinner">Dinner</option>
+                <option value="snack">Snack</option>
+                <option value="other">Other</option>
+              </select>
             </label>
           </div>
-          <label>
-            Notes
-            <input
-              type="text"
-              value={mealDraft.notes}
-              onChange={(event) => setMealDraft({ ...mealDraft, notes: event.target.value })}
-              maxLength={300}
-            />
-          </label>
+
+          <div className="nutrition-item-editor-list">
+            {mealItemDrafts.map((item, index) => (
+              <article key={item.id} className="nutrition-item-editor">
+                <div className="nutrition-form-row">
+                  <label>
+                    Food
+                    <input
+                      type="text"
+                      value={item.name}
+                      onChange={(event) => handleUpdateMealItemDraft(item.id, { name: event.target.value })}
+                      maxLength={160}
+                      placeholder={index === 0 ? "e.g. Jasmine rice" : ""}
+                    />
+                  </label>
+                  <label>
+                    Qty
+                    <input
+                      type="number"
+                      min={0.1}
+                      step="0.1"
+                      value={item.quantity}
+                      onChange={(event) => handleUpdateMealItemDraft(item.id, { quantity: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Unit
+                    <input
+                      type="text"
+                      value={item.unitLabel}
+                      onChange={(event) => handleUpdateMealItemDraft(item.id, { unitLabel: event.target.value })}
+                      maxLength={40}
+                    />
+                  </label>
+                </div>
+                <div className="nutrition-form-row">
+                  <label>
+                    Kcal / unit
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={item.caloriesPerUnit}
+                      onChange={(event) => handleUpdateMealItemDraft(item.id, { caloriesPerUnit: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Protein / unit
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={item.proteinGramsPerUnit}
+                      onChange={(event) =>
+                        handleUpdateMealItemDraft(item.id, { proteinGramsPerUnit: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Carbs / unit
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={item.carbsGramsPerUnit}
+                      onChange={(event) => handleUpdateMealItemDraft(item.id, { carbsGramsPerUnit: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Fat / unit
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={item.fatGramsPerUnit}
+                      onChange={(event) => handleUpdateMealItemDraft(item.id, { fatGramsPerUnit: event.target.value })}
+                    />
+                  </label>
+                </div>
+                <div className="nutrition-inline-actions">
+                  <button
+                    type="button"
+                    className="nutrition-secondary-button"
+                    onClick={() => handleDeleteMealItemDraft(item.id)}
+                  >
+                    Remove item
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="nutrition-inline-actions">
+            <button type="button" className="nutrition-secondary-button" onClick={handleAddMealItemDraft}>
+              Add food item
+            </button>
+          </div>
+
+          <p className="nutrition-item-meta">
+            Draft totals: {Math.round(draftMealTotals.calories)} kcal • {formatMetric(draftMealTotals.proteinGrams)}P/
+            {formatMetric(draftMealTotals.carbsGrams)}C/{formatMetric(draftMealTotals.fatGrams)}F
+          </p>
           <button type="submit">Log meal</button>
         </form>
       </article>

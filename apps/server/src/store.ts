@@ -40,6 +40,7 @@ import {
   NutritionDailySummary,
   NutritionCustomFood,
   NutritionMeal,
+  NutritionMealItem,
   NutritionMealPlanBlock,
   NutritionTargetProfile,
   NutritionMealType,
@@ -318,6 +319,7 @@ export class RuntimeStore {
         proteinGrams REAL NOT NULL,
         carbsGrams REAL NOT NULL,
         fatGrams REAL NOT NULL,
+        itemsJson TEXT NOT NULL DEFAULT '[]',
         notes TEXT,
         createdAt TEXT NOT NULL,
         insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
@@ -639,6 +641,12 @@ export class RuntimeStore {
     const hasEffortConfidence = deadlineColumns.some((col) => col.name === "effortConfidence");
     if (!hasEffortConfidence) {
       this.db.prepare("ALTER TABLE deadlines ADD COLUMN effortConfidence TEXT").run();
+    }
+
+    const nutritionMealColumns = this.db.prepare("PRAGMA table_info(nutrition_meals)").all() as Array<{ name: string }>;
+    const hasItemsJsonColumn = nutritionMealColumns.some((col) => col.name === "itemsJson");
+    if (!hasItemsJsonColumn) {
+      this.db.prepare("ALTER TABLE nutrition_meals ADD COLUMN itemsJson TEXT NOT NULL DEFAULT '[]'").run();
     }
 
     // Add Gmail messages and lastSyncedAt columns if they don't exist
@@ -3049,19 +3057,140 @@ export class RuntimeStore {
     return Number.isNaN(parsed.getTime()) ? nowIso() : parsed.toISOString();
   }
 
+  private normalizeNutritionMealItems(value: unknown): NutritionMealItem[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const normalized: NutritionMealItem[] = [];
+    for (const rawItem of value) {
+      if (!rawItem || typeof rawItem !== "object") {
+        continue;
+      }
+      const item = rawItem as Record<string, unknown>;
+      const name = typeof item.name === "string" ? item.name.trim() : "";
+      if (!name) {
+        continue;
+      }
+
+      const id =
+        typeof item.id === "string" && item.id.trim().length > 0 ? item.id.trim() : makeId("nutrition-meal-item");
+      const quantity =
+        typeof item.quantity === "number" ? this.clampNutritionMetric(item.quantity, 1, 1000) : 1;
+      const unitLabel =
+        typeof item.unitLabel === "string" && item.unitLabel.trim().length > 0 ? item.unitLabel.trim() : "serving";
+
+      normalized.push({
+        id,
+        name,
+        quantity: Math.max(0.1, quantity),
+        unitLabel,
+        caloriesPerUnit: this.clampNutritionMetric(
+          typeof item.caloriesPerUnit === "number" ? item.caloriesPerUnit : 0,
+          0,
+          10000
+        ),
+        proteinGramsPerUnit: this.clampNutritionMetric(
+          typeof item.proteinGramsPerUnit === "number" ? item.proteinGramsPerUnit : 0,
+          0,
+          1000
+        ),
+        carbsGramsPerUnit: this.clampNutritionMetric(
+          typeof item.carbsGramsPerUnit === "number" ? item.carbsGramsPerUnit : 0,
+          0,
+          1500
+        ),
+        fatGramsPerUnit: this.clampNutritionMetric(
+          typeof item.fatGramsPerUnit === "number" ? item.fatGramsPerUnit : 0,
+          0,
+          600
+        ),
+        ...(typeof item.customFoodId === "string" && item.customFoodId.trim().length > 0
+          ? { customFoodId: item.customFoodId.trim() }
+          : {})
+      });
+    }
+
+    return normalized;
+  }
+
+  private parseNutritionMealItemsJson(raw: string | null | undefined): NutritionMealItem[] {
+    if (typeof raw !== "string" || raw.trim().length === 0) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return this.normalizeNutritionMealItems(parsed);
+    } catch {
+      return [];
+    }
+  }
+
+  private computeNutritionTotalsFromMealItems(items: NutritionMealItem[]): {
+    calories: number;
+    proteinGrams: number;
+    carbsGrams: number;
+    fatGrams: number;
+  } {
+    const totals = items.reduce(
+      (acc, item) => {
+        acc.calories += item.caloriesPerUnit * item.quantity;
+        acc.proteinGrams += item.proteinGramsPerUnit * item.quantity;
+        acc.carbsGrams += item.carbsGramsPerUnit * item.quantity;
+        acc.fatGrams += item.fatGramsPerUnit * item.quantity;
+        return acc;
+      },
+      {
+        calories: 0,
+        proteinGrams: 0,
+        carbsGrams: 0,
+        fatGrams: 0
+      }
+    );
+
+    return {
+      calories: this.clampNutritionMetric(totals.calories, 0, 10000),
+      proteinGrams: this.clampNutritionMetric(totals.proteinGrams, 0, 1000),
+      carbsGrams: this.clampNutritionMetric(totals.carbsGrams, 0, 1500),
+      fatGrams: this.clampNutritionMetric(totals.fatGrams, 0, 600)
+    };
+  }
+
   createNutritionMeal(
-    entry: Omit<NutritionMeal, "id" | "createdAt"> & { createdAt?: string }
+    entry: Pick<NutritionMeal, "name" | "mealType" | "consumedAt"> &
+      Partial<Pick<NutritionMeal, "items" | "calories" | "proteinGrams" | "carbsGrams" | "fatGrams" | "notes">> & {
+        createdAt?: string;
+      }
   ): NutritionMeal {
     const consumedAt = this.normalizeIsoOrNow(entry.consumedAt);
+    const items = this.normalizeNutritionMealItems(entry.items);
+    const derivedTotals =
+      items.length > 0
+        ? this.computeNutritionTotalsFromMealItems(items)
+        : {
+            calories: this.clampNutritionMetric(
+              typeof entry.calories === "number" ? entry.calories : 0,
+              0,
+              10000
+            ),
+            proteinGrams: this.clampNutritionMetric(
+              typeof entry.proteinGrams === "number" ? entry.proteinGrams : 0,
+              0,
+              1000
+            ),
+            carbsGrams: this.clampNutritionMetric(typeof entry.carbsGrams === "number" ? entry.carbsGrams : 0, 0, 1500),
+            fatGrams: this.clampNutritionMetric(typeof entry.fatGrams === "number" ? entry.fatGrams : 0, 0, 600)
+          };
     const meal: NutritionMeal = {
       id: makeId("meal"),
       name: entry.name.trim(),
       mealType: this.normalizeNutritionMealType(entry.mealType),
       consumedAt,
-      calories: this.clampNutritionMetric(entry.calories, 0, 10000),
-      proteinGrams: this.clampNutritionMetric(entry.proteinGrams, 0, 1000),
-      carbsGrams: this.clampNutritionMetric(entry.carbsGrams, 0, 1500),
-      fatGrams: this.clampNutritionMetric(entry.fatGrams, 0, 600),
+      items,
+      calories: derivedTotals.calories,
+      proteinGrams: derivedTotals.proteinGrams,
+      carbsGrams: derivedTotals.carbsGrams,
+      fatGrams: derivedTotals.fatGrams,
       ...(entry.notes && entry.notes.trim().length > 0 ? { notes: entry.notes.trim() } : {}),
       createdAt: this.normalizeIsoOrNow(entry.createdAt)
     };
@@ -3069,8 +3198,8 @@ export class RuntimeStore {
     this.db
       .prepare(
         `INSERT INTO nutrition_meals (
-          id, name, mealType, consumedAt, calories, proteinGrams, carbsGrams, fatGrams, notes, createdAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          id, name, mealType, consumedAt, calories, proteinGrams, carbsGrams, fatGrams, itemsJson, notes, createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meal.id,
@@ -3081,6 +3210,7 @@ export class RuntimeStore {
         meal.proteinGrams,
         meal.carbsGrams,
         meal.fatGrams,
+        JSON.stringify(meal.items),
         meal.notes ?? null,
         meal.createdAt
       );
@@ -3100,6 +3230,7 @@ export class RuntimeStore {
           proteinGrams: number;
           carbsGrams: number;
           fatGrams: number;
+          itemsJson: string | null;
           notes: string | null;
           createdAt: string;
         }
@@ -3114,6 +3245,7 @@ export class RuntimeStore {
       name: row.name,
       mealType: this.normalizeNutritionMealType(row.mealType),
       consumedAt: row.consumedAt,
+      items: this.parseNutritionMealItemsJson(row.itemsJson),
       calories: this.clampNutritionMetric(row.calories, 0, 10000),
       proteinGrams: this.clampNutritionMetric(row.proteinGrams, 0, 1000),
       carbsGrams: this.clampNutritionMetric(row.carbsGrams, 0, 1500),
@@ -3178,6 +3310,7 @@ export class RuntimeStore {
       proteinGrams: number;
       carbsGrams: number;
       fatGrams: number;
+      itemsJson: string | null;
       notes: string | null;
       createdAt: string;
     }>;
@@ -3187,6 +3320,7 @@ export class RuntimeStore {
       name: row.name,
       mealType: this.normalizeNutritionMealType(row.mealType),
       consumedAt: row.consumedAt,
+      items: this.parseNutritionMealItemsJson(row.itemsJson),
       calories: this.clampNutritionMetric(row.calories, 0, 10000),
       proteinGrams: this.clampNutritionMetric(row.proteinGrams, 0, 1000),
       carbsGrams: this.clampNutritionMetric(row.carbsGrams, 0, 1500),
@@ -3210,6 +3344,10 @@ export class RuntimeStore {
       return null;
     }
 
+    const hasItemsPatch = Object.prototype.hasOwnProperty.call(patch, "items");
+    const nextItems = hasItemsPatch ? this.normalizeNutritionMealItems((patch as { items?: unknown }).items) : existing.items;
+    const totalsFromItems = nextItems.length > 0 ? this.computeNutritionTotalsFromMealItems(nextItems) : null;
+
     const next: NutritionMeal = {
       ...existing,
       ...patch,
@@ -3222,20 +3360,29 @@ export class RuntimeStore {
         typeof patch.consumedAt === "string"
           ? this.normalizeIsoOrNow(patch.consumedAt)
           : existing.consumedAt,
+      items: nextItems,
       calories:
-        typeof patch.calories === "number"
+        totalsFromItems
+          ? totalsFromItems.calories
+          : typeof patch.calories === "number"
           ? this.clampNutritionMetric(patch.calories, existing.calories, 10000)
           : existing.calories,
       proteinGrams:
-        typeof patch.proteinGrams === "number"
+        totalsFromItems
+          ? totalsFromItems.proteinGrams
+          : typeof patch.proteinGrams === "number"
           ? this.clampNutritionMetric(patch.proteinGrams, existing.proteinGrams, 1000)
           : existing.proteinGrams,
       carbsGrams:
-        typeof patch.carbsGrams === "number"
+        totalsFromItems
+          ? totalsFromItems.carbsGrams
+          : typeof patch.carbsGrams === "number"
           ? this.clampNutritionMetric(patch.carbsGrams, existing.carbsGrams, 1500)
           : existing.carbsGrams,
       fatGrams:
-        typeof patch.fatGrams === "number"
+        totalsFromItems
+          ? totalsFromItems.fatGrams
+          : typeof patch.fatGrams === "number"
           ? this.clampNutritionMetric(patch.fatGrams, existing.fatGrams, 600)
           : existing.fatGrams,
       ...(Object.prototype.hasOwnProperty.call(patch, "notes")
@@ -3250,7 +3397,7 @@ export class RuntimeStore {
     this.db
       .prepare(
         `UPDATE nutrition_meals SET
-          name = ?, mealType = ?, consumedAt = ?, calories = ?, proteinGrams = ?, carbsGrams = ?, fatGrams = ?, notes = ?
+          name = ?, mealType = ?, consumedAt = ?, calories = ?, proteinGrams = ?, carbsGrams = ?, fatGrams = ?, itemsJson = ?, notes = ?
          WHERE id = ?`
       )
       .run(
@@ -3261,6 +3408,7 @@ export class RuntimeStore {
         next.proteinGrams,
         next.carbsGrams,
         next.fatGrams,
+        JSON.stringify(next.items),
         next.notes ?? null,
         id
       );

@@ -250,11 +250,24 @@ export interface Goal {
 
 export type NutritionMealType = "breakfast" | "lunch" | "dinner" | "snack" | "other";
 
+export interface NutritionMealItem {
+  id?: string;
+  name: string;
+  quantity: number;
+  unitLabel: string;
+  caloriesPerUnit: number;
+  proteinGramsPerUnit: number;
+  carbsGramsPerUnit: number;
+  fatGramsPerUnit: number;
+  customFoodId?: string;
+}
+
 export interface NutritionMeal {
   id: string;
   name: string;
   mealType: NutritionMealType;
   consumedAt: string;
+  items: NutritionMealItem[];
   calories: number;
   proteinGrams: number;
   carbsGrams: number;

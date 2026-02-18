@@ -1010,19 +1010,45 @@ const goalCheckInSchema = z.object({
 
 const nutritionDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
+const nutritionMealItemSchema = z.object({
+  id: z.string().trim().min(1).max(120).optional(),
+  name: z.string().trim().min(1).max(160),
+  quantity: z.number().min(0.1).max(1000).default(1),
+  unitLabel: z.string().trim().min(1).max(40).default("serving"),
+  caloriesPerUnit: z.number().min(0).max(10000),
+  proteinGramsPerUnit: z.number().min(0).max(1000).default(0),
+  carbsGramsPerUnit: z.number().min(0).max(1500).default(0),
+  fatGramsPerUnit: z.number().min(0).max(600).default(0),
+  customFoodId: z.string().trim().min(1).max(120).optional()
+});
+
 const nutritionMealCreateSchema = z.object({
   name: z.string().trim().min(1).max(160),
   mealType: z.enum(["breakfast", "lunch", "dinner", "snack", "other"]).default("other"),
   consumedAt: z.string().datetime().optional(),
-  calories: z.number().min(0).max(10000),
+  items: z.array(nutritionMealItemSchema).max(200).default([]),
+  calories: z.number().min(0).max(10000).optional(),
   proteinGrams: z.number().min(0).max(1000).default(0),
   carbsGrams: z.number().min(0).max(1500).default(0),
   fatGrams: z.number().min(0).max(600).default(0),
   notes: z.string().trim().max(300).optional()
-});
+}).refine(
+  (value) => value.items.length > 0 || typeof value.calories === "number",
+  "Provide at least one meal item or explicit macro totals."
+);
 
-const nutritionMealUpdateSchema = nutritionMealCreateSchema
-  .partial()
+const nutritionMealUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(160).optional(),
+    mealType: z.enum(["breakfast", "lunch", "dinner", "snack", "other"]).optional(),
+    consumedAt: z.string().datetime().optional(),
+    items: z.array(nutritionMealItemSchema).max(200).optional(),
+    calories: z.number().min(0).max(10000).optional(),
+    proteinGrams: z.number().min(0).max(1000).optional(),
+    carbsGrams: z.number().min(0).max(1500).optional(),
+    fatGrams: z.number().min(0).max(600).optional(),
+    notes: z.string().trim().max(300).optional()
+  })
   .refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
 const nutritionMealsQuerySchema = z.object({

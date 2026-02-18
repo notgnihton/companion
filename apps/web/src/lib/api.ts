@@ -15,6 +15,7 @@ import {
   Habit,
   NutritionCustomFood,
   NutritionDailySummary,
+  NutritionMealItem,
   NutritionMeal,
   NutritionMealPlanBlock,
   NutritionTargetProfile,
@@ -1002,7 +1003,8 @@ export interface NutritionMealCreatePayload {
   name: string;
   mealType?: "breakfast" | "lunch" | "dinner" | "snack" | "other";
   consumedAt?: string;
-  calories: number;
+  items: Array<Omit<NutritionMealItem, "id">>;
+  calories?: number;
   proteinGrams?: number;
   carbsGrams?: number;
   fatGrams?: number;
@@ -1013,6 +1015,7 @@ export interface NutritionMealUpdatePayload {
   name?: string;
   mealType?: "breakfast" | "lunch" | "dinner" | "snack" | "other";
   consumedAt?: string;
+  items?: Array<Omit<NutritionMealItem, "id">>;
   calories?: number;
   proteinGrams?: number;
   carbsGrams?: number;

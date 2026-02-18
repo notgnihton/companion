@@ -170,10 +170,26 @@ Request:
 {
   "name": "Chicken bowl",
   "mealType": "lunch",
-  "calories": 710,
-  "proteinGrams": 54,
-  "carbsGrams": 76,
-  "fatGrams": 18
+  "items": [
+    {
+      "name": "Chicken breast",
+      "quantity": 1,
+      "unitLabel": "portion",
+      "caloriesPerUnit": 330,
+      "proteinGramsPerUnit": 62,
+      "carbsGramsPerUnit": 0,
+      "fatGramsPerUnit": 7
+    },
+    {
+      "name": "Rice",
+      "quantity": 1.5,
+      "unitLabel": "cup",
+      "caloriesPerUnit": 252,
+      "proteinGramsPerUnit": 5.4,
+      "carbsGramsPerUnit": 55.5,
+      "fatGramsPerUnit": 0.4
+    }
+  ]
 }
 ```
 
@@ -186,6 +202,18 @@ Response:
     "name": "Chicken bowl",
     "mealType": "lunch",
     "consumedAt": "2026-02-17T11:45:00.000Z",
+    "items": [
+      {
+        "id": "nutrition-meal-item-1",
+        "name": "Chicken breast",
+        "quantity": 1,
+        "unitLabel": "portion",
+        "caloriesPerUnit": 330,
+        "proteinGramsPerUnit": 62,
+        "carbsGramsPerUnit": 0,
+        "fatGramsPerUnit": 7
+      }
+    ],
     "calories": 710,
     "proteinGrams": 54,
     "carbsGrams": 76,
@@ -201,10 +229,17 @@ Request (all fields optional, at least one required):
 
 ```json
 {
-  "calories": 250,
-  "proteinGrams": 37.5,
-  "carbsGrams": 10,
-  "fatGrams": 3.8
+  "items": [
+    {
+      "name": "Whey isolate",
+      "quantity": 1.25,
+      "unitLabel": "scoop",
+      "caloriesPerUnit": 110,
+      "proteinGramsPerUnit": 25,
+      "carbsGramsPerUnit": 2,
+      "fatGramsPerUnit": 1
+    }
+  ]
 }
 ```
 
