@@ -178,6 +178,11 @@ function saveMergedJournalEntry(entry: JournalEntry): void {
   );
 }
 
+export interface SyncableMutationResult<T> {
+  item: T | null;
+  queued: boolean;
+}
+
 export async function getAuthStatus(): Promise<AuthStatusResponse> {
   return await jsonOrThrow<AuthStatusResponse>("/api/auth/status", {
     method: "GET"
@@ -426,6 +431,60 @@ export async function getSchedule(): Promise<LectureEvent[]> {
     return response.schedule;
   } catch {
     return loadSchedule();
+  }
+}
+
+export interface ScheduleUpdatePayload {
+  title?: string;
+  location?: string | null;
+  startTime?: string;
+  durationMinutes?: number;
+  workload?: "low" | "medium" | "high";
+}
+
+export async function updateScheduleBlock(
+  scheduleId: string,
+  payload: ScheduleUpdatePayload
+): Promise<SyncableMutationResult<LectureEvent>> {
+  try {
+    const response = await jsonOrThrow<{ lecture: LectureEvent }>(`/api/schedule/${scheduleId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    });
+    const merged = loadSchedule().map((event) => (event.id === scheduleId ? response.lecture : event));
+    saveSchedule(merged);
+    return { item: response.lecture, queued: false };
+  } catch {
+    const schedule = loadSchedule();
+    const index = schedule.findIndex((event) => event.id === scheduleId);
+
+    let optimistic: LectureEvent | null = null;
+    if (index >= 0) {
+      optimistic = {
+        ...schedule[index],
+        ...(payload.title !== undefined ? { title: payload.title } : {}),
+        ...(payload.startTime !== undefined ? { startTime: payload.startTime } : {}),
+        ...(payload.durationMinutes !== undefined ? { durationMinutes: payload.durationMinutes } : {}),
+        ...(payload.workload !== undefined ? { workload: payload.workload } : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload, "location")
+          ? { location: payload.location ?? undefined }
+          : {})
+      };
+      const next = [...schedule];
+      next[index] = optimistic;
+      saveSchedule(next);
+    }
+
+    enqueueSyncOperation(
+      "schedule-update",
+      {
+        scheduleId,
+        patch: payload
+      },
+      { dedupeKey: `schedule-update:${scheduleId}` }
+    );
+
+    return { item: optimistic, queued: true };
   }
 }
 
@@ -741,7 +800,10 @@ export async function deleteHabit(habitId: string): Promise<boolean> {
   }
 }
 
-export async function toggleHabitCheckIn(habitId: string, completed?: boolean): Promise<Habit | null> {
+export async function toggleHabitCheckIn(
+  habitId: string,
+  completed?: boolean
+): Promise<SyncableMutationResult<Habit>> {
   const body: Record<string, boolean> = {};
   if (completed !== undefined) {
     body.completed = completed;
@@ -758,11 +820,13 @@ export async function toggleHabitCheckIn(habitId: string, completed?: boolean): 
       merged.push(response.habit);
     }
     saveHabits(merged);
-    return response.habit;
+    return { item: response.habit, queued: false };
   } catch {
     const habits = loadHabits();
     const index = habits.findIndex((habit) => habit.id === habitId);
-    if (index === -1) return null;
+    if (index === -1) {
+      return { item: null, queued: false };
+    }
 
     const habit = habits[index];
     const desired = completed ?? !habit.todayCompleted;
@@ -779,7 +843,19 @@ export async function toggleHabitCheckIn(habitId: string, completed?: boolean): 
     const updated = [...habits];
     updated[index] = offline;
     saveHabits(updated);
-    return offline;
+
+    const dateKey = recentCheckIns[recentCheckIns.length - 1]?.date ?? new Date().toISOString().slice(0, 10);
+    enqueueSyncOperation(
+      "habit-checkin",
+      {
+        habitId,
+        completed: desired,
+        date: dateKey
+      },
+      { dedupeKey: `habit-checkin:${habitId}:${dateKey}` }
+    );
+
+    return { item: offline, queued: true };
   }
 }
 
@@ -859,7 +935,10 @@ export async function deleteGoal(goalId: string): Promise<boolean> {
   }
 }
 
-export async function toggleGoalCheckIn(goalId: string, completed?: boolean): Promise<Goal | null> {
+export async function toggleGoalCheckIn(
+  goalId: string,
+  completed?: boolean
+): Promise<SyncableMutationResult<Goal>> {
   const body: Record<string, boolean> = {};
   if (completed !== undefined) {
     body.completed = completed;
@@ -876,11 +955,13 @@ export async function toggleGoalCheckIn(goalId: string, completed?: boolean): Pr
       merged.push(response.goal);
     }
     saveGoals(merged);
-    return response.goal;
+    return { item: response.goal, queued: false };
   } catch {
     const goals = loadGoals();
     const index = goals.findIndex((goal) => goal.id === goalId);
-    if (index === -1) return null;
+    if (index === -1) {
+      return { item: null, queued: false };
+    }
 
     const goal = goals[index];
     const desired = completed ?? !goal.todayCompleted;
@@ -901,7 +982,19 @@ export async function toggleGoalCheckIn(goalId: string, completed?: boolean): Pr
     const updated = [...goals];
     updated[index] = offline;
     saveGoals(updated);
-    return offline;
+
+    const dateKey = recentCheckIns[recentCheckIns.length - 1]?.date ?? new Date().toISOString().slice(0, 10);
+    enqueueSyncOperation(
+      "goal-checkin",
+      {
+        goalId,
+        completed: desired,
+        date: dateKey
+      },
+      { dedupeKey: `goal-checkin:${goalId}:${dateKey}` }
+    );
+
+    return { item: offline, queued: true };
   }
 }
 

@@ -96,6 +96,69 @@ describe("BackgroundSyncService", () => {
       expect(context.mode).toBe("focus");
     });
 
+    it("should process habit check-in sync operations", async () => {
+      const habit = store.createHabit({
+        name: "Study sprint",
+        cadence: "daily",
+        targetPerWeek: 5
+      });
+
+      store.enqueueSyncOperation("habit-checkin", {
+        habitId: habit.id,
+        completed: true
+      });
+
+      const result = await syncService.processQueue();
+      expect(result.processed).toBe(1);
+
+      const updated = store.getHabitsWithStatus().find((item) => item.id === habit.id);
+      expect(updated?.todayCompleted).toBe(true);
+    });
+
+    it("should process goal check-in sync operations", async () => {
+      const goal = store.createGoal({
+        title: "Ship assignment",
+        cadence: "weekly",
+        targetCount: 3,
+        dueDate: null
+      });
+
+      store.enqueueSyncOperation("goal-checkin", {
+        goalId: goal.id,
+        completed: true
+      });
+
+      const result = await syncService.processQueue();
+      expect(result.processed).toBe(1);
+
+      const updated = store.getGoalsWithStatus().find((item) => item.id === goal.id);
+      expect(updated?.todayCompleted).toBe(true);
+    });
+
+    it("should process schedule update sync operations", async () => {
+      const block = store.createLectureEvent({
+        title: "Focus block",
+        startTime: "2026-02-18T10:00:00.000Z",
+        durationMinutes: 60,
+        workload: "medium"
+      });
+
+      store.enqueueSyncOperation("schedule-update", {
+        scheduleId: block.id,
+        patch: {
+          durationMinutes: 90,
+          workload: "high"
+        }
+      });
+
+      const result = await syncService.processQueue();
+      expect(result.processed).toBe(1);
+
+      const updated = store.getScheduleEventById(block.id);
+      expect(updated?.durationMinutes).toBe(90);
+      expect(updated?.workload).toBe("high");
+    });
+
     it("should process deadline creation sync operations", async () => {
       store.enqueueSyncOperation("deadline", {
         deadlineId: "temp-new-deadline",

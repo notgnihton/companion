@@ -2363,7 +2363,14 @@ app.post("/api/push/test", (req, res) => {
 
 // Background Sync API endpoints
 const syncOperationSchema = z.object({
-  operationType: z.enum(["journal", "deadline", "context"]),
+  operationType: z.enum([
+    "journal",
+    "deadline",
+    "context",
+    "habit-checkin",
+    "goal-checkin",
+    "schedule-update"
+  ]),
   payload: z.record(z.unknown())
 });
 

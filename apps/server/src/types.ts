@@ -777,7 +777,13 @@ export interface LocationHistory {
   context?: string;
 }
 
-export type SyncOperationType = "journal" | "deadline" | "context";
+export type SyncOperationType =
+  | "journal"
+  | "deadline"
+  | "context"
+  | "habit-checkin"
+  | "goal-checkin"
+  | "schedule-update";
 
 export type SyncOperationStatus = "pending" | "processing" | "completed" | "failed";
 

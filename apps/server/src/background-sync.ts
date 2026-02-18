@@ -105,6 +105,15 @@ export class BackgroundSyncService {
         case "context":
           await this.processContextSync(item);
           break;
+        case "habit-checkin":
+          await this.processHabitCheckInSync(item);
+          break;
+        case "goal-checkin":
+          await this.processGoalCheckInSync(item);
+          break;
+        case "schedule-update":
+          await this.processScheduleUpdateSync(item);
+          break;
         default:
           throw new Error(`Unknown operation type: ${item.operationType}`);
       }
@@ -229,6 +238,94 @@ export class BackgroundSyncService {
       energyLevel: energyLevel as "low" | "medium" | "high" | undefined,
       mode: mode as "focus" | "balanced" | "recovery" | undefined
     });
+  }
+
+  private async processHabitCheckInSync(item: SyncQueueItem): Promise<void> {
+    const { habitId, completed } = item.payload;
+
+    if (typeof habitId !== "string") {
+      throw new Error("Invalid habit check-in payload - missing habitId");
+    }
+
+    if (typeof completed !== "boolean") {
+      throw new Error("Invalid habit check-in payload - completed must be boolean");
+    }
+
+    const updated = this.store.toggleHabitCheckIn(habitId, { completed });
+    if (!updated) {
+      throw new Error(`Habit not found: ${habitId}`);
+    }
+  }
+
+  private async processGoalCheckInSync(item: SyncQueueItem): Promise<void> {
+    const { goalId, completed } = item.payload;
+
+    if (typeof goalId !== "string") {
+      throw new Error("Invalid goal check-in payload - missing goalId");
+    }
+
+    if (typeof completed !== "boolean") {
+      throw new Error("Invalid goal check-in payload - completed must be boolean");
+    }
+
+    const updated = this.store.toggleGoalCheckIn(goalId, { completed });
+    if (!updated) {
+      throw new Error(`Goal not found: ${goalId}`);
+    }
+  }
+
+  private async processScheduleUpdateSync(item: SyncQueueItem): Promise<void> {
+    const { scheduleId, patch } = item.payload;
+
+    if (typeof scheduleId !== "string") {
+      throw new Error("Invalid schedule update payload - missing scheduleId");
+    }
+
+    if (!patch || typeof patch !== "object") {
+      throw new Error("Invalid schedule update payload - missing patch object");
+    }
+
+    const rawPatch = patch as Record<string, unknown>;
+    const nextPatch: Partial<{
+      title: string;
+      location?: string;
+      startTime: string;
+      durationMinutes: number;
+      workload: "low" | "medium" | "high";
+    }> = {};
+
+    if (typeof rawPatch.title === "string") {
+      nextPatch.title = rawPatch.title;
+    }
+    if (Object.prototype.hasOwnProperty.call(rawPatch, "location")) {
+      if (typeof rawPatch.location === "string") {
+        nextPatch.location = rawPatch.location;
+      } else if (rawPatch.location === null) {
+        nextPatch.location = undefined;
+      }
+    }
+    if (typeof rawPatch.startTime === "string") {
+      const parsed = new Date(rawPatch.startTime);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new Error("Invalid schedule update payload - startTime must be ISO datetime");
+      }
+      nextPatch.startTime = parsed.toISOString();
+    }
+    if (typeof rawPatch.durationMinutes === "number" && Number.isFinite(rawPatch.durationMinutes)) {
+      nextPatch.durationMinutes = Math.max(15, Math.round(rawPatch.durationMinutes));
+    }
+    if (rawPatch.workload === "low" || rawPatch.workload === "medium" || rawPatch.workload === "high") {
+      nextPatch.workload = rawPatch.workload;
+    }
+
+    if (Object.keys(nextPatch).length === 0) {
+      throw new Error("Invalid schedule update payload - no valid fields in patch");
+    }
+
+    const updated = this.store.updateScheduleEvent(scheduleId, nextPatch);
+    if (!updated) {
+      throw new Error(`Schedule block not found: ${scheduleId}`);
+    }
   }
 
   /**

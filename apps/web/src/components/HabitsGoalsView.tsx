@@ -138,13 +138,17 @@ export function HabitsGoalsView(): JSX.Element {
   const handleHabitToggle = async (habit: Habit): Promise<void> => {
     setBusy({ type: "habit", id: habit.id });
     setHabitMessage("");
-    const next = await toggleHabitCheckIn(habit.id, !habit.todayCompleted);
+    const result = await toggleHabitCheckIn(habit.id, !habit.todayCompleted);
+    const next = result.item;
     if (next) {
       const merged = habits.map((existing) => (existing.id === habit.id ? next : existing));
       setHabits(merged);
       saveHabits(merged);
       if (next.todayCompleted && !habit.todayCompleted) {
         hapticSuccess();
+      }
+      if (result.queued) {
+        setHabitMessage("Saved offline. Habit check-in queued and will sync automatically.");
       }
     } else {
       setHabitMessage("Could not update habit right now. Try again soon.");
@@ -155,13 +159,17 @@ export function HabitsGoalsView(): JSX.Element {
   const handleGoalToggle = async (goal: Goal): Promise<void> => {
     setBusy({ type: "goal", id: goal.id });
     setGoalMessage("");
-    const next = await toggleGoalCheckIn(goal.id, !goal.todayCompleted);
+    const result = await toggleGoalCheckIn(goal.id, !goal.todayCompleted);
+    const next = result.item;
     if (next) {
       const merged = goals.map((existing) => (existing.id === goal.id ? next : existing));
       setGoals(merged);
       saveGoals(merged);
       if (next.todayCompleted && !goal.todayCompleted) {
         hapticSuccess();
+      }
+      if (result.queued) {
+        setGoalMessage("Saved offline. Goal check-in queued and will sync automatically.");
       }
     } else {
       setGoalMessage("Could not update goal check-in right now.");

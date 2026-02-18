@@ -68,8 +68,9 @@ export interface JournalQueueItem {
 
 export interface SyncQueueItem {
   id: string;
-  operationType: "journal" | "deadline" | "context";
+  operationType: "journal" | "deadline" | "context" | "habit-checkin" | "goal-checkin" | "schedule-update";
   payload: Record<string, unknown>;
+  dedupeKey?: string;
   createdAt: string;
 }
 
@@ -668,14 +669,35 @@ export function saveSyncQueue(items: SyncQueueItem[]): void {
 }
 
 export function enqueueSyncOperation(
-  operationType: "journal" | "deadline" | "context",
-  payload: Record<string, unknown>
+  operationType: SyncQueueItem["operationType"],
+  payload: Record<string, unknown>,
+  options: { dedupeKey?: string } = {}
 ): void {
   const queue = loadSyncQueue();
+  const dedupeKey = options.dedupeKey?.trim();
+
+  if (dedupeKey) {
+    const existingIndex = queue.findIndex(
+      (item) => item.operationType === operationType && item.dedupeKey === dedupeKey
+    );
+    if (existingIndex >= 0) {
+      const existing = queue[existingIndex]!;
+      queue[existingIndex] = {
+        ...existing,
+        payload,
+        createdAt: new Date().toISOString(),
+        dedupeKey
+      };
+      saveSyncQueue(queue);
+      return;
+    }
+  }
+
   queue.push({
     id: crypto.randomUUID(),
     operationType,
     payload,
+    ...(dedupeKey ? { dedupeKey } : {}),
     createdAt: new Date().toISOString()
   });
   saveSyncQueue(queue);
