@@ -680,13 +680,13 @@ app.post("/api/chat/stream", async (req, res) => {
     res.flushHeaders();
   }
 
-  let closed = false;
-  req.on("close", () => {
-    closed = true;
+  let clientDisconnected = false;
+  res.on("close", () => {
+    clientDisconnected = true;
   });
 
   const sendSse = (event: string, payload: Record<string, unknown>): void => {
-    if (closed) {
+    if (clientDisconnected || res.writableEnded || res.destroyed) {
       return;
     }
     res.write(`event: ${event}\n`);
@@ -709,7 +709,7 @@ app.post("/api/chat/stream", async (req, res) => {
       citations: result.citations,
       history: result.history
     });
-    if (!closed) {
+    if (!res.writableEnded && !res.destroyed) {
       res.end();
     }
   } catch (error) {
@@ -720,7 +720,7 @@ app.post("/api/chat/stream", async (req, res) => {
     } else {
       sendSse("error", { error: "Chat request failed", status: 500 });
     }
-    if (!closed) {
+    if (!res.writableEnded && !res.destroyed) {
       res.end();
     }
   }
