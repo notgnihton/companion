@@ -51,6 +51,15 @@ const schema = z.object({
   SOCIAL_PROVIDER: z.string().default("manual"),
   VIDEO_PROVIDER: z.string().default("manual"),
   GEMINI_API_KEY: z.string().optional(),
+  GEMINI_USE_LIVE_API: z
+    .preprocess((value) => parseBooleanEnv(value), z.boolean())
+    .default(true),
+  GEMINI_LIVE_MODEL: z.string().default("gemini-live-2.5-flash-native-audio"),
+  GEMINI_LIVE_ENDPOINT: z
+    .string()
+    .url()
+    .default("wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"),
+  GEMINI_LIVE_TIMEOUT_MS: z.coerce.number().int().min(3000).max(120000).default(25000),
   YOUTUBE_API_KEY: z.string().optional(),
   YOUTUBE_CHANNEL_IDS: z.string().optional(),
   YOUTUBE_FALLBACK_QUERIES: z.string().optional(),

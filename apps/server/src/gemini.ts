@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult, FunctionDeclaration, FunctionCall, Part } from "@google/generative-ai";
+import WebSocket, { RawData } from "ws";
 import { config } from "./config.js";
 import { Deadline, JournalEntry, LectureEvent, UserContext } from "./types.js";
 
@@ -22,6 +23,24 @@ export interface GeminiChatResponse {
     totalTokenCount: number;
   };
   functionCalls?: FunctionCall[];
+}
+
+export interface GeminiLiveFunctionCall {
+  id?: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export interface GeminiLiveFunctionResponse {
+  id?: string;
+  name: string;
+  response: unknown;
+}
+
+export interface GeminiLiveChatRequest extends GeminiChatRequest {
+  onToolCall?: (calls: GeminiLiveFunctionCall[]) => Promise<GeminiLiveFunctionResponse[]>;
+  onTextChunk?: (chunk: string) => void;
+  timeoutMs?: number;
 }
 
 export interface ContextWindow {
@@ -53,20 +72,28 @@ export class RateLimitError extends GeminiError {
 export class GeminiClient {
   private client: GoogleGenerativeAI | null = null;
   private model: GenerativeModel | null = null;
-  private readonly modelName = "gemini-2.0-flash";
+  private readonly fallbackModelName = "gemini-2.0-flash";
+  private readonly liveModelName: string;
+  private readonly apiKey?: string;
 
   constructor(apiKey?: string) {
     const key = apiKey ?? config.GEMINI_API_KEY;
+    this.apiKey = key;
+    this.liveModelName = config.GEMINI_LIVE_MODEL;
 
     if (key) {
       this.client = new GoogleGenerativeAI(key);
-      // Model instance will be created per-request to support tools configuration
-      this.model = this.client.getGenerativeModel({ model: this.modelName });
+      // Fallback non-live model instance for compatibility paths.
+      this.model = this.client.getGenerativeModel({ model: this.fallbackModelName });
     }
   }
 
   isConfigured(): boolean {
     return this.client !== null && this.model !== null;
+  }
+
+  canUseLiveApi(): boolean {
+    return Boolean(this.apiKey);
   }
 
   private extractStatusCode(error: unknown): number | undefined {
@@ -92,6 +119,14 @@ export class GeminiClient {
     return undefined;
   }
 
+  private normalizeLiveModelName(): string {
+    const trimmed = this.liveModelName.trim();
+    if (trimmed.startsWith("models/")) {
+      return trimmed;
+    }
+    return `models/${trimmed}`;
+  }
+
   async generateChatResponse(request: GeminiChatRequest): Promise<GeminiChatResponse> {
     if (!this.isConfigured()) {
       throw new GeminiError("Gemini API key not configured. Set GEMINI_API_KEY environment variable.");
@@ -103,7 +138,7 @@ export class GeminiClient {
         tools?: Array<{ functionDeclarations: FunctionDeclaration[] }>;
         systemInstruction?: string;
       } = {
-        model: this.modelName
+        model: this.fallbackModelName
       };
 
       if (request.tools && request.tools.length > 0) {
@@ -199,6 +234,379 @@ export class GeminiClient {
       }
 
       throw new GeminiError("Unknown Gemini API error", undefined, error);
+    }
+  }
+
+  private toLiveTurn(message: GeminiMessage): { role: "user" | "model"; parts: Array<Record<string, unknown>> } | null {
+    const role: "user" | "model" = message.role === "model" ? "model" : "user";
+    const parts: Array<Record<string, unknown>> = [];
+
+    for (const part of message.parts) {
+      if (typeof part.text === "string") {
+        parts.push({ text: part.text });
+        continue;
+      }
+
+      if (part.inlineData?.mimeType && part.inlineData?.data) {
+        parts.push({
+          inlineData: {
+            mimeType: part.inlineData.mimeType,
+            data: part.inlineData.data
+          }
+        });
+      }
+    }
+
+    if (parts.length === 0) {
+      return null;
+    }
+
+    return {
+      role,
+      parts
+    };
+  }
+
+  private toLiveFunctionCalls(value: unknown): GeminiLiveFunctionCall[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const calls: GeminiLiveFunctionCall[] = [];
+
+    for (const entry of value) {
+      const record = entry as { id?: unknown; name?: unknown; args?: unknown };
+      if (typeof record?.name !== "string" || record.name.trim().length === 0) {
+        continue;
+      }
+
+      let args: Record<string, unknown> = {};
+      if (record.args && typeof record.args === "object" && !Array.isArray(record.args)) {
+        args = record.args as Record<string, unknown>;
+      } else if (typeof record.args === "string") {
+        try {
+          const parsed = JSON.parse(record.args);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            args = parsed as Record<string, unknown>;
+          }
+        } catch {
+          args = {};
+        }
+      }
+
+      calls.push({
+        id: typeof record.id === "string" && record.id.trim().length > 0 ? record.id : undefined,
+        name: record.name,
+        args
+      });
+    }
+
+    return calls;
+  }
+
+  private buildLiveFunctionResponses(
+    calls: GeminiLiveFunctionCall[],
+    responses: GeminiLiveFunctionResponse[]
+  ): Array<{ id?: string; name: string; response: unknown }> {
+    return calls.map((call, index) => {
+      const byId = call.id
+        ? responses.find((response) => response.id === call.id)
+        : undefined;
+      const byNameAndOrder = responses.find(
+        (response, responseIndex) => response.name === call.name && responseIndex === index
+      );
+      const fallbackByName = responses.find((response) => response.name === call.name);
+      const selected = byId ?? byNameAndOrder ?? fallbackByName;
+
+      return {
+        id: selected?.id ?? call.id,
+        name: call.name,
+        response: selected?.response ?? {}
+      };
+    });
+  }
+
+  private toUsageMetadata(value: unknown): GeminiChatResponse["usageMetadata"] | undefined {
+    if (!value || typeof value !== "object") {
+      return undefined;
+    }
+
+    const payload = value as {
+      promptTokenCount?: unknown;
+      candidatesTokenCount?: unknown;
+      totalTokenCount?: unknown;
+    };
+    if (
+      typeof payload.promptTokenCount !== "number" ||
+      typeof payload.candidatesTokenCount !== "number" ||
+      typeof payload.totalTokenCount !== "number"
+    ) {
+      return undefined;
+    }
+
+    return {
+      promptTokenCount: payload.promptTokenCount,
+      candidatesTokenCount: payload.candidatesTokenCount,
+      totalTokenCount: payload.totalTokenCount
+    };
+  }
+
+  async generateLiveChatResponse(request: GeminiLiveChatRequest): Promise<GeminiChatResponse> {
+    if (!this.canUseLiveApi() || !this.apiKey) {
+      throw new GeminiError("Gemini API key not configured. Set GEMINI_API_KEY environment variable.");
+    }
+    if (request.messages.length === 0) {
+      throw new GeminiError("At least one message is required");
+    }
+
+    const liveUrl = `${config.GEMINI_LIVE_ENDPOINT}?key=${encodeURIComponent(this.apiKey)}`;
+    const ws = new WebSocket(liveUrl, {
+      headers: {
+        "x-goog-api-key": this.apiKey
+      }
+    });
+
+    const timeoutMs = request.timeoutMs ?? config.GEMINI_LIVE_TIMEOUT_MS;
+    const queue: unknown[] = [];
+    let messageWaiter: ((value: unknown) => void) | null = null;
+    let closed = false;
+    let closeError: GeminiError | null = null;
+
+    const clearWaiter = () => {
+      messageWaiter = null;
+    };
+
+    const enqueue = (message: unknown) => {
+      if (messageWaiter) {
+        const next = messageWaiter;
+        clearWaiter();
+        next(message);
+        return;
+      }
+      queue.push(message);
+    };
+
+    ws.on("message", (raw: RawData) => {
+      try {
+        const data = JSON.parse(String(raw));
+        enqueue(data);
+      } catch (error) {
+        closeError = new GeminiError("Gemini Live API returned invalid JSON", undefined, error);
+      }
+    });
+
+    ws.on("error", (error: Error) => {
+      closeError = new GeminiError(`Gemini Live API socket error: ${error.message}`, undefined, error);
+    });
+
+    ws.on("close", (code: number, reason: Buffer) => {
+      closed = true;
+      const reasonText = reason.toString();
+      if (code !== 1000 && !closeError) {
+        closeError = new GeminiError(
+          `Gemini Live API socket closed unexpectedly (code ${code}${reasonText ? `: ${reasonText}` : ""})`
+        );
+      }
+      if (messageWaiter) {
+        const next = messageWaiter;
+        clearWaiter();
+        next({ __closed: true });
+      }
+    });
+
+    const waitForOpen = async () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        return;
+      }
+      await new Promise<void>((resolve, reject) => {
+        const onOpen = () => {
+          ws.off("error", onError);
+          resolve();
+        };
+        const onError = (error: Error) => {
+          ws.off("open", onOpen);
+          reject(new GeminiError(`Gemini Live API socket open failed: ${error.message}`, undefined, error));
+        };
+        ws.once("open", onOpen);
+        ws.once("error", onError);
+      });
+    };
+
+    const nextMessage = async () => {
+      if (queue.length > 0) {
+        return queue.shift();
+      }
+      if (closed) {
+        return { __closed: true };
+      }
+      return await new Promise<unknown>((resolve) => {
+        messageWaiter = resolve;
+      });
+    };
+
+    const nextMessageWithTimeout = async () => {
+      return await Promise.race([
+        nextMessage(),
+        new Promise<unknown>((_resolve, reject) =>
+          setTimeout(() => reject(new GeminiError("Gemini Live API timed out waiting for response")), timeoutMs)
+        )
+      ]);
+    };
+
+    const sendJson = (payload: Record<string, unknown>) => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        throw new GeminiError("Gemini Live API socket is not open");
+      }
+      ws.send(JSON.stringify(payload));
+    };
+
+    try {
+      await waitForOpen();
+
+      sendJson({
+        setup: {
+          model: this.normalizeLiveModelName(),
+          generationConfig: {
+            responseModalities: ["TEXT"]
+          },
+          ...(request.systemInstruction && request.systemInstruction.trim().length > 0
+            ? {
+                systemInstruction: {
+                  parts: [{ text: request.systemInstruction }]
+                }
+              }
+            : {}),
+          ...(request.tools && request.tools.length > 0
+            ? {
+                tools: [{ functionDeclarations: request.tools }]
+              }
+            : {})
+        }
+      });
+
+      while (true) {
+        const setupMessage = (await nextMessageWithTimeout()) as
+          | { setupComplete?: unknown; error?: { message?: unknown }; __closed?: boolean }
+          | undefined;
+
+        if (setupMessage?.__closed) {
+          throw closeError ?? new GeminiError("Gemini Live API socket closed before setup completed");
+        }
+        if (setupMessage?.error && typeof setupMessage.error.message === "string") {
+          throw new GeminiError(`Gemini Live API setup error: ${setupMessage.error.message}`);
+        }
+        if (setupMessage?.setupComplete !== undefined) {
+          break;
+        }
+      }
+
+      const turns = request.messages
+        .map((message) => this.toLiveTurn(message))
+        .filter((message): message is { role: "user" | "model"; parts: Array<Record<string, unknown>> } => Boolean(message));
+
+      sendJson({
+        clientContent: {
+          turns,
+          turnComplete: true
+        }
+      });
+
+      let text = "";
+      let finishReason: string | undefined = undefined;
+      let usageMetadata: GeminiChatResponse["usageMetadata"] = undefined;
+
+      while (true) {
+        const envelope = (await nextMessageWithTimeout()) as
+          | {
+              serverContent?: {
+                modelTurn?: { parts?: Array<Record<string, unknown>> };
+                turnComplete?: boolean;
+                interrupted?: boolean;
+              };
+              toolCall?: { functionCalls?: unknown };
+              usageMetadata?: unknown;
+              error?: { message?: unknown };
+              __closed?: boolean;
+            }
+          | undefined;
+
+        if (envelope?.__closed) {
+          throw closeError ?? new GeminiError("Gemini Live API socket closed before turn completed");
+        }
+        if (envelope?.error && typeof envelope.error.message === "string") {
+          throw new GeminiError(`Gemini Live API error: ${envelope.error.message}`);
+        }
+
+        const nextUsage = this.toUsageMetadata(envelope?.usageMetadata);
+        if (nextUsage) {
+          usageMetadata = nextUsage;
+        }
+
+        const toolCalls = this.toLiveFunctionCalls(envelope?.toolCall?.functionCalls);
+        if (toolCalls.length > 0) {
+          if (!request.onToolCall) {
+            throw new GeminiError("Gemini Live API requested tool calls but no onToolCall handler was provided");
+          }
+          const toolResponses = await request.onToolCall(toolCalls);
+          const functionResponses = this.buildLiveFunctionResponses(toolCalls, toolResponses);
+          sendJson({
+            toolResponse: {
+              functionResponses
+            }
+          });
+        }
+
+        const parts = envelope?.serverContent?.modelTurn?.parts;
+        if (Array.isArray(parts)) {
+          for (const part of parts) {
+            if (typeof part?.text === "string" && part.text.length > 0) {
+              text += part.text;
+              request.onTextChunk?.(part.text);
+            }
+          }
+        }
+
+        if (envelope?.serverContent?.interrupted) {
+          finishReason = "interrupted";
+        }
+
+        if (envelope?.serverContent?.turnComplete) {
+          if (!finishReason) {
+            finishReason = "stop";
+          }
+          break;
+        }
+      }
+
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close(1000);
+      }
+
+      return {
+        text,
+        finishReason,
+        usageMetadata
+      };
+    } catch (error) {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close();
+      }
+
+      const statusCode = this.extractStatusCode(error);
+      if (statusCode === 429) {
+        const providerMessage = error instanceof Error ? error.message : "Too many requests";
+        throw new RateLimitError(`Gemini API rate limit exceeded: ${providerMessage}`, error);
+      }
+      if (statusCode === 401 || statusCode === 403) {
+        throw new GeminiError("Invalid Gemini API key", statusCode, error);
+      }
+      if (error instanceof GeminiError) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw new GeminiError(`Gemini Live API error: ${error.message}`, undefined, error);
+      }
+      throw new GeminiError("Unknown Gemini Live API error", undefined, error);
     }
   }
 }

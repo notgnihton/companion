@@ -63,6 +63,14 @@ describe("config", () => {
       expect(config.NOTIFICATION_DIGEST_EVENING_HOUR).toBe(18);
     });
 
+    it("should default Gemini Live API settings", async () => {
+      delete process.env.GEMINI_USE_LIVE_API;
+      delete process.env.GEMINI_LIVE_MODEL;
+      const { config } = await import("./config.js");
+      expect(config.GEMINI_USE_LIVE_API).toBe(true);
+      expect(config.GEMINI_LIVE_MODEL).toBe("gemini-live-2.5-flash-native-audio");
+    });
+
     it("should default AUTH_REQUIRED to false outside production", async () => {
       delete process.env.AUTH_REQUIRED;
       process.env.NODE_ENV = "test";
@@ -104,6 +112,18 @@ describe("config", () => {
       expect(config.FOOD_PROVIDER).toBe("manual");
       expect(config.SOCIAL_PROVIDER).toBe("manual");
       expect(config.VIDEO_PROVIDER).toBe("manual");
+    });
+
+    it("should parse Gemini Live API env vars", async () => {
+      process.env.GEMINI_USE_LIVE_API = "false";
+      process.env.GEMINI_LIVE_MODEL = "models/custom-live";
+      process.env.GEMINI_LIVE_TIMEOUT_MS = "30000";
+
+      const { config } = await import("./config.js");
+
+      expect(config.GEMINI_USE_LIVE_API).toBe(false);
+      expect(config.GEMINI_LIVE_MODEL).toBe("models/custom-live");
+      expect(config.GEMINI_LIVE_TIMEOUT_MS).toBe(30000);
     });
 
     it("should parse auth env vars", async () => {

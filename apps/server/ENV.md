@@ -33,7 +33,10 @@ This file documents all environment variables required to run the Companion serv
 ### AI / LLM
 - `GEMINI_API_KEY` (required for chat) — Google Gemini API key
   - Get key: https://ai.google.dev/
-  - Free tier: 15 RPM, 1M tokens/day
+- `GEMINI_USE_LIVE_API` (default: `true`) — Use Gemini Live API (WebSocket) for chat + tool calling
+- `GEMINI_LIVE_MODEL` (default: `gemini-live-2.5-flash-native-audio`) — Live model name
+- `GEMINI_LIVE_ENDPOINT` (default: Google BidiGenerateContent WebSocket endpoint) — Override only for advanced routing/testing
+- `GEMINI_LIVE_TIMEOUT_MS` (default: `25000`) — Live socket read timeout in milliseconds
 
 ### Authentication
 - `AUTH_REQUIRED` (default: `true` in production, otherwise `false`) — Require login for all `/api/*` routes except health and auth bootstrap endpoints
@@ -115,6 +118,9 @@ VAPID_SUBJECT=mailto:companion@example.com
 
 # AI
 GEMINI_API_KEY=your-gemini-api-key
+GEMINI_USE_LIVE_API=true
+GEMINI_LIVE_MODEL=gemini-live-2.5-flash-native-audio
+GEMINI_LIVE_TIMEOUT_MS=25000
 
 # Auth
 AUTH_REQUIRED=true

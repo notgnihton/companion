@@ -4,6 +4,8 @@ import {
   GeminiError,
   RateLimitError,
   GeminiMessage,
+  GeminiLiveFunctionCall,
+  GeminiLiveFunctionResponse,
   buildContextWindow,
   buildSystemPrompt,
   getGeminiClient
@@ -2235,6 +2237,45 @@ function collectToolCitations(
   return [];
 }
 
+interface ChatUsage {
+  promptTokens: number;
+  responseTokens: number;
+  totalTokens: number;
+}
+
+function usageFromGeminiResponse(
+  usageMetadata: { promptTokenCount: number; candidatesTokenCount: number; totalTokenCount: number } | undefined
+): ChatUsage | undefined {
+  if (!usageMetadata) {
+    return undefined;
+  }
+
+  return {
+    promptTokens: usageMetadata.promptTokenCount,
+    responseTokens: usageMetadata.candidatesTokenCount,
+    totalTokens: usageMetadata.totalTokenCount
+  };
+}
+
+function addGeminiUsage(
+  current: ChatUsage | undefined,
+  usageMetadata: { promptTokenCount: number; candidatesTokenCount: number; totalTokenCount: number } | undefined
+): ChatUsage | undefined {
+  if (!usageMetadata) {
+    return current;
+  }
+
+  if (!current) {
+    return usageFromGeminiResponse(usageMetadata);
+  }
+
+  return {
+    promptTokens: current.promptTokens + usageMetadata.promptTokenCount,
+    responseTokens: current.responseTokens + usageMetadata.candidatesTokenCount,
+    totalTokens: current.totalTokens + usageMetadata.totalTokenCount
+  };
+}
+
 export interface SendChatResult {
   reply: string;
   userMessage: ChatMessage;
@@ -2249,6 +2290,7 @@ interface SendChatOptions {
   now?: Date;
   geminiClient?: GeminiClient;
   useFunctionCalling?: boolean;
+  useLiveFunctionCalling?: boolean;
   attachments?: ChatImageAttachment[];
 }
 
@@ -2394,9 +2436,13 @@ export async function sendChatMessage(
 
   const gemini = options.geminiClient ?? getGeminiClient();
   const useFunctionCalling = options.useFunctionCalling ?? true;
-  
-  // Build lightweight context for function calling mode (or full context for legacy mode)
-  const { contextWindow, history } = useFunctionCalling 
+  const useLiveFunctionCalling =
+    useFunctionCalling &&
+    (options.useLiveFunctionCalling ?? config.GEMINI_USE_LIVE_API) &&
+    typeof (gemini as GeminiClient & { generateLiveChatResponse?: unknown }).generateLiveChatResponse === "function";
+
+  // Build lightweight context for function calling mode (or full context for contextual chat mode)
+  const { contextWindow, history } = useFunctionCalling
     ? { contextWindow: "", history: recentHistoryForIntent }
     : buildChatContext(store, now);
 
@@ -2405,75 +2451,61 @@ export async function sendChatMessage(
     : buildSystemPrompt(config.USER_NAME, contextWindow);
 
   const messages = toGeminiMessages(history, userInput, attachments);
-
-  // First request with function calling enabled
-  let response = await gemini.generateChatResponse({
-    messages,
-    systemInstruction,
-    tools: useFunctionCalling ? functionDeclarations : undefined
-  });
-
   const userMessage = store.recordChatMessage("user", userInput, userMetadata);
-  let totalUsage = response.usageMetadata
-    ? {
-        promptTokens: response.usageMetadata.promptTokenCount,
-        responseTokens: response.usageMetadata.candidatesTokenCount,
-        totalTokens: response.usageMetadata.totalTokenCount
-      }
-    : undefined;
+  let response: Awaited<ReturnType<GeminiClient["generateChatResponse"]>>;
+  let totalUsage: ChatUsage | undefined = undefined;
   let pendingActionsFromTooling: ChatPendingAction[] = [];
   let executedFunctionResponses: ExecutedFunctionResponse[] = [];
   const citations = new Map<string, ChatCitation>();
 
-  // Handle function calls with iterative tool rounds.
-  let functionCallRounds = 0;
-  while (response.functionCalls && response.functionCalls.length > 0 && functionCallRounds < MAX_FUNCTION_CALL_ROUNDS) {
-    functionCallRounds += 1;
-
-    const roundFunctionResponses = response.functionCalls.map((fnCall) => {
-      const result = executeFunctionCall(fnCall.name, fnCall.args as Record<string, unknown>, store);
-      const nextCitations = collectToolCitations(store, result.name, result.response);
-      nextCitations.forEach((citation) => addCitation(citations, citation));
-      return {
-        name: result.name,
-        rawResponse: result.response,
-        modelResponse: compactFunctionResponseForModel(result.name, result.response)
-      };
-    });
-    executedFunctionResponses = [...executedFunctionResponses, ...roundFunctionResponses];
-    pendingActionsFromTooling = [
-      ...pendingActionsFromTooling,
-      ...roundFunctionResponses.flatMap((fnResp) => extractPendingActions(fnResp.rawResponse))
-    ];
-
-    // Build function response messages
-    const functionResponseParts = roundFunctionResponses.map((fnResp) => ({
-      functionResponse: {
-        name: fnResp.name,
-        response: fnResp.modelResponse
-      }
-    })) as Part[];
-
-    // Continue conversation with function results
-    messages.push({
-      role: "model" as const,
-      parts: response.functionCalls.map((fnCall) => ({
-        functionCall: fnCall
-      })) as Part[]
-    });
-
-    messages.push({
-      role: "function" as const,
-      parts: functionResponseParts
-    });
-
-    // Get final response from Gemini with function results
+  if (useLiveFunctionCalling) {
     try {
-      response = await gemini.generateChatResponse({
+      response = await (
+        gemini as GeminiClient & {
+          generateLiveChatResponse: (request: {
+            messages: GeminiMessage[];
+            systemInstruction: string;
+            tools?: typeof functionDeclarations;
+            onToolCall: (calls: GeminiLiveFunctionCall[]) => Promise<GeminiLiveFunctionResponse[]>;
+          }) => Promise<{
+            text: string;
+            finishReason?: string;
+            usageMetadata?: {
+              promptTokenCount: number;
+              candidatesTokenCount: number;
+              totalTokenCount: number;
+            };
+          }>;
+        }
+      ).generateLiveChatResponse({
         messages,
         systemInstruction,
-        tools: useFunctionCalling ? functionDeclarations : undefined
+        tools: useFunctionCalling ? functionDeclarations : undefined,
+        onToolCall: async (calls) => {
+          const roundResponses = calls.map((call) => {
+            const result = executeFunctionCall(call.name, call.args, store);
+            const nextCitations = collectToolCitations(store, result.name, result.response);
+            nextCitations.forEach((citation) => addCitation(citations, citation));
+            return {
+              id: call.id,
+              name: result.name,
+              rawResponse: result.response,
+              modelResponse: compactFunctionResponseForModel(result.name, result.response)
+            };
+          });
+          executedFunctionResponses = [...executedFunctionResponses, ...roundResponses];
+          pendingActionsFromTooling = [
+            ...pendingActionsFromTooling,
+            ...roundResponses.flatMap((fnResp) => extractPendingActions(fnResp.rawResponse))
+          ];
+          return roundResponses.map((responseEntry) => ({
+            id: responseEntry.id,
+            name: responseEntry.name,
+            response: responseEntry.modelResponse
+          }));
+        }
       });
+      totalUsage = addGeminiUsage(totalUsage, response.usageMetadata);
     } catch (error) {
       if (error instanceof RateLimitError) {
         const fallbackReply = buildToolRateLimitFallbackReply(executedFunctionResponses, pendingActionsFromTooling);
@@ -2501,48 +2533,122 @@ export async function sendChatMessage(
       }
       throw error;
     }
+  } else {
+    response = await gemini.generateChatResponse({
+      messages,
+      systemInstruction,
+      tools: useFunctionCalling ? functionDeclarations : undefined
+    });
+    totalUsage = addGeminiUsage(totalUsage, response.usageMetadata);
 
-    // Accumulate usage metrics
-    if (response.usageMetadata && totalUsage) {
-      totalUsage.promptTokens += response.usageMetadata.promptTokenCount;
-      totalUsage.responseTokens += response.usageMetadata.candidatesTokenCount;
-      totalUsage.totalTokens += response.usageMetadata.totalTokenCount;
-    } else if (response.usageMetadata && !totalUsage) {
-      totalUsage = {
-        promptTokens: response.usageMetadata.promptTokenCount,
-        responseTokens: response.usageMetadata.candidatesTokenCount,
-        totalTokens: response.usageMetadata.totalTokenCount
+    // Handle function calls with iterative tool rounds for non-live API mode.
+    let functionCallRounds = 0;
+    while (response.functionCalls && response.functionCalls.length > 0 && functionCallRounds < MAX_FUNCTION_CALL_ROUNDS) {
+      functionCallRounds += 1;
+
+      const roundFunctionResponses = response.functionCalls.map((fnCall) => {
+        const result = executeFunctionCall(fnCall.name, fnCall.args as Record<string, unknown>, store);
+        const nextCitations = collectToolCitations(store, result.name, result.response);
+        nextCitations.forEach((citation) => addCitation(citations, citation));
+        return {
+          name: result.name,
+          rawResponse: result.response,
+          modelResponse: compactFunctionResponseForModel(result.name, result.response)
+        };
+      });
+      executedFunctionResponses = [...executedFunctionResponses, ...roundFunctionResponses];
+      pendingActionsFromTooling = [
+        ...pendingActionsFromTooling,
+        ...roundFunctionResponses.flatMap((fnResp) => extractPendingActions(fnResp.rawResponse))
+      ];
+
+      // Build function response messages
+      const functionResponseParts = roundFunctionResponses.map((fnResp) => ({
+        functionResponse: {
+          name: fnResp.name,
+          response: fnResp.modelResponse
+        }
+      })) as Part[];
+
+      // Continue conversation with function results
+      messages.push({
+        role: "model" as const,
+        parts: response.functionCalls.map((fnCall) => ({
+          functionCall: fnCall
+        })) as Part[]
+      });
+
+      messages.push({
+        role: "function" as const,
+        parts: functionResponseParts
+      });
+
+      // Get final response from Gemini with function results
+      try {
+        response = await gemini.generateChatResponse({
+          messages,
+          systemInstruction,
+          tools: useFunctionCalling ? functionDeclarations : undefined
+        });
+      } catch (error) {
+        if (error instanceof RateLimitError) {
+          const fallbackReply = buildToolRateLimitFallbackReply(executedFunctionResponses, pendingActionsFromTooling);
+          const assistantMetadata: ChatMessageMetadata = {
+            contextWindow,
+            finishReason: "rate_limit_fallback",
+            usage: totalUsage,
+            ...(pendingActionsFromTooling.length > 0 ? { pendingActions: store.getPendingChatActions(now) } : {}),
+            ...(citations.size > 0
+              ? { citations: Array.from(citations.values()).slice(0, MAX_CHAT_CITATIONS) }
+              : {})
+          };
+          const assistantMessage = store.recordChatMessage("assistant", fallbackReply, assistantMetadata);
+          const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
+
+          return {
+            reply: assistantMessage.content,
+            userMessage,
+            assistantMessage,
+            finishReason: assistantMetadata.finishReason,
+            usage: assistantMetadata.usage,
+            citations: assistantMetadata.citations ?? [],
+            history: historyPage
+          };
+        }
+        throw error;
+      }
+
+      totalUsage = addGeminiUsage(totalUsage, response.usageMetadata);
+    }
+
+    if (response.functionCalls && response.functionCalls.length > 0 && functionCallRounds >= MAX_FUNCTION_CALL_ROUNDS) {
+      const fallbackReply = buildToolDataFallbackReply(
+        executedFunctionResponses,
+        pendingActionsFromTooling,
+        "I fetched your data, but couldn't finish the final response after several tool steps:"
+      );
+      const assistantMetadata: ChatMessageMetadata = {
+        contextWindow,
+        finishReason: "tool_call_round_limit_fallback",
+        usage: totalUsage,
+        ...(pendingActionsFromTooling.length > 0 ? { pendingActions: store.getPendingChatActions(now) } : {}),
+        ...(citations.size > 0
+          ? { citations: Array.from(citations.values()).slice(0, MAX_CHAT_CITATIONS) }
+          : {})
+      };
+      const assistantMessage = store.recordChatMessage("assistant", fallbackReply, assistantMetadata);
+      const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
+
+      return {
+        reply: assistantMessage.content,
+        userMessage,
+        assistantMessage,
+        finishReason: assistantMetadata.finishReason,
+        usage: assistantMetadata.usage,
+        citations: assistantMetadata.citations ?? [],
+        history: historyPage
       };
     }
-  }
-
-  if (response.functionCalls && response.functionCalls.length > 0 && functionCallRounds >= MAX_FUNCTION_CALL_ROUNDS) {
-    const fallbackReply = buildToolDataFallbackReply(
-      executedFunctionResponses,
-      pendingActionsFromTooling,
-      "I fetched your data, but couldn't finish the final response after several tool steps:"
-    );
-    const assistantMetadata: ChatMessageMetadata = {
-      contextWindow,
-      finishReason: "tool_call_round_limit_fallback",
-      usage: totalUsage,
-      ...(pendingActionsFromTooling.length > 0 ? { pendingActions: store.getPendingChatActions(now) } : {}),
-      ...(citations.size > 0
-        ? { citations: Array.from(citations.values()).slice(0, MAX_CHAT_CITATIONS) }
-        : {})
-    };
-    const assistantMessage = store.recordChatMessage("assistant", fallbackReply, assistantMetadata);
-    const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
-
-    return {
-      reply: assistantMessage.content,
-      userMessage,
-      assistantMessage,
-      finishReason: assistantMetadata.finishReason,
-      usage: assistantMetadata.usage,
-      citations: assistantMetadata.citations ?? [],
-      history: historyPage
-    };
   }
 
   const finalReply = response.text.trim().length > 0
