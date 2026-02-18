@@ -38,6 +38,7 @@ This file documents all environment variables required to run the Companion serv
 - `GEMINI_VERTEX_PROJECT_ID` (required for `vertex` unless `GEMINI_LIVE_MODEL` is already a full `projects/...` model resource)
 - `GEMINI_VERTEX_LOCATION` (default: `us-central1`) — Vertex model region for endpoint/model path
 - `GEMINI_API_KEY` (required for `developer`) — Gemini Developer API key
+- `GOOGLE_SERVICE_ACCOUNT_JSON` (optional for `vertex`) — Raw service-account JSON credentials (Railway-friendly alternative to credentials file)
 - `GOOGLE_APPLICATION_CREDENTIALS` (recommended for `vertex`) — Service-account JSON path for Google IAM auth (or use other ADC methods)
 - `GEMINI_LIVE_TIMEOUT_MS` (default: `25000`) — Live socket read timeout in milliseconds
 

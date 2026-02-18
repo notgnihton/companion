@@ -162,8 +162,40 @@ export class GeminiClient {
   }
 
   private async getVertexAccessToken(): Promise<string> {
+    let credentials:
+      | {
+          client_email: string;
+          private_key: string;
+        }
+      | undefined;
+
+    if (config.GOOGLE_SERVICE_ACCOUNT_JSON && config.GOOGLE_SERVICE_ACCOUNT_JSON.trim().length > 0) {
+      try {
+        const parsed = JSON.parse(config.GOOGLE_SERVICE_ACCOUNT_JSON) as {
+          client_email?: unknown;
+          private_key?: unknown;
+        };
+        if (typeof parsed.client_email === "string" && typeof parsed.private_key === "string") {
+          credentials = {
+            client_email: parsed.client_email,
+            private_key: parsed.private_key.replace(/\\n/g, "\n")
+          };
+        } else {
+          throw new GeminiError(
+            "GOOGLE_SERVICE_ACCOUNT_JSON must include string fields: client_email and private_key."
+          );
+        }
+      } catch (error) {
+        if (error instanceof GeminiError) {
+          throw error;
+        }
+        throw new GeminiError("Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON.", undefined, error);
+      }
+    }
+
     const auth = new google.auth.GoogleAuth({
-      scopes: ["https://www.googleapis.com/auth/cloud-platform"]
+      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+      ...(credentials ? { credentials } : {})
     });
     const client = await auth.getClient();
     const accessToken = await client.getAccessToken();
