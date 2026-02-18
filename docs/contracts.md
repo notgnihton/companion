@@ -143,6 +143,8 @@ Request:
 }
 ```
 
+Derivation behavior: when `weightKg`, `maintenanceCalories`, and `surplusCalories` are present, calories are `maintenance+surplus`, protein/fat follow `0.8/0.4 g per lb`, and carbs are auto-filled from remaining calories.
+
 Response:
 
 ```json

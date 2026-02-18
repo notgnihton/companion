@@ -313,6 +313,10 @@ function parseOptionalNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 function deriveTargetsFromDraft(draft: NutritionTargetDraft): {
   targetCalories: number;
   targetProteinGrams: number;
@@ -332,21 +336,30 @@ function deriveTargetsFromDraft(draft: NutritionTargetDraft): {
   if (hasBase) {
     const weightLb = weightKg * 2.2046226218;
     targetCalories = roundToTenth(maintenanceCalories + surplusCalories);
-    targetProteinGrams = roundToTenth(weightLb * 0.8);
-    targetFatGrams = roundToTenth(weightLb * 0.4);
+    const proteinMin = weightLb * 0.7;
+    const proteinMax = weightLb * 1.0;
+    const fatMin = weightLb * 0.3;
+    const fatMax = weightLb * 0.5;
+    const defaultProtein = weightLb * 0.8;
+    const defaultFat = weightLb * 0.4;
+
+    const overrideProtein = parseOptionalNumber(draft.targetProteinGrams);
+    const overrideFat = parseOptionalNumber(draft.targetFatGrams);
+    targetProteinGrams = roundToTenth(clamp(overrideProtein ?? defaultProtein, proteinMin, proteinMax));
+    targetFatGrams = roundToTenth(clamp(overrideFat ?? defaultFat, fatMin, fatMax));
+
     const remainingCalories = Math.max(0, targetCalories - targetProteinGrams * 4 - targetFatGrams * 9);
     targetCarbsGrams = roundToTenth(remainingCalories / 4);
+  } else {
+    const overrideProtein = parseOptionalNumber(draft.targetProteinGrams);
+    const overrideFat = parseOptionalNumber(draft.targetFatGrams);
+    if (overrideProtein !== null) targetProteinGrams = roundToTenth(overrideProtein);
+    if (overrideFat !== null) targetFatGrams = roundToTenth(overrideFat);
+    const overrideCalories = parseOptionalNumber(draft.targetCalories);
+    const overrideCarbs = parseOptionalNumber(draft.targetCarbsGrams);
+    if (overrideCalories !== null) targetCalories = roundToTenth(overrideCalories);
+    if (overrideCarbs !== null) targetCarbsGrams = roundToTenth(overrideCarbs);
   }
-
-  const overrideCalories = parseOptionalNumber(draft.targetCalories);
-  const overrideProtein = parseOptionalNumber(draft.targetProteinGrams);
-  const overrideCarbs = parseOptionalNumber(draft.targetCarbsGrams);
-  const overrideFat = parseOptionalNumber(draft.targetFatGrams);
-
-  if (overrideCalories !== null) targetCalories = roundToTenth(overrideCalories);
-  if (overrideProtein !== null) targetProteinGrams = roundToTenth(overrideProtein);
-  if (overrideCarbs !== null) targetCarbsGrams = roundToTenth(overrideCarbs);
-  if (overrideFat !== null) targetFatGrams = roundToTenth(overrideFat);
 
   if (
     targetCalories === null ||
@@ -460,6 +473,19 @@ export function NutritionView(): JSX.Element {
   }, [summary, activeTargets]);
   const parsedMealItems = useMemo(() => parseMealItemDrafts(mealItemDrafts), [mealItemDrafts]);
   const draftMealTotals = useMemo(() => computeMealTotalsFromItems(parsedMealItems), [parsedMealItems]);
+  const macroRanges = useMemo(() => {
+    const weightKg = parseOptionalNumber(targetDraft.weightKg);
+    if (weightKg === null) {
+      return null;
+    }
+    const weightLb = weightKg * 2.2046226218;
+    return {
+      proteinMin: roundToTenth(weightLb * 0.7),
+      proteinMax: roundToTenth(weightLb * 1.0),
+      fatMin: roundToTenth(weightLb * 0.3),
+      fatMax: roundToTenth(weightLb * 0.5)
+    };
+  }, [targetDraft.weightKg]);
 
   const refresh = async (): Promise<void> => {
     setLoading(true);
@@ -617,15 +643,16 @@ export function NutritionView(): JSX.Element {
     setMessage("");
     setSavingTargets(true);
 
+    const derived = deriveTargetsFromDraft(targetDraft);
     const saved = await upsertNutritionTargetProfile({
       date: todayKey,
       weightKg: parseOptionalNumber(targetDraft.weightKg),
       maintenanceCalories: parseOptionalNumber(targetDraft.maintenanceCalories),
       surplusCalories: parseOptionalNumber(targetDraft.surplusCalories),
-      targetCalories: parseOptionalNumber(targetDraft.targetCalories),
-      targetProteinGrams: parseOptionalNumber(targetDraft.targetProteinGrams),
-      targetCarbsGrams: parseOptionalNumber(targetDraft.targetCarbsGrams),
-      targetFatGrams: parseOptionalNumber(targetDraft.targetFatGrams)
+      targetCalories: derived ? derived.targetCalories : parseOptionalNumber(targetDraft.targetCalories),
+      targetProteinGrams: derived ? derived.targetProteinGrams : parseOptionalNumber(targetDraft.targetProteinGrams),
+      targetCarbsGrams: derived ? derived.targetCarbsGrams : parseOptionalNumber(targetDraft.targetCarbsGrams),
+      targetFatGrams: derived ? derived.targetFatGrams : parseOptionalNumber(targetDraft.targetFatGrams)
     });
 
     setSavingTargets(false);
@@ -927,7 +954,8 @@ export function NutritionView(): JSX.Element {
         <div>
           <h3>Plan settings</h3>
           <p className="nutrition-item-meta">
-            Set weight, maintenance, and surplus to derive your macro targets. Use overrides when you want manual targets.
+            Set weight, maintenance, and surplus to derive targets. Protein/fat stay in recommended ranges and carbs are
+            auto-filled from remaining calories.
           </p>
         </div>
         <div className="nutrition-form">
@@ -985,17 +1013,7 @@ export function NutritionView(): JSX.Element {
 
           <div className="nutrition-form-row nutrition-target-grid">
             <label>
-              Target calories (override)
-              <input
-                type="number"
-                min={0}
-                step="1"
-                value={targetDraft.targetCalories}
-                onChange={(event) => updateTargetDraftField("targetCalories", event.target.value)}
-              />
-            </label>
-            <label>
-              Target protein (g)
+              Protein target (optional)
               <input
                 type="number"
                 min={0}
@@ -1003,19 +1021,14 @@ export function NutritionView(): JSX.Element {
                 value={targetDraft.targetProteinGrams}
                 onChange={(event) => updateTargetDraftField("targetProteinGrams", event.target.value)}
               />
+              {macroRanges && (
+                <small>
+                  Recommended: {formatMetric(macroRanges.proteinMin)}-{formatMetric(macroRanges.proteinMax)} g
+                </small>
+              )}
             </label>
             <label>
-              Target carbs (g)
-              <input
-                type="number"
-                min={0}
-                step="0.1"
-                value={targetDraft.targetCarbsGrams}
-                onChange={(event) => updateTargetDraftField("targetCarbsGrams", event.target.value)}
-              />
-            </label>
-            <label>
-              Target fat (g)
+              Fat target (optional)
               <input
                 type="number"
                 min={0}
@@ -1023,6 +1036,11 @@ export function NutritionView(): JSX.Element {
                 value={targetDraft.targetFatGrams}
                 onChange={(event) => updateTargetDraftField("targetFatGrams", event.target.value)}
               />
+              {macroRanges && (
+                <small>
+                  Recommended: {formatMetric(macroRanges.fatMin)}-{formatMetric(macroRanges.fatMax)} g
+                </small>
+              )}
             </label>
           </div>
 
@@ -1040,44 +1058,6 @@ export function NutritionView(): JSX.Element {
             </button>
           </div>
         </div>
-      </article>
-
-      <article className="nutrition-card nutrition-daily-dashboard">
-        <h3>Daily totals</h3>
-        {loading ? (
-          <p>Loading nutrition...</p>
-        ) : (
-          <div className="nutrition-summary-grid nutrition-daily-grid">
-            <article className="nutrition-daily-metric">
-              <p className="summary-label">Protein</p>
-              <p className="summary-value">{summary ? `${formatMetric(summary.totals.proteinGrams)}g` : "0g"}</p>
-              <p className={`nutrition-daily-delta ${intakeDeltas ? deltaToneClass(intakeDeltas.proteinGrams) : "nutrition-delta-neutral"}`}>
-                {intakeDeltas ? formatSignedDelta(intakeDeltas.proteinGrams, "g") : "Set targets"}
-              </p>
-            </article>
-            <article className="nutrition-daily-metric">
-              <p className="summary-label">Carbs</p>
-              <p className="summary-value">{summary ? `${formatMetric(summary.totals.carbsGrams)}g` : "0g"}</p>
-              <p className={`nutrition-daily-delta ${intakeDeltas ? deltaToneClass(intakeDeltas.carbsGrams) : "nutrition-delta-neutral"}`}>
-                {intakeDeltas ? formatSignedDelta(intakeDeltas.carbsGrams, "g") : "Set targets"}
-              </p>
-            </article>
-            <article className="nutrition-daily-metric">
-              <p className="summary-label">Fat</p>
-              <p className="summary-value">{summary ? `${formatMetric(summary.totals.fatGrams)}g` : "0g"}</p>
-              <p className={`nutrition-daily-delta ${intakeDeltas ? deltaToneClass(intakeDeltas.fatGrams) : "nutrition-delta-neutral"}`}>
-                {intakeDeltas ? formatSignedDelta(intakeDeltas.fatGrams, "g") : "Set targets"}
-              </p>
-            </article>
-            <article className="nutrition-daily-metric">
-              <p className="summary-label">Calories</p>
-              <p className="summary-value">{summary ? String(Math.round(summary.totals.calories)) : "0"} kcal</p>
-              <p className={`nutrition-daily-delta ${intakeDeltas ? deltaToneClass(intakeDeltas.calories) : "nutrition-delta-neutral"}`}>
-                {intakeDeltas ? formatSignedDelta(intakeDeltas.calories, " kcal") : "Set targets"}
-              </p>
-            </article>
-          </div>
-        )}
       </article>
 
       <article className="nutrition-card">
@@ -1372,6 +1352,44 @@ export function NutritionView(): JSX.Element {
                 </div>
               </article>
             ))}
+          </div>
+        )}
+      </article>
+
+      <article className="nutrition-card nutrition-daily-dashboard">
+        <h3>Daily totals</h3>
+        {loading ? (
+          <p>Loading nutrition...</p>
+        ) : (
+          <div className="nutrition-summary-grid nutrition-daily-grid">
+            <article className="nutrition-daily-metric">
+              <p className="summary-label">Protein</p>
+              <p className="summary-value">{summary ? `${formatMetric(summary.totals.proteinGrams)}g` : "0g"}</p>
+              <p className={`nutrition-daily-delta ${intakeDeltas ? deltaToneClass(intakeDeltas.proteinGrams) : "nutrition-delta-neutral"}`}>
+                {intakeDeltas ? formatSignedDelta(intakeDeltas.proteinGrams, "g") : "Set targets"}
+              </p>
+            </article>
+            <article className="nutrition-daily-metric">
+              <p className="summary-label">Carbs</p>
+              <p className="summary-value">{summary ? `${formatMetric(summary.totals.carbsGrams)}g` : "0g"}</p>
+              <p className={`nutrition-daily-delta ${intakeDeltas ? deltaToneClass(intakeDeltas.carbsGrams) : "nutrition-delta-neutral"}`}>
+                {intakeDeltas ? formatSignedDelta(intakeDeltas.carbsGrams, "g") : "Set targets"}
+              </p>
+            </article>
+            <article className="nutrition-daily-metric">
+              <p className="summary-label">Fat</p>
+              <p className="summary-value">{summary ? `${formatMetric(summary.totals.fatGrams)}g` : "0g"}</p>
+              <p className={`nutrition-daily-delta ${intakeDeltas ? deltaToneClass(intakeDeltas.fatGrams) : "nutrition-delta-neutral"}`}>
+                {intakeDeltas ? formatSignedDelta(intakeDeltas.fatGrams, "g") : "Set targets"}
+              </p>
+            </article>
+            <article className="nutrition-daily-metric">
+              <p className="summary-label">Calories</p>
+              <p className="summary-value">{summary ? String(Math.round(summary.totals.calories)) : "0"} kcal</p>
+              <p className={`nutrition-daily-delta ${intakeDeltas ? deltaToneClass(intakeDeltas.calories) : "nutrition-delta-neutral"}`}>
+                {intakeDeltas ? formatSignedDelta(intakeDeltas.calories, " kcal") : "Set targets"}
+              </p>
+            </article>
           </div>
         )}
       </article>

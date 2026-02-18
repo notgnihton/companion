@@ -106,7 +106,10 @@ Request fields:
 - `targetCarbsGrams` (`number | null`, optional)
 - `targetFatGrams` (`number | null`, optional)
 
-When `weightKg`, `maintenanceCalories`, and `surplusCalories` are present, target macros are auto-derived unless explicitly overridden in the same payload.
+When `weightKg`, `maintenanceCalories`, and `surplusCalories` are present, targets follow the `lucyscript/food` model:
+- `targetCalories = maintenanceCalories + surplusCalories`
+- protein/fat are bodyweight-based defaults (0.8 / 0.4 g per lb)
+- carbs are auto-filled from remaining calories.
 
 ### `GET /api/nutrition/meals?date=YYYY-MM-DD&limit=50`
 
