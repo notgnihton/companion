@@ -3805,10 +3805,8 @@ body.keyboard-open .pull-to-refresh-container {
 }
 
 .nutrition-meal-food-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  display: grid;
+  gap: 8px;
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
   padding: 11px 12px;
@@ -3816,30 +3814,37 @@ body.keyboard-open .pull-to-refresh-container {
   font-size: 0.88rem;
 }
 
-.nutrition-meal-food-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-  flex: 1;
-}
-
-.nutrition-meal-food-main span:first-child {
-  font-weight: 700;
+.nutrition-meal-food-name {
+  margin: 0;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 700;
   font-size: 0.9rem;
 }
 
-.nutrition-meal-food-main span:nth-child(2) {
-  color: var(--muted);
-  white-space: nowrap;
+.nutrition-meal-food-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
-.nutrition-meal-food-main span:nth-child(3) {
+.nutrition-meal-food-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nutrition-meal-food-main span:first-child {
+  color: var(--muted);
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.nutrition-meal-food-main span:nth-child(2) {
   color: #eecf96;
   font-weight: 700;
   white-space: nowrap;
@@ -3868,6 +3873,12 @@ body.keyboard-open .pull-to-refresh-container {
 
 .nutrition-meal-food-actions button:nth-child(2) {
   background: rgba(63, 137, 120, 0.4);
+}
+
+@media (max-width: 560px) {
+  .nutrition-meal-food-bottom {
+    flex-wrap: wrap;
+  }
 }
 
 .nutrition-meal-add-food-row {

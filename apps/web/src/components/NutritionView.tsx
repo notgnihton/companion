@@ -1599,37 +1599,39 @@ export function NutritionView(): JSX.Element {
                         const itemCalories = Math.round(item.quantity * item.caloriesPerUnit);
                         return (
                           <li key={`${item.id ?? item.customFoodId ?? item.name}-${index}`} className="nutrition-meal-food-item">
-                            <div className="nutrition-meal-food-main">
-                              <span>{item.name}</span>
-                              <span>
-                                {formatMetric(item.quantity)}
-                                g
-                              </span>
-                              <span>{itemCalories} kcal</span>
-                            </div>
-                            <div className="nutrition-meal-food-actions">
-                              <button
-                                type="button"
-                                onClick={() => void handleAdjustMealItemQuantity(meal.id, index, -1)}
-                                aria-label="Decrease food amount"
-                              >
-                                -
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleAdjustMealItemQuantity(meal.id, index, 1)}
-                                aria-label="Increase food amount"
-                              >
-                                +
-                              </button>
-                              <button
-                                type="button"
-                                className="nutrition-secondary-button"
-                                onClick={() => void handleRemoveMealItem(meal.id, index)}
-                                aria-label="Remove food item"
-                              >
-                                🗑
-                              </button>
+                            <p className="nutrition-meal-food-name">{item.name}</p>
+                            <div className="nutrition-meal-food-bottom">
+                              <div className="nutrition-meal-food-main">
+                                <span>
+                                  {formatMetric(item.quantity)}
+                                  g
+                                </span>
+                                <span>{itemCalories} kcal</span>
+                              </div>
+                              <div className="nutrition-meal-food-actions">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleAdjustMealItemQuantity(meal.id, index, -1)}
+                                  aria-label="Decrease food amount"
+                                >
+                                  -
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleAdjustMealItemQuantity(meal.id, index, 1)}
+                                  aria-label="Increase food amount"
+                                >
+                                  +
+                                </button>
+                                <button
+                                  type="button"
+                                  className="nutrition-secondary-button"
+                                  onClick={() => void handleRemoveMealItem(meal.id, index)}
+                                  aria-label="Remove food item"
+                                >
+                                  🗑
+                                </button>
+                              </div>
                             </div>
                           </li>
                         );
