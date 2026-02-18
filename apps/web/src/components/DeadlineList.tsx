@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { confirmDeadlineStatus, getDeadlines, updateDeadline } from "../lib/api";
 import { hapticNotice, hapticSuccess } from "../lib/haptics";
-import { Deadline, EffortConfidence, Priority } from "../types";
+import { Deadline } from "../types";
 import { loadDeadlines, loadDeadlinesCachedAt, saveDeadlines } from "../lib/storage";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "./PullToRefreshIndicator";
@@ -17,9 +17,6 @@ interface DeadlineListProps {
 }
 
 const DEADLINE_STALE_MS = 12 * 60 * 60 * 1000;
-const EFFORT_MIN_HOURS = 0;
-const EFFORT_MAX_HOURS = 200;
-const EFFORT_STEP_HOURS = 0.5;
 
 function normalizeDueDateInput(dueDate: string): string {
   const trimmed = dueDate.trim();
@@ -36,23 +33,6 @@ function dueTimestamp(dueDate: string): number {
 
 function formatDeadlineTaskLabel(task: string): string {
   return task.replace(/^Assignment\s+Lab\b/i, "Lab");
-}
-
-function defaultEffortHours(priority: Priority): number {
-  switch (priority) {
-    case "critical":
-      return 5;
-    case "high":
-      return 3.5;
-    case "medium":
-      return 2.5;
-    case "low":
-      return 1.5;
-  }
-}
-
-function formatEffortHours(hours: number): string {
-  return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
 }
 
 function formatCachedLabel(cachedAt: string | null): string {
@@ -82,10 +62,6 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
   const [isOnline, setIsOnline] = useState<boolean>(() => navigator.onLine);
   const [syncMessage, setSyncMessage] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [editingEffortId, setEditingEffortId] = useState<string | null>(null);
-  const [effortHoursInput, setEffortHoursInput] = useState("");
-  const [effortConfidenceInput, setEffortConfidenceInput] = useState<EffortConfidence>("medium");
-  const [effortError, setEffortError] = useState("");
   const [undoToast, setUndoToast] = useState<UndoToast | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const undoTimerRef = useRef<number | null>(null);
@@ -201,91 +177,6 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
     if (hoursLeft <= 12) return "deadline-critical";
     if (hoursLeft <= 24) return "deadline-urgent";
     return "";
-  };
-
-  const getCurrentOrSuggestedEffortHours = (deadline: Deadline): number => {
-    if (typeof deadline.effortHoursRemaining === "number" && Number.isFinite(deadline.effortHoursRemaining)) {
-      return Math.min(EFFORT_MAX_HOURS, Math.max(EFFORT_MIN_HOURS, deadline.effortHoursRemaining));
-    }
-    return defaultEffortHours(deadline.priority);
-  };
-
-  const getEffortSummary = (deadline: Deadline): string => {
-    if (typeof deadline.effortHoursRemaining === "number" && Number.isFinite(deadline.effortHoursRemaining)) {
-      return `${formatEffortHours(deadline.effortHoursRemaining)}h remaining (${deadline.effortConfidence ?? "medium"} confidence)`;
-    }
-
-    return `No estimate set. Suggested ${formatEffortHours(defaultEffortHours(deadline.priority))}h.`;
-  };
-
-  const beginEffortEdit = (deadline: Deadline): void => {
-    setEditingEffortId(deadline.id);
-    setEffortHoursInput(formatEffortHours(getCurrentOrSuggestedEffortHours(deadline)));
-    setEffortConfidenceInput(deadline.effortConfidence ?? "medium");
-    setEffortError("");
-  };
-
-  const cancelEffortEdit = (): void => {
-    setEditingEffortId(null);
-    setEffortHoursInput("");
-    setEffortConfidenceInput("medium");
-    setEffortError("");
-  };
-
-  const parseEffortHoursInput = (): number | null => {
-    const trimmed = effortHoursInput.trim();
-    if (!trimmed) {
-      setEffortError("Enter hours remaining.");
-      return null;
-    }
-
-    const parsed = Number(trimmed);
-    if (!Number.isFinite(parsed)) {
-      setEffortError("Hours must be a valid number.");
-      return null;
-    }
-    if (parsed < EFFORT_MIN_HOURS || parsed > EFFORT_MAX_HOURS) {
-      setEffortError(`Hours must be between ${EFFORT_MIN_HOURS} and ${EFFORT_MAX_HOURS}.`);
-      return null;
-    }
-
-    const normalized = Math.round(parsed / EFFORT_STEP_HOURS) * EFFORT_STEP_HOURS;
-    if (Math.abs(normalized - parsed) > 0.001) {
-      setEffortError("Use 0.5 hour increments.");
-      return null;
-    }
-
-    setEffortError("");
-    return normalized;
-  };
-
-  const saveEffortEstimate = async (deadline: Deadline): Promise<void> => {
-    if (updatingId === deadline.id) return;
-
-    const effortHoursRemaining = parseEffortHoursInput();
-    if (effortHoursRemaining === null) return;
-
-    setUpdatingId(deadline.id);
-    setSyncMessage("");
-
-    const updated = await updateDeadline(deadline.id, {
-      effortHoursRemaining,
-      effortConfidence: effortConfidenceInput
-    });
-
-    if (!updated) {
-      setSyncMessage("Could not save effort estimate right now.");
-      setUpdatingId(null);
-      return;
-    }
-
-    const next = deadlines.map((item) => (item.id === updated.id ? updated : item));
-    setDeadlines(next);
-    saveDeadlines(next);
-    setCachedAt(loadDeadlinesCachedAt());
-    setSyncMessage("Effort estimate saved.");
-    setUpdatingId(null);
-    cancelEffortEdit();
   };
 
   const setCompletion = async (id: string, completed: boolean): Promise<boolean> => {
@@ -461,70 +352,6 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
                       <span className="deadline-course">{deadline.course}</span>
                       <span className="deadline-separator">•</span>
                       <span className="deadline-due">{formatDueDate(deadline.dueDate)}</span>
-                    </div>
-                    <div className="deadline-effort">
-                      <p className="deadline-effort-summary">{getEffortSummary(deadline)}</p>
-                      {editingEffortId === deadline.id ? (
-                        <div className="deadline-effort-editor">
-                          <label>
-                            Hours remaining
-                            <input
-                              type="number"
-                              min={EFFORT_MIN_HOURS}
-                              max={EFFORT_MAX_HOURS}
-                              step={EFFORT_STEP_HOURS}
-                              value={effortHoursInput}
-                              onChange={(event) => setEffortHoursInput(event.target.value)}
-                              disabled={updatingId === deadline.id}
-                            />
-                          </label>
-                          <label>
-                            Confidence
-                            <select
-                              value={effortConfidenceInput}
-                              onChange={(event) => setEffortConfidenceInput(event.target.value as EffortConfidence)}
-                              disabled={updatingId === deadline.id}
-                            >
-                              <option value="low">Low</option>
-                              <option value="medium">Medium</option>
-                              <option value="high">High</option>
-                            </select>
-                          </label>
-                          {effortError && <p className="deadline-effort-error">{effortError}</p>}
-                          <div className="deadline-effort-actions">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEffortHoursInput(formatEffortHours(defaultEffortHours(deadline.priority)));
-                                setEffortConfidenceInput("medium");
-                                setEffortError("");
-                              }}
-                              disabled={updatingId === deadline.id}
-                            >
-                              Use suggested
-                            </button>
-                            <button type="button" onClick={cancelEffortEdit} disabled={updatingId === deadline.id}>
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void saveEffortEstimate(deadline)}
-                              disabled={updatingId === deadline.id}
-                            >
-                              Save
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="deadline-effort-edit-button"
-                          onClick={() => beginEffortEdit(deadline)}
-                          disabled={updatingId === deadline.id}
-                        >
-                          Edit effort
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>

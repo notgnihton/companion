@@ -938,7 +938,7 @@ Response `200`:
 ### `POST /api/study-plan/generate`
 
 Generates a deterministic weekly study plan by combining incomplete deadlines with schedule gaps.
-If a deadline includes `effortHoursRemaining`, planning uses that value (adjusted by `effortConfidence`) instead of the priority-based default estimate.
+Planning uses priority-based default estimates; custom effort metadata is ignored.
 
 Request:
 

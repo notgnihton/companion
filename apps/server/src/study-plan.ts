@@ -29,25 +29,8 @@ function estimateWorkMinutesFromPriority(priority: Priority): number {
   }
 }
 
-function effortConfidenceMultiplier(confidence: Deadline["effortConfidence"] | undefined): number {
-  switch (confidence) {
-    case "high":
-      return 1;
-    case "low":
-      return 1.35;
-    case "medium":
-    default:
-      return 1.15;
-  }
-}
-
 function estimateWorkMinutes(deadline: Deadline): number {
-  if (typeof deadline.effortHoursRemaining === "number" && Number.isFinite(deadline.effortHoursRemaining)) {
-    const effortMinutes = Math.max(0, deadline.effortHoursRemaining * 60);
-    const adjusted = Math.round(effortMinutes * effortConfidenceMultiplier(deadline.effortConfidence));
-    return adjusted;
-  }
-
+  // Keep planning simple and uniform: estimate effort from priority only.
   return estimateWorkMinutesFromPriority(deadline.priority);
 }
 

@@ -1,33 +1,9 @@
 import { useEffect, useState } from "react";
 import { getDeadlines, getSchedule } from "../lib/api";
-import { Deadline, LectureEvent, Priority } from "../types";
+import { Deadline, LectureEvent } from "../types";
 import { loadDeadlines, loadSchedule, loadScheduleCachedAt } from "../lib/storage";
 
 const SCHEDULE_STALE_MS = 12 * 60 * 60 * 1000;
-
-function defaultEffortHours(priority: Priority): number {
-  switch (priority) {
-    case "critical":
-      return 5;
-    case "high":
-      return 3.5;
-    case "medium":
-      return 2.5;
-    case "low":
-      return 1.5;
-  }
-}
-
-function estimateDeadlineHours(deadline: Deadline): number {
-  if (typeof deadline.effortHoursRemaining === "number" && Number.isFinite(deadline.effortHoursRemaining)) {
-    return Math.max(0, deadline.effortHoursRemaining);
-  }
-  return defaultEffortHours(deadline.priority);
-}
-
-function formatHours(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
 
 function formatCachedLabel(cachedAt: string | null): string {
   if (!cachedAt) {
@@ -362,7 +338,6 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
     .sort((left, right) => left.dueDateMs - right.dueDateMs)
     .slice(0, 8)
     .map((item) => item.label);
-  const remainingHours = pendingDeadlines.reduce((sum, deadline) => sum + estimateDeadlineHours(deadline), 0);
   const today = new Date();
   const todayBlocks = sortedSchedule.filter((block) => isSameLocalDate(new Date(block.startTime), today));
   const dayTimeline = buildDayTimeline(todayBlocks, today, deadlineSuggestions);
@@ -396,7 +371,7 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
         {isStale && <span className="cache-status-chip cache-status-chip-stale">Stale snapshot</span>}
       </div>
       <p className="schedule-workload-context">
-        {pendingDeadlines.length} pending deadline{pendingDeadlines.length === 1 ? "" : "s"} • ~{formatHours(remainingHours)}h remaining
+        {pendingDeadlines.length} pending deadline{pendingDeadlines.length === 1 ? "" : "s"}
       </p>
 
       <section className="day-timeline-card" aria-label="Today timeline">

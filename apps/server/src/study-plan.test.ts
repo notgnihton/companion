@@ -98,35 +98,15 @@ describe("generateWeeklyStudyPlan", () => {
     }
   });
 
-  it("uses effort hours and confidence as allocation constraints", () => {
+  it("ignores custom effort metadata and uses priority defaults", () => {
     const now = new Date("2026-02-17T08:00:00.000Z");
     const dueDate = "2026-02-19T20:00:00.000Z";
 
-    const highConfidencePlan = generateWeeklyStudyPlan(
+    const withEffortMetadata = generateWeeklyStudyPlan(
       [
         makeDeadline({
-          id: "effort-high",
-          task: "Effort scoped assignment",
-          priority: "medium",
-          dueDate,
-          effortHoursRemaining: 2,
-          effortConfidence: "high"
-        })
-      ],
-      [],
-      {
-        now,
-        horizonDays: 3,
-        minSessionMinutes: 30,
-        maxSessionMinutes: 60
-      }
-    );
-
-    const lowConfidencePlan = generateWeeklyStudyPlan(
-      [
-        makeDeadline({
-          id: "effort-low",
-          task: "Effort scoped assignment",
+          id: "effort-input",
+          task: "Uniform assignment estimate",
           priority: "medium",
           dueDate,
           effortHoursRemaining: 2,
@@ -142,33 +122,26 @@ describe("generateWeeklyStudyPlan", () => {
       }
     );
 
-    expect(highConfidencePlan.summary.totalPlannedMinutes).toBe(120);
-    expect(lowConfidencePlan.summary.totalPlannedMinutes).toBe(162);
-    expect(lowConfidencePlan.summary.totalPlannedMinutes).toBeGreaterThan(highConfidencePlan.summary.totalPlannedMinutes);
-  });
-
-  it("treats zero-hour effort estimates as already covered work", () => {
-    const now = new Date("2026-02-17T08:00:00.000Z");
-
-    const plan = generateWeeklyStudyPlan(
+    const withoutEffortMetadata = generateWeeklyStudyPlan(
       [
         makeDeadline({
-          id: "effort-zero",
-          dueDate: "2026-02-20T23:59:00.000Z",
-          effortHoursRemaining: 0,
-          effortConfidence: "high"
+          id: "no-effort-input",
+          task: "Uniform assignment estimate",
+          priority: "medium",
+          dueDate
         })
       ],
       [],
       {
         now,
-        horizonDays: 7
+        horizonDays: 3,
+        minSessionMinutes: 30,
+        maxSessionMinutes: 60
       }
     );
 
-    expect(plan.sessions).toHaveLength(0);
-    expect(plan.unallocated).toHaveLength(0);
-    expect(plan.summary.deadlinesCovered).toBe(1);
+    expect(withEffortMetadata.summary.totalPlannedMinutes).toBe(withoutEffortMetadata.summary.totalPlannedMinutes);
+    expect(withEffortMetadata.summary.totalPlannedMinutes).toBe(150);
   });
 
   it("ignores non-assignment and non-exam deadlines", () => {
