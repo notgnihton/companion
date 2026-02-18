@@ -4176,38 +4176,6 @@ body.keyboard-open .pull-to-refresh-container {
   color: var(--muted);
 }
 
-.day-timeline-deadlines {
-  display: grid;
-  gap: 7px;
-}
-
-.day-timeline-deadlines h4 {
-  margin: 0;
-  font-size: 0.82rem;
-  color: var(--muted);
-}
-
-.day-timeline-deadline-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.day-timeline-deadline-chip {
-  font-size: 0.74rem;
-  padding: 5px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--warn-border);
-  background: var(--warn-surface);
-  color: var(--text);
-}
-
-.day-timeline-deadline-empty {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
 @media (max-width: 640px) {
   .app-shell-chat-active {
     padding:

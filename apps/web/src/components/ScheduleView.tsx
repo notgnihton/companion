@@ -341,16 +341,6 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
   const today = new Date();
   const todayBlocks = sortedSchedule.filter((block) => isSameLocalDate(new Date(block.startTime), today));
   const dayTimeline = buildDayTimeline(todayBlocks, today, deadlineSuggestions);
-  const todayDeadlineMarkers = pendingDeadlines
-    .filter((deadline) => {
-      const dueAt = new Date(deadline.dueDate);
-      if (Number.isNaN(dueAt.getTime())) {
-        return false;
-      }
-      return isSameLocalDate(dueAt, today) || dueAt.getTime() >= Date.now() && dueAt.getTime() <= Date.now() + 24 * 60 * 60 * 1000;
-    })
-    .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime())
-    .slice(0, 4);
 
   return (
     <section className="panel schedule-panel">
@@ -403,21 +393,6 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
         ) : (
           <p className="day-timeline-empty">No fixed sessions today. Ask Gemini to build your day plan.</p>
         )}
-
-        <div className="day-timeline-deadlines">
-          <h4>Upcoming deadlines</h4>
-          {todayDeadlineMarkers.length > 0 ? (
-            <div className="day-timeline-deadline-chips">
-              {todayDeadlineMarkers.map((deadline) => (
-                <span key={deadline.id} className="day-timeline-deadline-chip">
-                  {deadline.course}: {deadline.task} ({new Date(deadline.dueDate).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })})
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="day-timeline-deadline-empty">No deadlines due in the next 24 hours.</p>
-          )}
-        </div>
       </section>
 
     </section>
