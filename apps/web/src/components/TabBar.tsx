@@ -9,7 +9,7 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps): JSX.Element {
   const tabs: Array<{ id: TabId; label: string; icon: string }> = [
     { id: "chat", label: "Chat", icon: "💬" },
     { id: "schedule", label: "Schedule", icon: "🕒" },
-    { id: "nutrition", label: "Food", icon: "🥗" },
+    { id: "nutrition", label: "Food", icon: "🍱" },
     { id: "habits", label: "Growth", icon: "📈" },
     { id: "settings", label: "Settings", icon: "⚙️" }
   ];
