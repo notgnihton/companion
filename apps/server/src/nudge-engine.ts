@@ -29,11 +29,11 @@ export function buildContextAwareNudge(event: AgentEvent, context: UserContext):
     case "note.prompt":
       return {
         source: "notes",
-        title: "Journal prompt",
+        title: "Reflection prompt",
         message: noteMessage(event, context),
         priority: notePriority(context),
         actions: ["view"],
-        url: "/companion/?tab=journal"
+        url: "/companion/?tab=habits"
       };
     case "location.arrival":
       return {

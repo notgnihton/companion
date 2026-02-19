@@ -18,7 +18,7 @@ describe("EmailDigestService", () => {
 
     store.createDeadline({
       course: "Algorithms",
-      task: "Problem Set",
+      task: "Assignment 1",
       dueDate: "2026-02-21T09:00:00.000Z",
       priority: "high",
       completed: false
@@ -50,14 +50,14 @@ describe("EmailDigestService", () => {
     expect(digests).toHaveLength(1);
     expect(digests[0].type).toBe("daily");
     expect(digests[0].reason).toBe("push-failures");
-    expect(digests[0].body).toContain("Problem Set");
+    expect(digests[0].body).toContain("Assignment 1");
   });
 
   it("sends a weekly digest on inactive Sundays", async () => {
     const store = new RuntimeStore(":memory:");
     const service = new EmailDigestService(store);
 
-    store.recordJournalEntry("Finished the first draft of the report");
+    store.recordChatMessage("user", "Finished the first draft of the report");
     vi.setSystemTime(new Date("2026-02-22T18:00:00.000Z"));
 
     await service.runOnce(new Date("2026-02-22T18:00:00.000Z"));

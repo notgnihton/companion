@@ -19,23 +19,33 @@ describe("BackgroundSyncService", () => {
 
   describe("Queue Management", () => {
     it("should enqueue sync operations", () => {
-      const item = store.enqueueSyncOperation("journal", {
-        clientEntryId: "test-123",
-        content: "Test journal entry",
-        timestamp: new Date().toISOString()
+      const item = store.enqueueSyncOperation("deadline", {
+        deadlineId: "temp-queue-test",
+        updates: {
+          course: "DAT560",
+          task: "Queue test assignment",
+          dueDate: new Date(Date.now() + 86400000).toISOString(),
+          priority: "medium",
+          completed: false
+        }
       });
 
       expect(item.id).toBeDefined();
-      expect(item.operationType).toBe("journal");
+      expect(item.operationType).toBe("deadline");
       expect(item.status).toBe("pending");
       expect(item.attempts).toBe(0);
     });
 
     it("should retrieve pending sync items", () => {
-      store.enqueueSyncOperation("journal", {
-        clientEntryId: "test-1",
-        content: "Test 1",
-        timestamp: new Date().toISOString()
+      store.enqueueSyncOperation("deadline", {
+        deadlineId: "temp-test-1",
+        updates: {
+          course: "DAT520",
+          task: "Sync queue item",
+          dueDate: new Date(Date.now() + 86400000).toISOString(),
+          priority: "high",
+          completed: false
+        }
       });
 
       store.enqueueSyncOperation("context", {
@@ -45,12 +55,12 @@ describe("BackgroundSyncService", () => {
 
       const pending = store.getPendingSyncItems();
       expect(pending).toHaveLength(2);
-      expect(pending[0].operationType).toBe("journal");
+      expect(pending[0].operationType).toBe("deadline");
       expect(pending[1].operationType).toBe("context");
     });
 
     it("should get sync queue status", () => {
-      store.enqueueSyncOperation("journal", { content: "Test 1", timestamp: new Date().toISOString(), clientEntryId: "1" });
+      store.enqueueSyncOperation("context", { stressLevel: "medium", energyLevel: "high", mode: "focus" });
       store.enqueueSyncOperation("deadline", { deadlineId: "test", updates: {} });
 
       const status = store.getSyncQueueStatus();
@@ -62,22 +72,24 @@ describe("BackgroundSyncService", () => {
   });
 
   describe("Sync Processing", () => {
-    it("should process journal sync operations", async () => {
-      const clientEntryId = "test-journal-123";
-      
-      store.enqueueSyncOperation("journal", {
-        clientEntryId,
-        content: "My test journal entry",
-        timestamp: new Date().toISOString()
+    it("should process deadline sync operations", async () => {
+      store.enqueueSyncOperation("deadline", {
+        deadlineId: "temp-deadline-123",
+        updates: {
+          course: "DAT560",
+          task: "Lab 3",
+          dueDate: new Date(Date.now() + 86400000).toISOString(),
+          priority: "high",
+          completed: false
+        }
       });
 
       const result = await syncService.processQueue();
       expect(result.processed).toBe(1);
       expect(result.failed).toBe(0);
 
-      // Verify the journal entry was created
-      const entries = store.getJournalEntries();
-      expect(entries.some(e => e.clientEntryId === clientEntryId)).toBe(true);
+      const deadlines = store.getDeadlines();
+      expect(deadlines.some((deadline) => deadline.course === "DAT560" && deadline.task === "Lab 3")).toBe(true);
     });
 
     it("should process context sync operations", async () => {
@@ -180,9 +192,8 @@ describe("BackgroundSyncService", () => {
 
     it("should handle failed sync operations with retry", async () => {
       // Enqueue an invalid operation
-      store.enqueueSyncOperation("journal", {
-        // Missing required fields
-        content: "Test"
+      store.enqueueSyncOperation("context", {
+        stressLevel: "invalid-value"
       });
 
       const result = await syncService.processQueue();
@@ -194,8 +205,8 @@ describe("BackgroundSyncService", () => {
     });
 
     it("should mark operations as failed after max retries", async () => {
-      const item = store.enqueueSyncOperation("journal", {
-        content: "Invalid" // Missing required fields - will fail
+      const item = store.enqueueSyncOperation("context", {
+        stressLevel: "invalid-value"
       });
 
       // Process and manually set attempts to near max to test failure marking
@@ -240,8 +251,8 @@ describe("BackgroundSyncService", () => {
     });
 
     it("should track attempt count", async () => {
-      const item = store.enqueueSyncOperation("journal", {
-        content: "Invalid" // Will fail
+      const item = store.enqueueSyncOperation("context", {
+        stressLevel: "invalid-value"
       });
 
       await syncService.processQueue();
@@ -293,8 +304,8 @@ describe("BackgroundSyncService", () => {
   describe("Exponential Backoff", () => {
     it("should respect backoff delays between retries", async () => {
       // Create an operation that will fail
-      const item = store.enqueueSyncOperation("journal", {
-        content: "Invalid"
+      const item = store.enqueueSyncOperation("context", {
+        stressLevel: "invalid-value"
       });
 
       // First attempt

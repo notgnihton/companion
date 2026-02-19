@@ -976,9 +976,9 @@ describe("chat service", () => {
 
   it("cancels pending action on explicit cancel command without Gemini call", async () => {
     const pending = store.createPendingChatAction({
-      actionType: "create-journal-draft",
-      summary: "Create draft",
-      payload: { content: "Draft from chat" }
+      actionType: "create-habit",
+      summary: "Create habit",
+      payload: { name: "Morning run", cadence: "daily", targetPerWeek: 5 }
     });
 
     const result = await sendChatMessage(store, `cancel ${pending.id}`, {

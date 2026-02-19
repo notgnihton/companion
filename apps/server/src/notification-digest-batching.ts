@@ -3,14 +3,14 @@ import type { Notification, ScheduledNotification } from "./types.js";
 const DIGEST_SOURCE_LABEL: Record<Notification["source"], string> = {
   "assignment-tracker": "assignment",
   "lecture-plan": "lecture",
-  notes: "journal",
+  notes: "reflection",
   orchestrator: "companion"
 };
 
 const SOURCE_DEEP_LINK_TAB: Record<Notification["source"], string> = {
   "assignment-tracker": "schedule",
   "lecture-plan": "schedule",
-  notes: "journal",
+  notes: "habits",
   orchestrator: "chat"
 };
 

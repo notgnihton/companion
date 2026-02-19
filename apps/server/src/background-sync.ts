@@ -96,9 +96,6 @@ export class BackgroundSyncService {
   private async processItem(item: SyncQueueItem): Promise<boolean> {
     try {
       switch (item.operationType) {
-        case "journal":
-          await this.processJournalSync(item);
-          break;
         case "deadline":
           await this.processDeadlineSync(item);
           break;
@@ -131,35 +128,6 @@ export class BackgroundSyncService {
       }
       
       return false;
-    }
-  }
-
-  /**
-   * Process a journal entry sync operation
-   */
-  private async processJournalSync(item: SyncQueueItem): Promise<void> {
-    const { clientEntryId, content, timestamp, baseVersion, tags, photos } = item.payload;
-
-    if (typeof content !== "string" || typeof timestamp !== "string") {
-      throw new Error("Invalid journal sync payload");
-    }
-
-    // Use the existing journal sync mechanism
-    const result = this.store.syncJournalEntries([
-      {
-        clientEntryId: clientEntryId as string,
-        content,
-        timestamp,
-        baseVersion: baseVersion as number | undefined,
-        tags: tags as string[] | undefined,
-        photos: photos as Array<{ id?: string; dataUrl: string; fileName?: string }> | undefined
-      }
-    ]);
-
-    // If there are conflicts, they're handled by the sync mechanism
-    // We still consider it successful if the entry was processed
-    if (result.applied.length === 0 && result.conflicts.length === 0) {
-      throw new Error("Journal sync failed - no entries applied");
     }
   }
 

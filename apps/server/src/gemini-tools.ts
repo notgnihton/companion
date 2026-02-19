@@ -8,12 +8,12 @@ import {
   GoalWithStatus,
   GitHubCourseDocument,
   HabitWithStatus,
-  JournalEntry,
   LectureEvent,
   RoutinePreset,
   NutritionDailySummary,
   NutritionCustomFood,
   NutritionMeal,
+  NutritionPlanSnapshot,
   NutritionMealType,
   WithingsSleepSummaryEntry,
   WithingsWeightEntry
@@ -386,6 +386,94 @@ export const functionDeclarations: FunctionDeclaration[] = [
         limit: {
           type: SchemaType.NUMBER,
           description: "Maximum number of meals to return (default: 30, max: 500)."
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "getNutritionPlanSnapshots",
+    description:
+      "List saved nutrition meal-plan snapshots (reusable day templates) that can be loaded later.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        query: {
+          type: SchemaType.STRING,
+          description: "Optional snapshot name filter."
+        },
+        limit: {
+          type: SchemaType.NUMBER,
+          description: "Maximum number of snapshots to return (default: 20, max: 200)."
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "saveNutritionPlanSnapshot",
+    description:
+      "Save a reusable nutrition meal-plan snapshot from a date's meals/targets so it can be loaded later.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        name: {
+          type: SchemaType.STRING,
+          description: "Snapshot name (for example 'FUCK MPB 😈')."
+        },
+        date: {
+          type: SchemaType.STRING,
+          description: "Optional source date in YYYY-MM-DD format. Defaults to today."
+        },
+        replaceSnapshotId: {
+          type: SchemaType.STRING,
+          description: "Optional existing snapshot ID to overwrite."
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "applyNutritionPlanSnapshot",
+    description:
+      "Load/apply a saved nutrition meal-plan snapshot to a date. By default, replace that day's existing meals.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        snapshotId: {
+          type: SchemaType.STRING,
+          description: "Snapshot ID (preferred)."
+        },
+        snapshotName: {
+          type: SchemaType.STRING,
+          description: "Snapshot name hint when ID is unknown."
+        },
+        date: {
+          type: SchemaType.STRING,
+          description: "Target date in YYYY-MM-DD format. Defaults to today."
+        },
+        replaceMeals: {
+          type: SchemaType.BOOLEAN,
+          description: "Set true to replace existing meals on that day (default: true)."
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "deleteNutritionPlanSnapshot",
+    description:
+      "Delete a saved nutrition meal-plan snapshot.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        snapshotId: {
+          type: SchemaType.STRING,
+          description: "Snapshot ID (preferred)."
+        },
+        snapshotName: {
+          type: SchemaType.STRING,
+          description: "Snapshot name hint when ID is unknown."
         }
       },
       required: []
@@ -1421,26 +1509,6 @@ export function handleGetDeadlines(
   return deadlines;
 }
 
-export function handleSearchJournal(
-  store: RuntimeStore,
-  args: Record<string, unknown> = {}
-): JournalEntry[] {
-  const query = (args.query as string) ?? "";
-  const limit = (args.limit as number) ?? 10;
-
-  if (!query) {
-    // If no query, return recent entries
-    return store.getJournalEntries(limit);
-  }
-
-  const results = store.searchJournalEntries({
-    query,
-    limit
-  });
-
-  return results;
-}
-
 export function handleGetEmails(
   store: RuntimeStore,
   args: Record<string, unknown> = {}
@@ -2331,6 +2399,170 @@ export function handleGetNutritionMeals(
   return {
     meals,
     total: meals.length
+  };
+}
+
+function resolveNutritionPlanSnapshotTarget(
+  store: RuntimeStore,
+  args: Record<string, unknown>
+): NutritionPlanSnapshot | { error: string } {
+  const snapshotId = asTrimmedString(args.snapshotId);
+  if (snapshotId) {
+    const byId = store.getNutritionPlanSnapshotById(snapshotId);
+    if (!byId) {
+      return { error: `Nutrition plan snapshot not found: ${snapshotId}` };
+    }
+    return byId;
+  }
+
+  const snapshotName = asTrimmedString(args.snapshotName);
+  const snapshots = store.getNutritionPlanSnapshots({ limit: 500 });
+  if (snapshots.length === 0) {
+    return { error: "No nutrition plan snapshots exist yet." };
+  }
+
+  if (!snapshotName) {
+    if (snapshots.length === 1) {
+      return snapshots[0]!;
+    }
+    return { error: "Provide snapshotId or snapshotName when multiple snapshots exist." };
+  }
+
+  const needle = normalizeSearchText(snapshotName);
+  const matches = snapshots.filter((snapshot) => normalizeSearchText(snapshot.name).includes(needle));
+  if (matches.length === 0) {
+    return { error: `No nutrition plan snapshot matched "${snapshotName}".` };
+  }
+  if (matches.length > 1) {
+    return {
+      error: `Snapshot name is ambiguous. Matches: ${matches
+        .slice(0, 4)
+        .map((snapshot) => snapshot.name)
+        .join(", ")}`
+    };
+  }
+  return matches[0]!;
+}
+
+export function handleGetNutritionPlanSnapshots(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): { snapshots: NutritionPlanSnapshot[]; total: number } {
+  const query = asTrimmedString(args.query) ?? undefined;
+  const limit = clampNumber(args.limit, 20, 1, 200);
+  const snapshots = store.getNutritionPlanSnapshots({
+    ...(query ? { query } : {}),
+    limit
+  });
+  return {
+    snapshots,
+    total: snapshots.length
+  };
+}
+
+export function handleSaveNutritionPlanSnapshot(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): { success: true; snapshot: NutritionPlanSnapshot; message: string } | { error: string } {
+  const dateRaw = asTrimmedString(args.date);
+  const date = parseNutritionDate(dateRaw);
+  if (dateRaw && !date) {
+    return { error: "date must be YYYY-MM-DD when provided." };
+  }
+
+  const effectiveDate = date ?? toDateKey(new Date());
+  const name = asTrimmedString(args.name) ?? `Meal plan ${effectiveDate}`;
+  const replaceSnapshotId = asTrimmedString(args.replaceSnapshotId) ?? asTrimmedString(args.snapshotId);
+  const snapshot = store.createNutritionPlanSnapshot({
+    name,
+    date: effectiveDate,
+    ...(replaceSnapshotId ? { replaceId: replaceSnapshotId } : {})
+  });
+
+  if (!snapshot) {
+    return { error: "Unable to save nutrition plan snapshot." };
+  }
+
+  return {
+    success: true,
+    snapshot,
+    message: `Saved nutrition plan snapshot "${snapshot.name}".`
+  };
+}
+
+export function handleApplyNutritionPlanSnapshot(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+):
+  | {
+      success: true;
+      snapshot: NutritionPlanSnapshot;
+      appliedDate: string;
+      mealsCreated: number;
+      message: string;
+    }
+  | { error: string } {
+  const resolvedSnapshot = resolveNutritionPlanSnapshotTarget(store, args);
+  if ("error" in resolvedSnapshot) {
+    return resolvedSnapshot;
+  }
+
+  const dateRaw = asTrimmedString(args.date);
+  const date = parseNutritionDate(dateRaw);
+  if (dateRaw && !date) {
+    return { error: "date must be YYYY-MM-DD when provided." };
+  }
+
+  const replaceMeals = typeof args.replaceMeals === "boolean" ? args.replaceMeals : true;
+  const applied = store.applyNutritionPlanSnapshot(resolvedSnapshot.id, {
+    date: date ?? toDateKey(new Date()),
+    replaceMeals
+  });
+  if (!applied) {
+    return { error: "Unable to apply nutrition plan snapshot." };
+  }
+
+  return {
+    success: true,
+    snapshot: applied.snapshot,
+    appliedDate: applied.appliedDate,
+    mealsCreated: applied.mealsCreated.length,
+    message: `Applied nutrition plan snapshot "${applied.snapshot.name}" to ${applied.appliedDate}.`
+  };
+}
+
+export function handleDeleteNutritionPlanSnapshot(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+):
+  | { success: true; deleted: true; snapshotId: string; snapshotName: string; message: string }
+  | { success: true; deleted: false; message: string }
+  | { error: string } {
+  const snapshots = store.getNutritionPlanSnapshots({ limit: 500 });
+  if (snapshots.length === 0) {
+    return {
+      success: true,
+      deleted: false,
+      message: "No nutrition plan snapshots exist yet."
+    };
+  }
+
+  const resolvedSnapshot = resolveNutritionPlanSnapshotTarget(store, args);
+  if ("error" in resolvedSnapshot) {
+    return resolvedSnapshot;
+  }
+
+  const deleted = store.deleteNutritionPlanSnapshot(resolvedSnapshot.id);
+  if (!deleted) {
+    return { error: "Unable to delete nutrition plan snapshot." };
+  }
+
+  return {
+    success: true,
+    deleted: true,
+    snapshotId: resolvedSnapshot.id,
+    snapshotName: resolvedSnapshot.name,
+    message: `Deleted nutrition plan snapshot "${resolvedSnapshot.name}".`
   };
 }
 
@@ -3276,7 +3508,6 @@ export interface PendingActionExecutionResult {
   deadline?: Deadline;
   lecture?: LectureEvent;
   routinePreset?: RoutinePreset;
-  journal?: JournalEntry;
   habit?: HabitWithStatus;
   goal?: GoalWithStatus;
 }
@@ -3916,24 +4147,6 @@ export function handleQueueUpdateRoutinePreset(
   };
 }
 
-export function handleCreateJournalEntry(
-  store: RuntimeStore,
-  args: Record<string, unknown> = {}
-): { success: true; entry: JournalEntry; message: string } | { error: string } {
-  const content = asTrimmedString(args.content);
-
-  if (!content) {
-    return { error: "content is required." };
-  }
-
-  const entry = store.recordJournalEntry(content);
-  return {
-    success: true,
-    entry,
-    message: "Journal entry saved."
-  };
-}
-
 export function executePendingChatAction(
   pendingAction: ChatPendingAction,
   store: RuntimeStore
@@ -4338,26 +4551,6 @@ export function executePendingChatAction(
         routinePreset
       };
     }
-    case "create-journal-draft": {
-      const content = asTrimmedString(pendingAction.payload.content);
-      if (!content) {
-        return {
-          actionId: pendingAction.id,
-          actionType: pendingAction.actionType,
-          success: false,
-          message: "Journal draft content is missing."
-        };
-      }
-
-      const journal = store.recordJournalEntry(content);
-      return {
-        actionId: pendingAction.id,
-        actionType: pendingAction.actionType,
-        success: true,
-        message: "Saved journal draft entry.",
-        journal
-      };
-    }
     case "create-habit": {
       const name = asTrimmedString(pendingAction.payload.name);
       if (!name) {
@@ -4674,6 +4867,18 @@ export function executeFunctionCall(
       break;
     case "getNutritionMeals":
       response = handleGetNutritionMeals(store, args);
+      break;
+    case "getNutritionPlanSnapshots":
+      response = handleGetNutritionPlanSnapshots(store, args);
+      break;
+    case "saveNutritionPlanSnapshot":
+      response = handleSaveNutritionPlanSnapshot(store, args);
+      break;
+    case "applyNutritionPlanSnapshot":
+      response = handleApplyNutritionPlanSnapshot(store, args);
+      break;
+    case "deleteNutritionPlanSnapshot":
+      response = handleDeleteNutritionPlanSnapshot(store, args);
       break;
     case "getNutritionCustomFoods":
       response = handleGetNutritionCustomFoods(store, args);

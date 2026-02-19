@@ -1,5 +1,5 @@
 import { GeminiClient } from "./gemini.js";
-import { AnalyticsCoachInsight, DailyJournalSummary, GrowthNarrativeVisual } from "./types.js";
+import { AnalyticsCoachInsight, DailyGrowthSummary, GrowthNarrativeVisual } from "./types.js";
 import { nowIso } from "./utils.js";
 
 const MAX_PROMPT_TEXT_LENGTH = 300;
@@ -12,14 +12,14 @@ function compact(value: string, maxLength = MAX_PROMPT_TEXT_LENGTH): string {
   return `${cleaned.slice(0, maxLength)}...`;
 }
 
-function buildDailyVisualPrompt(summary: DailyJournalSummary): string {
+function buildDailyVisualPrompt(summary: DailyGrowthSummary): string {
   const highlights = summary.highlights.slice(0, 3).map((item) => `- ${compact(item, 140)}`).join("\n");
   return `Create a vibrant digital illustration of Lucy's day as a growth journey.
 Tone: hopeful, focused, grounded.
 Style: modern editorial art, expressive lighting, rich colors, clean composition.
 Scene cues:
 - Reflection summary: ${compact(summary.summary)}
-- Signals: ${summary.chatMessageCount} chat notes, ${summary.journalEntryCount} journal entries
+- Signals: ${summary.chatMessageCount} chat notes, ${summary.reflectionEntryCount} reflection entries
 ${highlights ? `- Key highlights:\n${highlights}` : "- Key highlights: none"}
 
 Output requirements:
@@ -82,9 +82,9 @@ async function generateVisual(
 
 export async function maybeGenerateDailySummaryVisual(
   gemini: GeminiClient,
-  summary: DailyJournalSummary
+  summary: DailyGrowthSummary
 ): Promise<GrowthNarrativeVisual | undefined> {
-  if (summary.chatMessageCount + summary.journalEntryCount === 0) {
+  if (summary.chatMessageCount + summary.reflectionEntryCount === 0) {
     return undefined;
   }
   return generateVisual(gemini, buildDailyVisualPrompt(summary), "Daily growth reflection illustration");

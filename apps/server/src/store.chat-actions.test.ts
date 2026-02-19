@@ -10,14 +10,14 @@ describe("RuntimeStore - Pending Chat Actions", () => {
 
   it("creates and retrieves pending chat actions", () => {
     const action = store.createPendingChatAction({
-      actionType: "create-journal-draft",
-      summary: "Create journal draft from chat",
-      payload: { content: "Draft entry text" }
+      actionType: "create-habit",
+      summary: "Create habit from chat",
+      payload: { name: "Morning walk", cadence: "daily", targetPerWeek: 5 }
     });
 
     const byId = store.getPendingChatActionById(action.id);
     expect(byId?.id).toBe(action.id);
-    expect(byId?.actionType).toBe("create-journal-draft");
+    expect(byId?.actionType).toBe("create-habit");
     expect(store.getPendingChatActions()).toHaveLength(1);
   });
 

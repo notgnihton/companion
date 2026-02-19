@@ -4,7 +4,6 @@ import {
   handleGetSchedule,
   handleGetRoutinePresets,
   handleGetDeadlines,
-  handleSearchJournal,
   handleGetEmails,
   handleGetWithingsHealthSummary,
   handleGetSocialDigest,
@@ -39,7 +38,6 @@ import {
   handleQueueClearScheduleWindow,
   handleQueueCreateRoutinePreset,
   handleQueueUpdateRoutinePreset,
-  handleCreateJournalEntry,
   executePendingChatAction,
   executeFunctionCall
 } from "./gemini-tools.js";
@@ -54,8 +52,8 @@ describe("gemini-tools", () => {
   });
 
   describe("functionDeclarations", () => {
-    it("should define 37 function declarations", () => {
-      expect(functionDeclarations).toHaveLength(37);
+    it("should define 41 function declarations", () => {
+      expect(functionDeclarations).toHaveLength(41);
     });
 
     it("should include getSchedule function", () => {
@@ -335,34 +333,6 @@ describe("gemini-tools", () => {
       const result = handleGetDeadlines(store, { courseCode: "DAT520", daysAhead: 30 });
       expect(result).toHaveLength(1);
       expect(result[0]?.id).toBe(dat520.id);
-    });
-  });
-
-  describe("handleSearchJournal", () => {
-    it("should search journal entries by query", () => {
-      store.recordJournalEntry("Today I worked on distributed systems");
-      store.recordJournalEntry("Machine learning assignment completed");
-
-      const result = handleSearchJournal(store, { query: "distributed", limit: 10 });
-
-      expect(result.length).toBeGreaterThan(0);
-      expect(result[0]?.content).toContain("distributed");
-    });
-
-    it("should return recent entries when no query provided", () => {
-      store.recordJournalEntry("Entry 1");
-
-      const result = handleSearchJournal(store, { limit: 5 });
-      expect(result.length).toBeGreaterThan(0);
-    });
-
-    it("should respect limit parameter", () => {
-      for (let i = 0; i < 10; i++) {
-        store.recordJournalEntry(`Entry ${i}`);
-      }
-
-      const result = handleSearchJournal(store, { limit: 3 });
-      expect(result.length).toBeLessThanOrEqual(3);
     });
   });
 
@@ -1160,19 +1130,6 @@ describe("gemini-tools", () => {
       expect(updateResult.routinePreset.active).toBe(false);
     });
 
-    it("creates a journal entry immediately", () => {
-      const result = handleCreateJournalEntry(store, {
-        content: "Draft reflection about today's lab."
-      });
-
-      if (!("success" in result)) {
-        throw new Error("Expected success response for journal create");
-      }
-
-      expect(result.success).toBe(true);
-      expect(result.entry.content).toContain("Draft reflection");
-      expect(store.getPendingChatActions()).toHaveLength(0);
-    });
   });
 
   describe("executePendingChatAction", () => {

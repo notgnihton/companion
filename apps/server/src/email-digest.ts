@@ -54,7 +54,17 @@ export function buildDailyDigest(store: RuntimeStore, referenceDate: Date = new 
 
 export function buildWeeklyDigest(store: RuntimeStore, referenceDate: Date = new Date()): DigestContent {
   const summary = store.getWeeklySummary(referenceDate.toISOString());
-  const highlights = summary.journalHighlights.slice(0, 3);
+  const reflections = store
+    .getRecentChatMessages(200)
+    .filter(
+      (message) =>
+        message.role === "user" &&
+        message.content.trim().length > 0 &&
+        message.timestamp >= summary.windowStart &&
+        message.timestamp <= summary.windowEnd
+    )
+    .slice(-3)
+    .reverse();
 
   const bodyLines: string[] = [
     `Hi ${config.USER_NAME || "friend"},`,
@@ -62,8 +72,10 @@ export function buildWeeklyDigest(store: RuntimeStore, referenceDate: Date = new
     `Window: ${summary.windowStart} to ${summary.windowEnd}`,
     "",
     `Deadlines completed: ${summary.deadlinesCompleted}/${summary.deadlinesDue} (${summary.completionRate}%)`,
-    "Journal highlights:",
-    ...(highlights.length > 0 ? highlights.map((entry) => `- ${truncate(entry.content, 140)}`) : ["- No journal entries captured"]),
+    "Reflection highlights:",
+    ...(reflections.length > 0
+      ? reflections.map((message) => `- ${truncate(message.content, 140)}`)
+      : ["- No reflection messages captured"]),
     "Focus suggestions:",
     "- Carry over any overdue deadlines into this week",
     "- Plan two focused blocks for your toughest tasks"
