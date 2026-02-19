@@ -113,7 +113,7 @@ function parseMealItemDrafts(
     normalized.push({
       name: sourceFood.name,
       quantity: roundToTenth(amount),
-      unitLabel: "g",
+      unitLabel: sourceFood.unitLabel,
       caloriesPerUnit: sourceFood.caloriesPerUnit,
       proteinGramsPerUnit: sourceFood.proteinGramsPerUnit,
       carbsGramsPerUnit: sourceFood.carbsGramsPerUnit,
@@ -1226,7 +1226,7 @@ export function NutritionView(): JSX.Element {
 
     const payload = {
       name,
-      unitLabel: "g",
+      unitLabel: customFoodDraft.unitLabel || "g",
       caloriesPerUnit,
       proteinGramsPerUnit,
       carbsGramsPerUnit,
@@ -1252,7 +1252,7 @@ export function NutritionView(): JSX.Element {
     setEditingCustomFoodId(food.id);
     setCustomFoodDraft({
       name: food.name,
-      unitLabel: "g",
+      unitLabel: food.unitLabel || "g",
       proteinGramsPerUnit: String(food.proteinGramsPerUnit),
       carbsGramsPerUnit: String(food.carbsGramsPerUnit),
       fatGramsPerUnit: String(food.fatGramsPerUnit)
@@ -1519,7 +1519,7 @@ export function NutritionView(): JSX.Element {
                                 </select>
                               </label>
                               <label>
-                                Amount (g)
+                                Amount ({selectedFood?.unitLabel ?? "g"})
                                 <div className="nutrition-amount-control">
                                   <button
                                     type="button"
@@ -1562,8 +1562,8 @@ export function NutritionView(): JSX.Element {
                             </div>
                             {selectedFood && (
                               <p className="nutrition-item-meta">
-                                {selectedFood.caloriesPerUnit} kcal/g • {selectedFood.proteinGramsPerUnit}P/
-                                {selectedFood.carbsGramsPerUnit}C/{selectedFood.fatGramsPerUnit}F
+                                {selectedFood.caloriesPerUnit} kcal/{selectedFood.unitLabel} • {selectedFood.proteinGramsPerUnit}P/
+                                {selectedFood.carbsGramsPerUnit}C/{selectedFood.fatGramsPerUnit}F per {selectedFood.unitLabel}
                               </p>
                             )}
                             <div className="nutrition-inline-actions">
@@ -1626,10 +1626,21 @@ export function NutritionView(): JSX.Element {
                           required
                         />
                       </label>
-                    </div>
-                    <div className="nutrition-form-row">
                       <label>
-                        Protein / g
+                        Unit
+                        <select
+                          value={customFoodDraft.unitLabel}
+                          onChange={(event) => setCustomFoodDraft({ ...customFoodDraft, unitLabel: event.target.value })}
+                        >
+                          <option value="g">g (grams)</option>
+                          <option value="ml">ml (millilitres)</option>
+                          <option value="ea">ea (each/quantity)</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className="nutrition-form-row nutrition-form-row-3">
+                      <label>
+                        Protein / {customFoodDraft.unitLabel}
                         <input
                           type="number"
                           min={0}
@@ -1641,7 +1652,7 @@ export function NutritionView(): JSX.Element {
                         />
                       </label>
                       <label>
-                        Carbs / g
+                        Carbs / {customFoodDraft.unitLabel}
                         <input
                           type="number"
                           min={0}
@@ -1651,7 +1662,7 @@ export function NutritionView(): JSX.Element {
                         />
                       </label>
                       <label>
-                        Fat / g
+                        Fat / {customFoodDraft.unitLabel}
                         <input
                           type="number"
                           min={0}
@@ -1661,7 +1672,7 @@ export function NutritionView(): JSX.Element {
                         />
                       </label>
                     </div>
-                    <p className="nutrition-item-meta">Calories / g (auto): {formatPerUnitMetric(customFoodDraftCalories)} kcal</p>
+                    <p className="nutrition-item-meta">Calories / {customFoodDraft.unitLabel} (auto): {formatPerUnitMetric(customFoodDraftCalories)} kcal</p>
                     <button type="submit">{editingCustomFoodId ? "Update custom food" : "Save custom food"}</button>
                   </form>
 
@@ -1674,8 +1685,8 @@ export function NutritionView(): JSX.Element {
                           <div>
                             <p className="nutrition-item-title">{food.name}</p>
                             <p className="nutrition-item-meta">
-                              {formatPerUnitMetric(food.caloriesPerUnit)} kcal/g • {formatPerUnitMetric(food.proteinGramsPerUnit)}P/
-                              {formatPerUnitMetric(food.carbsGramsPerUnit)}C/{formatPerUnitMetric(food.fatGramsPerUnit)}F
+                              {formatPerUnitMetric(food.caloriesPerUnit)} kcal/{food.unitLabel} • {formatPerUnitMetric(food.proteinGramsPerUnit)}P/
+                              {formatPerUnitMetric(food.carbsGramsPerUnit)}C/{formatPerUnitMetric(food.fatGramsPerUnit)}F per {food.unitLabel}
                             </p>
                           </div>
                           <div className="nutrition-list-item-actions">
