@@ -27,4 +27,31 @@ describe("deadline eligibility", () => {
       })
     ).toBe(false);
   });
+
+  it("accepts DAT520 lab deadlines", () => {
+    expect(
+      isAssignmentOrExamDeadline({
+        course: "DAT520",
+        task: "Lab 3 submission",
+        canvasAssignmentId: undefined
+      })
+    ).toBe(true);
+    expect(
+      isAssignmentOrExamDeadline({
+        course: "DAT520",
+        task: "Laboratorium 4",
+        canvasAssignmentId: undefined
+      })
+    ).toBe(true);
+  });
+
+  it("keeps non-DAT520 labs out unless otherwise assignment/exam linked", () => {
+    expect(
+      isAssignmentOrExamDeadline({
+        course: "DAT560",
+        task: "Lab 3 submission",
+        canvasAssignmentId: undefined
+      })
+    ).toBe(false);
+  });
 });

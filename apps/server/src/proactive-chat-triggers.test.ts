@@ -107,7 +107,7 @@ describe("Proactive Chat Triggers", () => {
       const deadlineTime = new Date("2026-02-18T18:00:00"); // 32 hours away
       
       store.createDeadline({
-        task: "Assignment 3 submission",
+        task: "Lab 3 submission",
         course: "DAT520",
         dueDate: deadlineTime.toISOString(),
         priority: "high",
@@ -127,7 +127,7 @@ describe("Proactive Chat Triggers", () => {
       const deadlineTime = new Date("2026-02-18T18:00:00");
       
       const deadline = store.createDeadline({
-        task: "Assignment 3 submission",
+        task: "Lab 3 submission",
         course: "DAT520",
         dueDate: deadlineTime.toISOString(),
         priority: "high",
@@ -147,7 +147,7 @@ describe("Proactive Chat Triggers", () => {
       const deadlineTime = new Date("2026-02-20T18:00:00"); // 80+ hours away
       
       store.createDeadline({
-        task: "Assignment 4 submission",
+        task: "Lab 4 submission",
         course: "DAT520",
         dueDate: deadlineTime.toISOString(),
         priority: "high",
