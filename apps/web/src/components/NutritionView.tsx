@@ -437,11 +437,20 @@ function deltaToneClass(metric: DeltaMetric, value: number): string {
     fatGrams: 5,
     calories: 50
   };
+  const warningThresholdByMetric: Record<DeltaMetric, number> = {
+    proteinGrams: 15,
+    carbsGrams: 30,
+    fatGrams: 15,
+    calories: 150
+  };
 
   if (absoluteDelta <= closeThresholdByMetric[metric]) {
     return "nutrition-delta-positive";
   }
-  return "nutrition-delta-warning";
+  if (absoluteDelta <= warningThresholdByMetric[metric]) {
+    return "nutrition-delta-warning";
+  }
+  return "nutrition-delta-negative";
 }
 
 function stripMealItemId(item: NutritionMealItem): Omit<NutritionMealItem, "id"> {
