@@ -716,6 +716,36 @@ describe("chat service", () => {
     );
   });
 
+  it("injects runtime time and unread email status into system instruction", async () => {
+    const now = new Date("2026-02-18T15:30:00.000Z");
+    store.setGmailMessages(
+      [
+        {
+          id: "msg-new",
+          from: "canvas@instructure.com",
+          subject: "DAT560 deadline update",
+          snippet: "Assignment deadline was extended.",
+          receivedAt: "2026-02-18T14:45:00.000Z",
+          labels: ["INBOX", "UNREAD"],
+          isRead: false
+        }
+      ],
+      "2026-02-18T15:00:00.000Z"
+    );
+
+    await sendChatMessage(store, "anything new?", {
+      geminiClient: fakeGemini,
+      now,
+    });
+
+    const firstRequest = generateChatResponse.mock.calls[0][0] as { systemInstruction: string };
+    expect(firstRequest.systemInstruction).toContain("Runtime context for this turn:");
+    expect(firstRequest.systemInstruction).toContain("Current time reference:");
+    expect(firstRequest.systemInstruction).toContain("UTC now: 2026-02-18T15:30:00.000Z");
+    expect(firstRequest.systemInstruction).toContain("Email status: 1 unread (1 new in the last 24h).");
+    expect(firstRequest.systemInstruction).toContain("Newest unread: DAT560 deadline update");
+  });
+
   it("preserves markdown styling in assistant output", async () => {
     generateChatResponse = vi.fn(async () => ({
       text: "**OK**. Today's schedule includes:\n\n* **DAT520 Laboratorium /Lab** from 09:15 to 11:00\n* **DAT520 Forelesning /Lecture** from 11:15 to 13:00",

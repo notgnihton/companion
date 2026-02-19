@@ -771,7 +771,75 @@ function buildHabitGoalNudgeContext(store: RuntimeStore): string {
   ].join("\n");
 }
 
-function buildFunctionCallingSystemInstruction(userName: string, habitGoalNudge: string): string {
+function formatInTimeZone(
+  value: Date,
+  timezone: string,
+  options: Intl.DateTimeFormatOptions
+): string {
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone,
+      ...options
+    }).format(value);
+  } catch {
+    return value.toISOString();
+  }
+}
+
+function buildRuntimeContextNudge(store: RuntimeStore, now: Date): string {
+  const timezone = config.TIMEZONE || "UTC";
+  const isoNow = now.toISOString();
+  const localDate = formatInTimeZone(now, timezone, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "2-digit"
+  });
+  const localTime = formatInTimeZone(now, timezone, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+
+  const gmailData = store.getGmailData();
+  const unreadMessages = gmailData.messages
+    .filter((message) => !message.isRead)
+    .slice()
+    .sort((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt));
+  const unreadCount = unreadMessages.length;
+  const dayAgoMs = now.getTime() - 24 * 60 * 60 * 1000;
+  const unreadLast24h = unreadMessages.filter((message) => {
+    const receivedAtMs = Date.parse(message.receivedAt);
+    return Number.isFinite(receivedAtMs) && receivedAtMs >= dayAgoMs;
+  }).length;
+
+  const lines = [
+    `Current time reference:`,
+    `- Timezone: ${timezone}`,
+    `- Local date: ${localDate}`,
+    `- Local time: ${localTime}`,
+    `- UTC now: ${isoNow}`
+  ];
+
+  if (gmailData.messages.length === 0) {
+    lines.push("- Email status: Gmail not synced yet.");
+  } else {
+    lines.push(`- Email status: ${unreadCount} unread (${unreadLast24h} new in the last 24h).`);
+    const newestUnread = unreadMessages[0];
+    if (newestUnread) {
+      lines.push(`- Newest unread: ${newestUnread.subject} from ${newestUnread.from}.`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function buildFunctionCallingSystemInstruction(
+  userName: string,
+  habitGoalNudge: string,
+  runtimeContextNudge: string
+): string {
   return `You are Companion, a personal AI assistant for ${userName}, a university student at UiS (University of Stavanger).
 
 Core behavior:
@@ -802,6 +870,8 @@ Core behavior:
   - be fuller and reflective when the user wants to talk things through
 - For emotional or personal check-ins, respond with empathy first, then offer one helpful next question or step.
 - Mention priority only when it is high or critical. Do not explicitly call out medium priority unless the user asks.
+- Always use the runtime time reference provided below as the source of truth for "now", "today", "tomorrow", and all relative date/time language.
+- For broad status prompts ("what's new", "anything new", "quick update"), include new/unread email status when available.
 - Use only lightweight Markdown that the chat UI supports:
   - **bold** for key facts and warnings
   - *italic* for gentle emphasis
@@ -810,6 +880,9 @@ Core behavior:
 - Do not use HTML, tables, headings (#), blockquotes, or code fences.
 - If multiple intents are present, choose the smallest useful set of tools and then synthesize one clear answer.
 - Tool routing is model-driven: decide what tools to call based on the user request and tool descriptions.
+
+Runtime context for this turn:
+${runtimeContextNudge}
 
 Habit/goal context for this conversation:
 ${habitGoalNudge}`;
@@ -3267,7 +3340,11 @@ export async function sendChatMessage(
   let streamedTokenChars = 0;
   const contextWindow = "";
   const history = recentHistoryForIntent;
-  const systemInstruction = buildFunctionCallingSystemInstruction(config.USER_NAME, buildHabitGoalNudgeContext(store));
+  const systemInstruction = buildFunctionCallingSystemInstruction(
+    config.USER_NAME,
+    buildHabitGoalNudgeContext(store),
+    buildRuntimeContextNudge(store, now)
+  );
 
   const messages = toGeminiMessages(history, userInput, attachments);
   const userMessage = store.recordChatMessage("user", userInput, userMetadata);
