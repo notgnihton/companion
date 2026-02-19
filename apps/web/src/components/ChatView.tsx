@@ -1,6 +1,6 @@
 import { Fragment, ReactNode, useEffect, useRef, useState } from "react";
 import { sendChatMessageStream, getChatHistory } from "../lib/api";
-import { ChatCitation, ChatImageAttachment, ChatMessage, ChatPendingAction } from "../types";
+import { ChatCitation, ChatImageAttachment, ChatMessage, ChatMood, ChatPendingAction } from "../types";
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
   if (typeof window === "undefined") return null;
@@ -309,6 +309,7 @@ export function ChatView(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [expandedCitationMessageIds, setExpandedCitationMessageIds] = useState<Set<string>>(new Set());
   const [isListening, setIsListening] = useState(false);
+  const [chatMood, setChatMood] = useState<ChatMood>("neutral");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -316,6 +317,9 @@ export function ChatView(): JSX.Element {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
   const pendingInitialScrollRef = useRef(false);
+  const streamContentRef = useRef("");
+  const streamRafRef = useRef<number | null>(null);
+  const streamPlaceholderIdRef = useRef<string | null>(null);
 
   const recognitionCtor = getSpeechRecognitionCtor();
   const speechRecognitionSupported = Boolean(recognitionCtor);
@@ -352,6 +356,11 @@ export function ChatView(): JSX.Element {
         const response = await getChatHistory();
         pendingInitialScrollRef.current = true;
         setMessages(response.history.messages);
+        // Restore mood from most recent assistant message
+        const lastAssistant = [...response.history.messages].reverse().find((m) => m.role === "assistant");
+        if (lastAssistant?.metadata?.mood) {
+          setChatMood(lastAssistant.metadata.mood);
+        }
       } catch (err) {
         setError("Failed to load chat history");
         console.error(err);
@@ -484,7 +493,8 @@ export function ChatView(): JSX.Element {
     }
 
     try {
-      let streamedContent = "";
+      streamContentRef.current = "";
+      streamPlaceholderIdRef.current = assistantPlaceholder.id;
       const response = await sendChatMessageStream(
         trimmedText,
         {
@@ -492,19 +502,34 @@ export function ChatView(): JSX.Element {
             if (delta.length === 0) {
               return;
             }
-            streamedContent += delta;
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === assistantPlaceholder.id
-                  ? { ...msg, content: streamedContent, streaming: true }
-                  : msg
-              )
-            );
-            scheduleScrollToBottom("auto");
+            streamContentRef.current += delta;
+            if (streamRafRef.current === null) {
+              streamRafRef.current = requestAnimationFrame(() => {
+                streamRafRef.current = null;
+                const content = streamContentRef.current;
+                const placeholderId = streamPlaceholderIdRef.current;
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === placeholderId
+                      ? { ...msg, content, streaming: true }
+                      : msg
+                  )
+                );
+                scheduleScrollToBottom("auto");
+              });
+            }
           }
         },
         attachmentsToSend
       );
+      // Cancel any pending rAF frame before final commit
+      if (streamRafRef.current !== null) {
+        cancelAnimationFrame(streamRafRef.current);
+        streamRafRef.current = null;
+      }
+      if (response.metadata?.mood) {
+        setChatMood(response.metadata.mood);
+      }
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantPlaceholder.id ? { ...response, streaming: false } : msg
@@ -643,7 +668,7 @@ export function ChatView(): JSX.Element {
   ];
 
   return (
-    <div className="chat-view">
+    <div className={`chat-view chat-mood-${chatMood}`}>
       <div className="chat-messages" ref={messagesContainerRef}>
         {messages.length === 0 && (
           <div className="chat-welcome">

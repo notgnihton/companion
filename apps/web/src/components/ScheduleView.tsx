@@ -1,30 +1,6 @@
 import { useEffect, useState } from "react";
 import { getDeadlines, getSchedule, getScheduleSuggestionMutes } from "../lib/api";
 import { Deadline, LectureEvent, ScheduleSuggestionMute } from "../types";
-import { loadDeadlines, loadSchedule, loadScheduleCachedAt } from "../lib/storage";
-
-const SCHEDULE_STALE_MS = 12 * 60 * 60 * 1000;
-
-function formatCachedLabel(cachedAt: string | null): string {
-  if (!cachedAt) {
-    return "No cached snapshot yet";
-  }
-
-  const timestamp = new Date(cachedAt);
-  if (Number.isNaN(timestamp.getTime())) {
-    return "Cached snapshot time unavailable";
-  }
-
-  return `Cached ${timestamp.toLocaleString(undefined, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false
-  })}`;
-}
 
 interface DayTimelineSegment {
   type: "event" | "planned";
@@ -235,24 +211,25 @@ interface ScheduleViewProps {
 }
 
 export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element {
-  const [schedule, setSchedule] = useState<LectureEvent[]>(() => loadSchedule());
-  const [deadlines, setDeadlines] = useState<Deadline[]>(() => loadDeadlines());
+  const [schedule, setSchedule] = useState<LectureEvent[]>([]);
+  const [deadlines, setDeadlines] = useState<Deadline[]>([]);
   const [suggestionMutes, setSuggestionMutes] = useState<ScheduleSuggestionMute[]>([]);
-  const [cachedAt, setCachedAt] = useState<string | null>(() => loadScheduleCachedAt());
+  const [loading, setLoading] = useState(true);
   const [isOnline, setIsOnline] = useState<boolean>(() => navigator.onLine);
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async (): Promise<void> => {
     setRefreshing(true);
-    const [refreshedSchedule, refreshedDeadlines, refreshedSuggestionMutes] = await Promise.all([
-      getSchedule(),
-      getDeadlines(),
-      getScheduleSuggestionMutes(new Date())
-    ]);
-    setSchedule(refreshedSchedule);
-    setDeadlines(refreshedDeadlines);
-    setSuggestionMutes(refreshedSuggestionMutes);
-    setCachedAt(loadScheduleCachedAt());
+    try {
+      const [refreshedSchedule, refreshedDeadlines, refreshedSuggestionMutes] = await Promise.all([
+        getSchedule(),
+        getDeadlines(),
+        getScheduleSuggestionMutes(new Date())
+      ]);
+      setSchedule(refreshedSchedule);
+      setDeadlines(refreshedDeadlines);
+      setSuggestionMutes(refreshedSuggestionMutes);
+    } catch { /* keep current state */ }
     setRefreshing(false);
   };
 
@@ -260,17 +237,19 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
     let disposed = false;
 
     const load = async (): Promise<void> => {
-      const [nextSchedule, nextDeadlines, nextSuggestionMutes] = await Promise.all([
-        getSchedule(),
-        getDeadlines(),
-        getScheduleSuggestionMutes(new Date())
-      ]);
-      if (!disposed) {
-        setSchedule(nextSchedule);
-        setDeadlines(nextDeadlines);
-        setSuggestionMutes(nextSuggestionMutes);
-        setCachedAt(loadScheduleCachedAt());
-      }
+      try {
+        const [nextSchedule, nextDeadlines, nextSuggestionMutes] = await Promise.all([
+          getSchedule(),
+          getDeadlines(),
+          getScheduleSuggestionMutes(new Date())
+        ]);
+        if (!disposed) {
+          setSchedule(nextSchedule);
+          setDeadlines(nextDeadlines);
+          setSuggestionMutes(nextSuggestionMutes);
+        }
+      } catch { /* remain in loading state */ }
+      if (!disposed) setLoading(false);
     };
 
     const handleOnline = (): void => setIsOnline(true);
@@ -350,8 +329,6 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
   const sortedSchedule = [...schedule].sort((a, b) => 
     new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
   );
-  const cacheAgeMs = cachedAt ? Date.now() - new Date(cachedAt).getTime() : Number.POSITIVE_INFINITY;
-  const isStale = Number.isFinite(cacheAgeMs) && cacheAgeMs > SCHEDULE_STALE_MS;
   const pendingDeadlines = deadlines.filter((deadline) => !deadline.completed);
   const deadlineSuggestions = pendingDeadlines
     .map((deadline) => ({
@@ -381,8 +358,7 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
         <span className={`cache-status-chip ${isOnline ? "cache-status-chip-online" : "cache-status-chip-offline"}`}>
           {isOnline ? "Online" : "Offline"}
         </span>
-        <span className="cache-status-chip">{formatCachedLabel(cachedAt)}</span>
-        {isStale && <span className="cache-status-chip cache-status-chip-stale">Stale snapshot</span>}
+        {loading && <span className="cache-status-chip">Loading...</span>}
       </div>
       <p className="schedule-workload-context">
         {pendingDeadlines.length} pending deadline{pendingDeadlines.length === 1 ? "" : "s"}

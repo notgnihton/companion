@@ -2,14 +2,13 @@ import { useEffect, useState } from "react";
 import {
   deleteGoal,
   deleteHabit,
-  getDailyJournalSummary,
+  getDailyGrowthSummary,
   getGoals,
   getHabits,
   updateGoal,
   updateHabit
 } from "../lib/api";
-import { loadGoals, loadHabits, saveGoals, saveHabits } from "../lib/storage";
-import { Goal, Habit, CheckInDay, DailyJournalSummary } from "../types";
+import { Goal, Habit, CheckInDay, DailyGrowthSummary } from "../types";
 import { hapticSuccess } from "../lib/haptics";
 
 interface BusyState {
@@ -78,9 +77,9 @@ function ProgressLabel({ streak, completionRate }: { streak: number; completionR
 }
 
 export function HabitsGoalsView(): JSX.Element {
-  const [habits, setHabits] = useState<Habit[]>(() => loadHabits());
-  const [goals, setGoals] = useState<Goal[]>(() => loadGoals());
-  const [dailySummary, setDailySummary] = useState<DailyJournalSummary | null>(null);
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [dailySummary, setDailySummary] = useState<DailyGrowthSummary | null>(null);
   const [habitMessage, setHabitMessage] = useState("");
   const [goalMessage, setGoalMessage] = useState("");
   const [summaryMessage, setSummaryMessage] = useState("");
@@ -94,7 +93,7 @@ export function HabitsGoalsView(): JSX.Element {
   const refreshSummary = async (): Promise<void> => {
     setSummaryLoading(true);
     setSummaryMessage("");
-    const nextSummary = await getDailyJournalSummary({ forceRefresh: true });
+    const nextSummary = await getDailyGrowthSummary({ forceRefresh: true });
     if (nextSummary) {
       setDailySummary(nextSummary);
     } else {
@@ -108,7 +107,7 @@ export function HabitsGoalsView(): JSX.Element {
 
     const sync = async (): Promise<void> => {
       try {
-        const [habitData, goalData, summaryData] = await Promise.all([getHabits(), getGoals(), getDailyJournalSummary()]);
+        const [habitData, goalData, summaryData] = await Promise.all([getHabits(), getGoals(), getDailyGrowthSummary()]);
         if (!disposed) {
           setHabits(habitData);
           setGoals(goalData);
@@ -179,7 +178,6 @@ export function HabitsGoalsView(): JSX.Element {
 
     const nextHabits = habits.map((habit) => (habit.id === habitId ? updated : habit));
     setHabits(nextHabits);
-    saveHabits(nextHabits);
     cancelHabitEdit();
     hapticSuccess();
     setBusy(null);
@@ -202,7 +200,6 @@ export function HabitsGoalsView(): JSX.Element {
 
     const nextHabits = habits.filter((existing) => existing.id !== habit.id);
     setHabits(nextHabits);
-    saveHabits(nextHabits);
     if (editingHabitId === habit.id) {
       cancelHabitEdit();
     }
@@ -258,7 +255,6 @@ export function HabitsGoalsView(): JSX.Element {
 
     const nextGoals = goals.map((goal) => (goal.id === goalId ? updated : goal));
     setGoals(nextGoals);
-    saveGoals(nextGoals);
     cancelGoalEdit();
     hapticSuccess();
     setBusy(null);
@@ -281,7 +277,6 @@ export function HabitsGoalsView(): JSX.Element {
 
     const nextGoals = goals.filter((existing) => existing.id !== goal.id);
     setGoals(nextGoals);
-    saveGoals(nextGoals);
     if (editingGoalId === goal.id) {
       cancelGoalEdit();
     }
@@ -592,7 +587,7 @@ export function HabitsGoalsView(): JSX.Element {
               </figure>
             )}
             <p className="daily-summary-meta">
-              {dailySummary.chatMessageCount} chat notes • {dailySummary.journalEntryCount} journal entries
+              {dailySummary.chatMessageCount} chat notes
             </p>
             <p className="daily-summary-text">{dailySummary.summary}</p>
             {dailySummary.highlights.length > 0 && (

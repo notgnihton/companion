@@ -1,7 +1,7 @@
 {
   "name": "Companion",
   "short_name": "Companion",
-  "description": "Personal AI companion – schedule, deadlines & journaling",
+  "description": "Personal AI companion – schedule, deadlines, growth and food",
   "start_url": "/companion/",
   "scope": "/companion/",
   "display": "standalone",

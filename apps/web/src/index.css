@@ -1798,6 +1798,32 @@ button:disabled {
   border-radius: 16px;
   overflow: hidden;
   position: relative;
+  transition: background 1.2s ease;
+}
+
+/* Chat mood backgrounds — subtle gradient shifts driven by Gemini response tone */
+.chat-view.chat-mood-neutral {
+  background: var(--surface-soft);
+}
+
+.chat-view.chat-mood-encouraging {
+  background: linear-gradient(160deg, rgba(125, 211, 168, 0.08) 0%, var(--surface-soft) 60%);
+}
+
+.chat-view.chat-mood-focused {
+  background: linear-gradient(160deg, rgba(100, 160, 240, 0.08) 0%, var(--surface-soft) 60%);
+}
+
+.chat-view.chat-mood-celebratory {
+  background: linear-gradient(160deg, rgba(246, 195, 127, 0.10) 0%, rgba(125, 211, 168, 0.06) 50%, var(--surface-soft) 100%);
+}
+
+.chat-view.chat-mood-empathetic {
+  background: linear-gradient(160deg, rgba(180, 140, 220, 0.08) 0%, var(--surface-soft) 60%);
+}
+
+.chat-view.chat-mood-urgent {
+  background: linear-gradient(160deg, rgba(255, 138, 128, 0.08) 0%, var(--surface-soft) 60%);
 }
 
 .app-shell-chat-active .chat-view {

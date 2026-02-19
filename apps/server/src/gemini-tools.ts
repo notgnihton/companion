@@ -1176,6 +1176,20 @@ export const functionDeclarations: FunctionDeclaration[] = [
       },
       required: []
     }
+  },
+  {
+    name: "setResponseMood",
+    description: "Set the emotional mood/tone for this response. Call this alongside other tools to reflect the appropriate emotional context. Only call when you are already invoking other tools — do not call on its own.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        mood: {
+          type: SchemaType.STRING,
+          description: "The mood that best fits the emotional tone of this interaction. One of: neutral, encouraging, focused, celebratory, empathetic, urgent."
+        }
+      },
+      required: ["mood"]
+    }
   }
 ];
 
@@ -5071,6 +5085,9 @@ export function executeFunctionCall(
       break;
     case "queueUpdateRoutinePreset":
       response = handleQueueUpdateRoutinePreset(store, args);
+      break;
+    case "setResponseMood":
+      response = { mood: typeof args.mood === "string" ? args.mood : "neutral" };
       break;
     default:
       throw new Error(`Unknown function: ${name}`);

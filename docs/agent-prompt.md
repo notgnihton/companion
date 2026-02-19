@@ -7,11 +7,11 @@ You are helping build Companion, a personal AI companion PWA for a university st
 
 The user talks to it throughout the day. It knows their lecture schedule (from TP EduCloud),
 assignments and grades (from Canvas LMS), and uses Google Gemini to have natural, contextual
-conversations. It sends push notifications to iPhone and supports journaling, habit tracking,
-and focus sessions.
+conversations. It sends push notifications to iPhone and supports habit tracking,
+food planning, and focus sessions.
 
 The chat interface is the primary view. Every AI response is grounded in real data —
-the user's actual schedule, deadlines, Canvas data, and journal history.
+the user's actual schedule, deadlines, Canvas data, and growth signals.
 
 Context:
 - Frontend: React + Vite PWA (`apps/web`) — mobile-first, chat-centric

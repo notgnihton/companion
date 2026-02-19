@@ -91,6 +91,8 @@ export interface ChatImageAttachment {
   fileName?: string;
 }
 
+export type ChatMood = "neutral" | "encouraging" | "focused" | "celebratory" | "empathetic" | "urgent";
+
 export interface ChatMessageMetadata {
   contextWindow?: string;
   finishReason?: string;
@@ -103,6 +105,7 @@ export interface ChatMessageMetadata {
   actionExecution?: ChatActionExecution;
   citations?: ChatCitation[];
   attachments?: ChatImageAttachment[];
+  mood?: ChatMood;
 }
 
 export interface ChatMessage {

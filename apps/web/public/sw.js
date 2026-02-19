@@ -109,7 +109,7 @@ function resolveNotificationTargetUrl(data, action) {
   }
 
   if (source === "notes") {
-    return "/companion/?tab=journal";
+    return "/companion/?tab=habits";
   }
 
   if (source === "orchestrator") {
@@ -153,7 +153,6 @@ async function syncOperations() {
   try {
     // Get sync queue from localStorage
     const syncQueueRaw = await getFromIndexedDB("companion:sync-queue");
-    const journalQueueRaw = await getFromIndexedDB("companion:journal-queue");
 
     // Process sync queue
     if (syncQueueRaw) {
@@ -174,29 +173,6 @@ async function syncOperations() {
           // Will retry on next sync event
           console.error("Sync failed for item:", item.id, error);
         }
-      }
-    }
-
-    // Process journal queue
-    if (journalQueueRaw) {
-      const journalQueue = JSON.parse(journalQueueRaw);
-      if (journalQueue.length > 0) {
-        const entries = journalQueue.map((item) => ({
-          clientEntryId: item.clientEntryId,
-          content: item.content,
-          timestamp: item.timestamp,
-          baseVersion: item.baseVersion,
-          tags: item.tags,
-          photos: item.photos
-        }));
-
-        await fetch("/companion/api/journal/sync", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ entries })
-        });
       }
     }
 

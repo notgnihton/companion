@@ -26,7 +26,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps): JSX.Element
       </header>
       <p>Onboarding uses defaults and starts immediately.</p>
       <p className="muted">Timezone defaults to Norway (`Europe/Oslo`) and nudge tone defaults to balanced.</p>
-      <form className="journal-input-form" onSubmit={handleContinue}>
+      <form className="onboarding-form" onSubmit={handleContinue}>
         <button type="submit">
           Start using Companion
         </button>

@@ -1,15 +1,9 @@
 import { useMemo, useState } from "react";
 import { applyCalendarImport, previewCalendarImport } from "../lib/api";
-import { loadDeadlines, loadSchedule, saveDeadlines, saveSchedule } from "../lib/storage";
-import { CalendarImportPayload, CalendarImportPreview, CalendarImportResult, Deadline, LectureEvent } from "../types";
+import { CalendarImportPayload, CalendarImportPreview, CalendarImportResult } from "../types";
 
 interface CalendarImportViewProps {
   onImported?: () => void;
-}
-
-function mergeById<T extends { id: string }>(existing: T[], imported: T[]): T[] {
-  const importedIds = new Set(imported.map((item) => item.id));
-  return [...imported, ...existing.filter((item) => !importedIds.has(item.id))];
 }
 
 export function CalendarImportView({ onImported }: CalendarImportViewProps): JSX.Element {
@@ -66,7 +60,6 @@ export function CalendarImportView({ onImported }: CalendarImportViewProps): JSX
       const response = await applyCalendarImport(payload);
       setResult(response);
       setPreview(null);
-      persistImportedRecords(response.lectures, response.deadlines);
       onImported?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Calendar import failed.");
@@ -157,12 +150,4 @@ export function CalendarImportView({ onImported }: CalendarImportViewProps): JSX
       )}
     </section>
   );
-}
-
-function persistImportedRecords(lectures: LectureEvent[], deadlines: Deadline[]): void {
-  const currentSchedule = loadSchedule();
-  const currentDeadlines = loadDeadlines();
-
-  saveSchedule(mergeById(currentSchedule, lectures));
-  saveDeadlines(mergeById(currentDeadlines, deadlines));
 }

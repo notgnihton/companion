@@ -2,15 +2,12 @@ import { useEffect, useState } from "react";
 import { confirmDeadlineStatus, getDeadlines } from "../lib/api";
 import { hapticSuccess } from "../lib/haptics";
 import { Deadline } from "../types";
-import { loadDeadlines, loadDeadlinesCachedAt, saveDeadlines } from "../lib/storage";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "./PullToRefreshIndicator";
 
 interface DeadlineListProps {
   focusDeadlineId?: string;
 }
-
-const DEADLINE_STALE_MS = 12 * 60 * 60 * 1000;
 
 function normalizeDueDateInput(dueDate: string): string {
   const trimmed = dueDate.trim();
@@ -29,30 +26,9 @@ function formatDeadlineTaskLabel(task: string): string {
   return task.replace(/^Assignment\s+Lab\b/i, "Lab");
 }
 
-function formatCachedLabel(cachedAt: string | null): string {
-  if (!cachedAt) {
-    return "No cached snapshot yet";
-  }
-
-  const timestamp = new Date(cachedAt);
-  if (Number.isNaN(timestamp.getTime())) {
-    return "Cached snapshot time unavailable";
-  }
-
-  return `Cached ${timestamp.toLocaleString(undefined, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false
-  })}`;
-}
-
 export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Element {
-  const [deadlines, setDeadlines] = useState<Deadline[]>(() => loadDeadlines());
-  const [cachedAt, setCachedAt] = useState<string | null>(() => loadDeadlinesCachedAt());
+  const [deadlines, setDeadlines] = useState<Deadline[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isOnline, setIsOnline] = useState<boolean>(() => navigator.onLine);
   const [syncMessage, setSyncMessage] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -60,11 +36,12 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
 
   const handleRefresh = async (): Promise<void> => {
     setRefreshing(true);
-    const next = await getDeadlines();
-    setDeadlines(next);
-    setCachedAt(loadDeadlinesCachedAt());
-    setSyncMessage("Deadlines refreshed");
-    setTimeout(() => setSyncMessage(""), 2000);
+    try {
+      const next = await getDeadlines();
+      setDeadlines(next);
+      setSyncMessage("Deadlines refreshed");
+      setTimeout(() => setSyncMessage(""), 2000);
+    } catch { /* keep current state */ }
     setRefreshing(false);
   };
 
@@ -77,11 +54,13 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
     let disposed = false;
 
     const load = async (): Promise<void> => {
-      const next = await getDeadlines();
-      if (!disposed) {
-        setDeadlines(next);
-        setCachedAt(loadDeadlinesCachedAt());
-      }
+      try {
+        const next = await getDeadlines();
+        if (!disposed) {
+          setDeadlines(next);
+        }
+      } catch { /* remain empty */ }
+      if (!disposed) setLoading(false);
     };
 
     const handleOnline = (): void => setIsOnline(true);
@@ -159,15 +138,11 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
     const before = deadlines;
     const optimistic = deadlines.map((deadline) => (deadline.id === id ? { ...deadline, completed } : deadline));
     setDeadlines(optimistic);
-    saveDeadlines(optimistic);
-    setCachedAt(loadDeadlinesCachedAt());
 
     const confirmation = await confirmDeadlineStatus(id, completed);
 
     if (!confirmation) {
       setDeadlines(before);
-      saveDeadlines(before);
-      setCachedAt(loadDeadlinesCachedAt());
       setSyncMessage("Could not sync deadline status right now.");
       setUpdatingId(null);
       return false;
@@ -177,8 +152,6 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
       deadline.id === confirmation.deadline.id ? confirmation.deadline : deadline
     );
     setDeadlines(synced);
-    saveDeadlines(synced);
-    setCachedAt(loadDeadlinesCachedAt());
     if (completed) {
       hapticSuccess();
     }
@@ -191,8 +164,6 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
     if (a.completed !== b.completed) return a.completed ? 1 : -1;
     return dueTimestamp(a.dueDate) - dueTimestamp(b.dueDate);
   });
-  const cacheAgeMs = cachedAt ? Date.now() - new Date(cachedAt).getTime() : Number.POSITIVE_INFINITY;
-  const isStale = Number.isFinite(cacheAgeMs) && cacheAgeMs > DEADLINE_STALE_MS;
 
   const activeCount = deadlines.filter((deadline) => !deadline.completed).length;
 
@@ -211,8 +182,7 @@ export function DeadlineList({ focusDeadlineId }: DeadlineListProps): JSX.Elemen
         <span className={`cache-status-chip ${isOnline ? "cache-status-chip-online" : "cache-status-chip-offline"}`}>
           {isOnline ? "Online" : "Offline"}
         </span>
-        <span className="cache-status-chip">{formatCachedLabel(cachedAt)}</span>
-        {isStale && <span className="cache-status-chip cache-status-chip-stale">Stale snapshot</span>}
+        {loading && <span className="cache-status-chip">Loading...</span>}
       </div>
       {syncMessage && <p className="deadline-sync-status">{syncMessage}</p>}
 

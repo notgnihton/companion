@@ -5,7 +5,7 @@ import {
   getStudyPlanAdherence,
   getStudyPlanSessions
 } from "../lib/api";
-import { loadStudyPlanCache, loadStudyPlanCachedAt } from "../lib/storage";
+
 import {
   StudyPlan,
   StudyPlanAdherenceMetrics,
@@ -34,34 +34,13 @@ interface SessionCheckInDraft {
   checkInNote: string;
 }
 
+const CHECK_IN_SCALE_VALUES = [1, 2, 3, 4, 5] as const;
+
 const defaultControls: Required<StudyPlanGeneratePayload> = {
   horizonDays: 7,
   minSessionMinutes: 45,
   maxSessionMinutes: 120
 };
-const STUDY_PLAN_STALE_MS = 24 * 60 * 60 * 1000;
-const CHECK_IN_SCALE_VALUES = [1, 2, 3, 4, 5] as const;
-
-function formatCachedLabel(cachedAt: string | null): string {
-  if (!cachedAt) {
-    return "No cached snapshot yet";
-  }
-
-  const timestamp = new Date(cachedAt);
-  if (Number.isNaN(timestamp.getTime())) {
-    return "Cached snapshot time unavailable";
-  }
-
-  return `Cached ${timestamp.toLocaleString(undefined, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false
-  })}`;
-}
 
 function formatTime(value: string): string {
   return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -104,13 +83,12 @@ function buildSessionLookup(sessions: StudyPlanSessionRecord[]): Record<string, 
 }
 
 export function StudyPlanView(): JSX.Element {
-  const [plan, setPlan] = useState<StudyPlan | null>(() => loadStudyPlanCache());
-  const [cachedAt, setCachedAt] = useState<string | null>(() => loadStudyPlanCachedAt());
+  const [plan, setPlan] = useState<StudyPlan | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(() => navigator.onLine);
   const [sessionLookup, setSessionLookup] = useState<Record<string, StudyPlanSessionRecord>>({});
   const [adherence, setAdherence] = useState<StudyPlanAdherenceMetrics | null>(null);
   const [controls, setControls] = useState(defaultControls);
-  const [loading, setLoading] = useState<boolean>(() => loadStudyPlanCache() === null);
+  const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [updatingSessionId, setUpdatingSessionId] = useState<string | null>(null);
   const [activeCheckIn, setActiveCheckIn] = useState<SessionCheckInDraft | null>(null);
@@ -123,7 +101,6 @@ export function StudyPlanView(): JSX.Element {
     try {
       const nextPlan = await generateStudyPlan(nextControls);
       setPlan(nextPlan);
-      setCachedAt(loadStudyPlanCachedAt());
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Failed to generate study plan.";
       setError(message);
@@ -345,8 +322,6 @@ export function StudyPlanView(): JSX.Element {
     setSessionMessage("Session skipped and plan regenerated.");
   };
 
-  const cacheAgeMs = cachedAt ? Date.now() - new Date(cachedAt).getTime() : Number.POSITIVE_INFINITY;
-  const isStale = Number.isFinite(cacheAgeMs) && cacheAgeMs > STUDY_PLAN_STALE_MS;
   const unallocatedMinutes = plan ? plan.unallocated.reduce((sum, item) => sum + item.remainingMinutes, 0) : 0;
   const totalEstimatedMinutes = plan ? plan.summary.totalPlannedMinutes + unallocatedMinutes : 0;
 
@@ -362,8 +337,7 @@ export function StudyPlanView(): JSX.Element {
         <span className={`cache-status-chip ${isOnline ? "cache-status-chip-online" : "cache-status-chip-offline"}`}>
           {isOnline ? "Online" : "Offline"}
         </span>
-        <span className="cache-status-chip">{formatCachedLabel(cachedAt)}</span>
-        {isStale && <span className="cache-status-chip cache-status-chip-stale">Stale snapshot</span>}
+        {loading && <span className="cache-status-chip">Loading...</span>}
       </div>
 
       <form id="study-plan-controls" className="study-plan-controls" onSubmit={(event) => void handleSubmit(event)}>

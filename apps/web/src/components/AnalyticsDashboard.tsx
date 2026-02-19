@@ -53,7 +53,7 @@ export function AnalyticsDashboard(): JSX.Element {
     return [
       `${insight.metrics.deadlinesCompleted}/${insight.metrics.deadlinesDue} deadlines completed`,
       `${insight.metrics.averageHabitCompletion7d}% average habit completion (7d)`,
-      `${insight.metrics.journalEntries + insight.metrics.userReflections} reflection signals`
+      `${insight.metrics.reflectionEntries + insight.metrics.userReflections} reflection signals`
     ];
   }, [insight]);
 

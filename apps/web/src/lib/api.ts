@@ -18,10 +18,9 @@ import {
   NutritionDailySummary,
   NutritionMealItem,
   NutritionMeal,
+  NutritionPlanSnapshot,
   NutritionTargetProfile,
   DeadlineStatusConfirmation,
-  JournalEntry,
-  JournalSyncPayload,
   NotificationInteraction,
   NotificationPreferences,
   SendChatMessageRequest,
@@ -30,7 +29,6 @@ import {
   GetChatHistoryResponse,
   AuthUser,
   UserContext,
-  WeeklySummary,
   SyncQueueStatus,
   CanvasSettings,
   CanvasStatus,
@@ -45,27 +43,17 @@ import {
   SocialMediaFeed,
   SocialMediaSyncResult,
   ContentRecommendationsResponse,
-  DailyJournalSummary,
+  DailyGrowthSummary,
   AnalyticsCoachInsight
 } from "../types";
 import {
-  JournalQueueItem,
   SyncQueueItem,
   enqueueSyncOperation,
   loadCanvasSettings,
   loadCanvasStatus,
   loadContext,
-  loadDashboard,
-  loadDeadlines,
-  loadSchedule,
-  loadSocialMediaCache,
-  loadStudyPlanCache,
-  loadGoals,
-  loadHabits,
-  loadJournalEntries,
   loadNotificationPreferences,
   loadSyncQueue,
-  removeJournalQueueItem,
   removeSyncQueueItem,
   saveCanvasSettings,
   saveCanvasStatus,
@@ -73,14 +61,6 @@ import {
   loadAuthToken,
   saveAuthToken,
   saveContext,
-  saveDashboard,
-  saveDeadlines,
-  saveSchedule,
-  saveSocialMediaCache,
-  saveStudyPlanCache,
-  saveGoals,
-  saveHabits,
-  saveJournalEntries,
   saveNotificationPreferences
 } from "./storage";
 import { apiUrl } from "./config";
@@ -157,29 +137,6 @@ async function jsonOrThrow<T>(input: RequestInfo | URL, init?: RequestInit): Pro
   return JSON.parse(body) as T;
 }
 
-function normalizeJournalEntry(entry: JournalEntry): JournalEntry {
-  return {
-    ...entry,
-    text: entry.text ?? entry.content,
-    photos: entry.photos ?? []
-  };
-}
-
-function saveMergedJournalEntry(entry: JournalEntry): void {
-  const normalized = normalizeJournalEntry(entry);
-  const existing = loadJournalEntries();
-  const byClientId = new Map<string, JournalEntry>();
-
-  existing.forEach((item) => {
-    byClientId.set(item.clientEntryId ?? item.id, normalizeJournalEntry(item));
-  });
-  byClientId.set(normalized.clientEntryId ?? normalized.id, normalized);
-
-  saveJournalEntries(
-    Array.from(byClientId.values()).sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-  );
-}
-
 export interface SyncableMutationResult<T> {
   item: T | null;
   queued: boolean;
@@ -220,13 +177,7 @@ export async function logout(): Promise<void> {
 }
 
 export async function getDashboard(): Promise<DashboardSnapshot> {
-  try {
-    const snapshot = await jsonOrThrow<DashboardSnapshot>("/api/dashboard");
-    saveDashboard(snapshot);
-    return snapshot;
-  } catch {
-    return loadDashboard();
-  }
+  return await jsonOrThrow<DashboardSnapshot>("/api/dashboard");
 }
 
 export async function updateContext(payload: Partial<UserContext>): Promise<{ context: UserContext }> {
@@ -246,44 +197,7 @@ export async function updateContext(payload: Partial<UserContext>): Promise<{ co
   }
 }
 
-export async function submitJournalEntry(
-  content: string,
-  clientEntryId: string,
-  tags?: string[],
-  photos?: JournalSyncPayload["photos"]
-): Promise<JournalEntry | null> {
-  try {
-    const response = await jsonOrThrow<{ entry: JournalEntry }>("/api/journal", {
-      method: "POST",
-      body: JSON.stringify({ content, clientEntryId, tags, photos })
-    });
-    saveMergedJournalEntry(response.entry);
-    return normalizeJournalEntry(response.entry);
-  } catch {
-    return null;
-  }
-}
-
-export async function getJournalEntries(limit?: number): Promise<JournalEntry[] | null> {
-  const params = new URLSearchParams();
-  if (typeof limit === "number" && Number.isFinite(limit) && limit > 0) {
-    params.set("limit", String(Math.round(limit)));
-  }
-
-  const query = params.toString();
-  const endpoint = query ? `/api/journal?${query}` : "/api/journal";
-
-  try {
-    const response = await jsonOrThrow<{ entries: JournalEntry[] }>(endpoint);
-    const normalized = response.entries.map((entry) => normalizeJournalEntry(entry));
-    saveJournalEntries(normalized);
-    return normalized;
-  } catch {
-    return null;
-  }
-}
-
-export async function getDailyJournalSummary(options: { date?: string; forceRefresh?: boolean } = {}): Promise<DailyJournalSummary | null> {
+export async function getDailyGrowthSummary(options: { date?: string; forceRefresh?: boolean } = {}): Promise<DailyGrowthSummary | null> {
   const params = new URLSearchParams();
   if (options.date) {
     params.set("date", options.date);
@@ -292,10 +206,10 @@ export async function getDailyJournalSummary(options: { date?: string; forceRefr
     params.set("force", "1");
   }
   const query = params.toString();
-  const endpoint = query ? `/api/journal/daily-summary?${query}` : "/api/journal/daily-summary";
+  const endpoint = query ? `/api/growth/daily-summary?${query}` : "/api/growth/daily-summary";
 
   try {
-    const response = await jsonOrThrow<{ summary: DailyJournalSummary }>(endpoint);
+    const response = await jsonOrThrow<{ summary: DailyGrowthSummary }>(endpoint);
     return response.summary;
   } catch {
     return null;
@@ -318,58 +232,6 @@ export async function getAnalyticsCoachInsight(
     return response.insight;
   } catch {
     return null;
-  }
-}
-
-export async function syncQueuedJournalEntries(queue: JournalQueueItem[]): Promise<number> {
-  if (queue.length === 0) {
-    return 0;
-  }
-
-  try {
-    const payload: JournalSyncPayload[] = queue.map((item) => ({
-      clientEntryId: item.clientEntryId,
-      content: item.content,
-      timestamp: item.timestamp,
-      baseVersion: item.baseVersion,
-      tags: item.tags,
-      photos: item.photos
-    }));
-
-    const response = await jsonOrThrow<{ applied: Array<JournalEntry>; conflicts: Array<JournalEntry> }>(
-      "/api/journal/sync",
-      {
-        method: "POST",
-        body: JSON.stringify({ entries: payload })
-      }
-    );
-
-    for (const entry of response.applied) {
-      removeJournalQueueItem(entry.clientEntryId ?? "");
-    }
-
-    if (response.applied.length > 0) {
-      const current = loadJournalEntries();
-      const byClientId = new Map(current.map((entry) => [entry.clientEntryId, entry]));
-
-      for (const applied of response.applied) {
-        if (applied.clientEntryId) {
-          byClientId.set(applied.clientEntryId, {
-            ...applied,
-            text: applied.content,
-            photos: applied.photos ?? []
-          });
-        }
-      }
-
-      saveJournalEntries(
-        Array.from(byClientId.values()).sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-      );
-    }
-
-    return response.applied.length;
-  } catch {
-    return 0;
   }
 }
 
@@ -427,13 +289,8 @@ export async function applyCalendarImport(payload: CalendarImportPayload): Promi
 }
 
 export async function getSchedule(): Promise<LectureEvent[]> {
-  try {
-    const response = await jsonOrThrow<{ schedule: LectureEvent[] }>("/api/schedule");
-    saveSchedule(response.schedule);
-    return response.schedule;
-  } catch {
-    return loadSchedule();
-  }
+  const response = await jsonOrThrow<{ schedule: LectureEvent[] }>("/api/schedule");
+  return response.schedule;
 }
 
 export async function getScheduleSuggestionMutes(day?: Date): Promise<ScheduleSuggestionMute[]> {
@@ -470,68 +327,23 @@ export async function updateScheduleBlock(
       method: "PATCH",
       body: JSON.stringify(payload)
     });
-    const merged = loadSchedule().map((event) => (event.id === scheduleId ? response.lecture : event));
-    saveSchedule(merged);
     return { item: response.lecture, queued: false };
   } catch {
-    const schedule = loadSchedule();
-    const index = schedule.findIndex((event) => event.id === scheduleId);
-
-    let optimistic: LectureEvent | null = null;
-    if (index >= 0) {
-      optimistic = {
-        ...schedule[index],
-        ...(payload.title !== undefined ? { title: payload.title } : {}),
-        ...(payload.startTime !== undefined ? { startTime: payload.startTime } : {}),
-        ...(payload.durationMinutes !== undefined ? { durationMinutes: payload.durationMinutes } : {}),
-        ...(payload.workload !== undefined ? { workload: payload.workload } : {}),
-        ...(Object.prototype.hasOwnProperty.call(payload, "location")
-          ? { location: payload.location ?? undefined }
-          : {})
-      };
-      const next = [...schedule];
-      next[index] = optimistic;
-      saveSchedule(next);
-    }
-
-    enqueueSyncOperation(
-      "schedule-update",
-      {
-        scheduleId,
-        patch: payload
-      },
-      { dedupeKey: `schedule-update:${scheduleId}` }
-    );
-
-    return { item: optimistic, queued: true };
+    return { item: null, queued: false };
   }
 }
 
 export async function getDeadlines(): Promise<Deadline[]> {
-  try {
-    const response = await jsonOrThrow<{ deadlines: Deadline[] }>("/api/deadlines");
-    saveDeadlines(response.deadlines);
-    return response.deadlines;
-  } catch {
-    return loadDeadlines();
-  }
+  const response = await jsonOrThrow<{ deadlines: Deadline[] }>("/api/deadlines");
+  return response.deadlines;
 }
 
 export async function generateStudyPlan(payload: StudyPlanGeneratePayload): Promise<StudyPlan> {
-  try {
-    const response = await jsonOrThrow<{ plan: StudyPlan }>("/api/study-plan/generate", {
-      method: "POST",
-      body: JSON.stringify(payload)
-    });
-    saveStudyPlanCache(response.plan);
-    return response.plan;
-  } catch (error) {
-    const cachedPlan = loadStudyPlanCache();
-    if (cachedPlan) {
-      return cachedPlan;
-    }
-    throw error;
-  }
+  const response = await jsonOrThrow<{ plan: StudyPlan }>("/api/study-plan/generate", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+  return response.plan;
 }
 
 export async function getStudyPlanSessions(options?: {
@@ -627,12 +439,6 @@ export async function confirmDeadlineStatus(
       method: "POST",
       body: JSON.stringify({ completed })
     });
-
-    const next = loadDeadlines().map((deadline) =>
-      deadline.id === response.deadline.id ? response.deadline : deadline
-    );
-    saveDeadlines(next);
-
     return response;
   } catch {
     return null;
@@ -650,116 +456,15 @@ export async function updateDeadline(
       method: "PATCH",
       body: JSON.stringify(payload)
     });
-
-    const next = loadDeadlines().map((deadline) =>
-      deadline.id === response.deadline.id ? response.deadline : deadline
-    );
-    saveDeadlines(next);
     return response.deadline;
   } catch {
     return null;
   }
 }
 
-export async function getWeeklySummary(referenceDate?: string): Promise<WeeklySummary | null> {
-  const params = new URLSearchParams();
-  if (referenceDate) {
-    params.set("referenceDate", referenceDate);
-  }
-
-  const query = params.toString();
-  const endpoint = query ? `/api/weekly-review?${query}` : "/api/weekly-review";
-
-  try {
-    const response = await jsonOrThrow<{ summary: WeeklySummary }>(endpoint);
-    return response.summary;
-  } catch {
-    return null;
-  }
-}
-
-export async function searchJournalEntries(
-  query?: string,
-  startDate?: string,
-  endDate?: string,
-  tags?: string[]
-): Promise<JournalEntry[] | null> {
-  const params = new URLSearchParams();
-  if (query) {
-    params.set("q", query);
-  }
-  if (startDate) {
-    params.set("startDate", startDate);
-  }
-  if (endDate) {
-    params.set("endDate", endDate);
-  }
-  if (tags && tags.length > 0) {
-    params.set("tags", tags.join(","));
-  }
-
-  const queryString = params.toString();
-  const endpoint = queryString ? `/api/journal/search?${queryString}` : "/api/journal/search";
-
-  try {
-    const response = await jsonOrThrow<{ entries: JournalEntry[] }>(endpoint);
-    return response.entries;
-  } catch {
-    return null;
-  }
-}
-
-export async function getAllJournalTags(): Promise<string[]> {
-  try {
-    const response = await jsonOrThrow<{ tags: string[] }>("/api/journal/tags");
-    return response.tags;
-  } catch {
-    return [];
-  }
-}
-
-export async function deleteJournalEntry(entryId: string): Promise<boolean> {
-  try {
-    const response = await fetch(apiUrl(`/api/journal/${entryId}`), {
-      method: "DELETE"
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-function completionRate(recent: Array<{ completed: boolean }>): number {
-  return recent.length === 0 ? 0 : Math.round((recent.filter((c) => c.completed).length / recent.length) * 100);
-}
-
-function streakFromRecent(recent: Array<{ completed: boolean }>): number {
-  let streak = 0;
-  let graceUsed = false;
-  for (let i = recent.length - 1; i >= 0; i -= 1) {
-    const offsetFromToday = recent.length - 1 - i;
-    if (recent[i].completed) {
-      streak += 1;
-      continue;
-    }
-    if (!graceUsed && streak > 0 && offsetFromToday <= 1) {
-      graceUsed = true;
-      streak += 1;
-      continue;
-    }
-    break;
-  }
-  return streak;
-}
-
 export async function getHabits(): Promise<Habit[]> {
-  try {
-    const response = await jsonOrThrow<{ habits: Habit[] }>("/api/habits");
-    saveHabits(response.habits);
-    return response.habits;
-  } catch {
-    return loadHabits();
-  }
+  const response = await jsonOrThrow<{ habits: Habit[] }>("/api/habits");
+  return response.habits;
 }
 
 export interface HabitUpdatePayload {
@@ -775,31 +480,9 @@ export async function updateHabit(habitId: string, payload: HabitUpdatePayload):
       method: "PATCH",
       body: JSON.stringify(payload)
     });
-    const nextHabits = loadHabits();
-    const merged = nextHabits.map((habit) => (habit.id === habitId ? response.habit : habit));
-    if (!merged.find((habit) => habit.id === habitId)) {
-      merged.push(response.habit);
-    }
-    saveHabits(merged);
     return response.habit;
   } catch {
-    const habits = loadHabits();
-    const index = habits.findIndex((habit) => habit.id === habitId);
-    if (index === -1) return null;
-
-    const updatedHabit: Habit = {
-      ...habits[index],
-      ...(payload.name !== undefined ? { name: payload.name } : {}),
-      ...(payload.cadence !== undefined ? { cadence: payload.cadence } : {}),
-      ...(payload.targetPerWeek !== undefined ? { targetPerWeek: payload.targetPerWeek } : {}),
-      ...(Object.prototype.hasOwnProperty.call(payload, "motivation")
-        ? { motivation: payload.motivation ?? undefined }
-        : {})
-    };
-    const next = [...habits];
-    next[index] = updatedHabit;
-    saveHabits(next);
-    return updatedHabit;
+    return null;
   }
 }
 
@@ -811,11 +494,9 @@ export async function deleteHabit(habitId: string): Promise<boolean> {
     if (!response.ok) {
       return false;
     }
-    saveHabits(loadHabits().filter((habit) => habit.id !== habitId));
     return true;
   } catch {
-    saveHabits(loadHabits().filter((habit) => habit.id !== habitId));
-    return true;
+    return false;
   }
 }
 
@@ -833,59 +514,15 @@ export async function toggleHabitCheckIn(
       method: "POST",
       body: JSON.stringify(body)
     });
-    const nextHabits = loadHabits();
-    const merged = nextHabits.map((habit) => (habit.id === habitId ? response.habit : habit));
-    if (!merged.find((h) => h.id === habitId)) {
-      merged.push(response.habit);
-    }
-    saveHabits(merged);
     return { item: response.habit, queued: false };
   } catch {
-    const habits = loadHabits();
-    const index = habits.findIndex((habit) => habit.id === habitId);
-    if (index === -1) {
-      return { item: null, queued: false };
-    }
-
-    const habit = habits[index];
-    const desired = completed ?? !habit.todayCompleted;
-    const recentCheckIns = habit.recentCheckIns.map((day, idx) =>
-      idx === habit.recentCheckIns.length - 1 ? { ...day, completed: desired } : day
-    );
-    const offline: Habit = {
-      ...habit,
-      todayCompleted: desired,
-      recentCheckIns,
-      completionRate7d: completionRate(recentCheckIns),
-      streak: streakFromRecent(recentCheckIns)
-    };
-    const updated = [...habits];
-    updated[index] = offline;
-    saveHabits(updated);
-
-    const dateKey = recentCheckIns[recentCheckIns.length - 1]?.date ?? new Date().toISOString().slice(0, 10);
-    enqueueSyncOperation(
-      "habit-checkin",
-      {
-        habitId,
-        completed: desired,
-        date: dateKey
-      },
-      { dedupeKey: `habit-checkin:${habitId}:${dateKey}` }
-    );
-
-    return { item: offline, queued: true };
+    return { item: null, queued: false };
   }
 }
 
 export async function getGoals(): Promise<Goal[]> {
-  try {
-    const response = await jsonOrThrow<{ goals: Goal[] }>("/api/goals");
-    saveGoals(response.goals);
-    return response.goals;
-  } catch {
-    return loadGoals();
-  }
+  const response = await jsonOrThrow<{ goals: Goal[] }>("/api/goals");
+  return response.goals;
 }
 
 export interface GoalUpdatePayload {
@@ -902,39 +539,9 @@ export async function updateGoal(goalId: string, payload: GoalUpdatePayload): Pr
       method: "PATCH",
       body: JSON.stringify(payload)
     });
-    const nextGoals = loadGoals();
-    const merged = nextGoals.map((goal) => (goal.id === goalId ? response.goal : goal));
-    if (!merged.find((goal) => goal.id === goalId)) {
-      merged.push(response.goal);
-    }
-    saveGoals(merged);
     return response.goal;
   } catch {
-    const goals = loadGoals();
-    const index = goals.findIndex((goal) => goal.id === goalId);
-    if (index === -1) return null;
-
-    const updatedGoal: Goal = {
-      ...goals[index],
-      ...(payload.title !== undefined ? { title: payload.title } : {}),
-      ...(payload.cadence !== undefined ? { cadence: payload.cadence } : {}),
-      ...(payload.targetCount !== undefined ? { targetCount: payload.targetCount } : {}),
-      ...(Object.prototype.hasOwnProperty.call(payload, "dueDate")
-        ? { dueDate: payload.dueDate ?? null }
-        : {}),
-      ...(Object.prototype.hasOwnProperty.call(payload, "motivation")
-        ? { motivation: payload.motivation ?? undefined }
-        : {})
-    };
-
-    if (payload.targetCount !== undefined) {
-      updatedGoal.remaining = Math.max(payload.targetCount - updatedGoal.progressCount, 0);
-    }
-
-    const next = [...goals];
-    next[index] = updatedGoal;
-    saveGoals(next);
-    return updatedGoal;
+    return null;
   }
 }
 
@@ -946,11 +553,9 @@ export async function deleteGoal(goalId: string): Promise<boolean> {
     if (!response.ok) {
       return false;
     }
-    saveGoals(loadGoals().filter((goal) => goal.id !== goalId));
     return true;
   } catch {
-    saveGoals(loadGoals().filter((goal) => goal.id !== goalId));
-    return true;
+    return false;
   }
 }
 
@@ -968,52 +573,9 @@ export async function toggleGoalCheckIn(
       method: "POST",
       body: JSON.stringify(body)
     });
-    const nextGoals = loadGoals();
-    const merged = nextGoals.map((goal) => (goal.id === goalId ? response.goal : goal));
-    if (!merged.find((g) => g.id === goalId)) {
-      merged.push(response.goal);
-    }
-    saveGoals(merged);
     return { item: response.goal, queued: false };
   } catch {
-    const goals = loadGoals();
-    const index = goals.findIndex((goal) => goal.id === goalId);
-    if (index === -1) {
-      return { item: null, queued: false };
-    }
-
-    const goal = goals[index];
-    const desired = completed ?? !goal.todayCompleted;
-    const progressDelta = desired === goal.todayCompleted ? 0 : desired ? 1 : -1;
-    const recentCheckIns = goal.recentCheckIns.map((day, idx) =>
-      idx === goal.recentCheckIns.length - 1 ? { ...day, completed: desired } : day
-    );
-    const progressCount = Math.max(0, goal.progressCount + progressDelta);
-    const offline: Goal = {
-      ...goal,
-      todayCompleted: desired,
-      recentCheckIns,
-      progressCount,
-      remaining: Math.max(goal.targetCount - progressCount, 0),
-      completionRate7d: completionRate(recentCheckIns),
-      streak: streakFromRecent(recentCheckIns)
-    };
-    const updated = [...goals];
-    updated[index] = offline;
-    saveGoals(updated);
-
-    const dateKey = recentCheckIns[recentCheckIns.length - 1]?.date ?? new Date().toISOString().slice(0, 10);
-    enqueueSyncOperation(
-      "goal-checkin",
-      {
-        goalId,
-        completed: desired,
-        date: dateKey
-      },
-      { dedupeKey: `goal-checkin:${goalId}:${dateKey}` }
-    );
-
-    return { item: offline, queued: true };
+    return { item: null, queued: false };
   }
 }
 
@@ -1068,6 +630,17 @@ export interface NutritionTargetProfileUpsertPayload {
   targetProteinGrams?: number | null;
   targetCarbsGrams?: number | null;
   targetFatGrams?: number | null;
+}
+
+export interface NutritionPlanSnapshotCreatePayload {
+  name: string;
+  date?: string;
+  replaceId?: string;
+}
+
+export interface NutritionPlanSnapshotApplyPayload {
+  date?: string;
+  replaceMeals?: boolean;
 }
 
 export async function getNutritionSummary(date?: string): Promise<NutritionDailySummary | null> {
@@ -1229,6 +802,75 @@ export async function updateNutritionMeal(
 export async function deleteNutritionMeal(mealId: string): Promise<boolean> {
   try {
     const response = await fetch(apiUrl(`/api/nutrition/meals/${mealId}`), {
+      method: "DELETE",
+      headers: buildRequestHeaders()
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function getNutritionPlanSnapshots(options: {
+  query?: string;
+  limit?: number;
+} = {}): Promise<NutritionPlanSnapshot[]> {
+  const params = new URLSearchParams();
+  if (options.query) params.set("query", options.query);
+  if (typeof options.limit === "number") params.set("limit", String(Math.round(options.limit)));
+  const query = params.toString();
+  const endpoint = query ? `/api/nutrition/plan-snapshots?${query}` : "/api/nutrition/plan-snapshots";
+
+  try {
+    const response = await jsonOrThrow<{ snapshots: NutritionPlanSnapshot[] }>(endpoint);
+    return response.snapshots;
+  } catch {
+    return [];
+  }
+}
+
+export async function createNutritionPlanSnapshot(
+  payload: NutritionPlanSnapshotCreatePayload
+): Promise<NutritionPlanSnapshot | null> {
+  try {
+    const response = await jsonOrThrow<{ snapshot: NutritionPlanSnapshot }>("/api/nutrition/plan-snapshots", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    return response.snapshot;
+  } catch {
+    return null;
+  }
+}
+
+export async function applyNutritionPlanSnapshot(
+  snapshotId: string,
+  payload: NutritionPlanSnapshotApplyPayload = {}
+): Promise<{
+  snapshot: NutritionPlanSnapshot;
+  appliedDate: string;
+  mealsCreated: NutritionMeal[];
+  targetProfile: NutritionTargetProfile | null;
+} | null> {
+  try {
+    const response = await jsonOrThrow<{
+      snapshot: NutritionPlanSnapshot;
+      appliedDate: string;
+      mealsCreated: NutritionMeal[];
+      targetProfile: NutritionTargetProfile | null;
+    }>(`/api/nutrition/plan-snapshots/${snapshotId}/apply`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    return response;
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteNutritionPlanSnapshot(snapshotId: string): Promise<boolean> {
+  try {
+    const response = await fetch(apiUrl(`/api/nutrition/plan-snapshots/${snapshotId}`), {
       method: "DELETE",
       headers: buildRequestHeaders()
     });
@@ -1603,17 +1245,7 @@ export async function getIntegrationHealthLog(options?: {
 }
 
 export async function getSocialMediaFeed(): Promise<SocialMediaFeed> {
-  try {
-    const feed = await jsonOrThrow<SocialMediaFeed>("/api/social-media");
-    saveSocialMediaCache(feed);
-    return feed;
-  } catch (error) {
-    const cachedFeed = loadSocialMediaCache();
-    if (cachedFeed) {
-      return cachedFeed;
-    }
-    throw error;
-  }
+  return await jsonOrThrow<SocialMediaFeed>("/api/social-media");
 }
 
 export async function syncSocialMediaFeed(): Promise<SocialMediaSyncResult> {

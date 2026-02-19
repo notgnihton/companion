@@ -18,6 +18,7 @@ import {
   ChatLongTermMemory,
   ChatMessage,
   ChatMessageMetadata,
+  ChatMood,
   ChatPendingAction,
   JournalMemoryEntryType,
   UserContext
@@ -26,6 +27,24 @@ import {
 interface ChatContextResult {
   contextWindow: string;
   history: ChatMessage[];
+}
+
+const VALID_MOODS: Set<string> = new Set<string>(["neutral", "encouraging", "focused", "celebratory", "empathetic", "urgent"]);
+
+/**
+ * Extract mood from executed function responses (setResponseMood tool call).
+ * Returns the mood if Gemini called the tool, otherwise undefined.
+ */
+function extractMoodFromToolResponses(responses: ExecutedFunctionResponse[]): ChatMood | undefined {
+  for (const r of responses) {
+    if (r.name === "setResponseMood") {
+      const raw = r.rawResponse as { mood?: string };
+      if (raw?.mood && VALID_MOODS.has(raw.mood)) {
+        return raw.mood as ChatMood;
+      }
+    }
+  }
+  return undefined;
 }
 
 function parseDeadlineDueDateForComparison(value: string): Date {
@@ -1254,6 +1273,7 @@ Core behavior:
 - Do not use HTML, tables, headings (#), blockquotes, or code fences.
 - If multiple intents are present, choose the smallest useful set of tools and then synthesize one clear answer.
 - Tool routing is model-driven: decide what tools to call based on the user request and tool descriptions.
+- When calling tools, also call setResponseMood to convey the emotional tone of your response. Only batch it alongside other tool calls — never call it alone.
 
 Runtime context for this turn:
 ${runtimeContextNudge}
@@ -3395,6 +3415,7 @@ export interface SendChatResult {
   finishReason?: string;
   usage?: ChatMessageMetadata["usage"];
   citations: ChatCitation[];
+  mood?: ChatMood;
   history: ChatHistoryPage;
 }
 
@@ -3677,6 +3698,7 @@ export async function sendChatMessage(
   const citations = new Map<string, ChatCitation>();
   const maxFunctionRounds = 8;
   const workingMessages: GeminiMessage[] = [...messages];
+
   const requiresThoughtSignatureReplay = /gemini-3/i.test(config.GEMINI_LIVE_MODEL);
   const getThoughtSignature = (call: { thought_signature?: unknown; thoughtSignature?: unknown }): string | undefined => {
     const signature = call.thought_signature ?? call.thoughtSignature;
@@ -3852,7 +3874,7 @@ export async function sendChatMessage(
     throw error;
   }
 
-  const finalReply = response && response.text.trim().length > 0
+  const rawReply = response && response.text.trim().length > 0
     ? response.text
     : executedFunctionResponses.length > 0
       ? buildToolDataFallbackReply(
@@ -3862,6 +3884,9 @@ export async function sendChatMessage(
         )
       : buildPendingActionFallbackReply(pendingActionsFromTooling);
 
+  const finalReply = rawReply;
+  const resolvedMood = extractMoodFromToolResponses(executedFunctionResponses);
+
   if (!useNativeStreaming || streamedTokenChars === 0) {
     emitTextChunks(finalReply, options.onTextChunk);
   }
@@ -3870,6 +3895,7 @@ export async function sendChatMessage(
     contextWindow,
     finishReason: response?.finishReason,
     usage: totalUsage,
+    mood: resolvedMood,
     ...(pendingActionsFromTooling.length > 0 ? { pendingActions: store.getPendingChatActions(now) } : {}),
     ...(citations.size > 0 ? { citations: Array.from(citations.values()).slice(0, MAX_CHAT_CITATIONS) } : {})
   };
@@ -3886,6 +3912,7 @@ export async function sendChatMessage(
     finishReason: response?.finishReason,
     usage: assistantMetadata.usage,
     citations: assistantMetadata.citations ?? [],
+    mood: resolvedMood,
     history: historyPage
   };
 }
