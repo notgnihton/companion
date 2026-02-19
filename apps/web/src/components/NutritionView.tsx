@@ -414,6 +414,18 @@ function formatSignedDelta(value: number, unit: string): string {
   return `${rounded > 0 ? "+" : ""}${formatMetric(rounded)}${unit}`;
 }
 
+function calculateCaloriesFromMacros(proteinGrams: number, carbsGrams: number, fatGrams: number): number {
+  return proteinGrams * 4 + carbsGrams * 4 + fatGrams * 9;
+}
+
+function mealDisplayCalories(meal: Pick<NutritionMeal, "calories" | "proteinGrams" | "carbsGrams" | "fatGrams">): number {
+  const hasMacroSignal = meal.proteinGrams > 0 || meal.carbsGrams > 0 || meal.fatGrams > 0;
+  if (!hasMacroSignal) {
+    return roundToTenth(meal.calories);
+  }
+  return roundToTenth(calculateCaloriesFromMacros(meal.proteinGrams, meal.carbsGrams, meal.fatGrams));
+}
+
 type DeltaMetric = "proteinGrams" | "carbsGrams" | "fatGrams" | "calories";
 
 function deltaToneClass(metric: DeltaMetric, value: number): string {
@@ -500,18 +512,33 @@ export function NutritionView(): JSX.Element {
     () => derivedTargets ?? completeTargetsFromProfile(summary?.targetProfile ?? null),
     [derivedTargets, summary?.targetProfile]
   );
+  const dailyDisplayCalories = useMemo(() => {
+    if (!summary) {
+      return 0;
+    }
+    if (summary.meals.length > 0) {
+      return roundToTenth(summary.meals.reduce((total, meal) => total + mealDisplayCalories(meal), 0));
+    }
+    const hasMacroSignal = summary.totals.proteinGrams > 0 || summary.totals.carbsGrams > 0 || summary.totals.fatGrams > 0;
+    if (!hasMacroSignal) {
+      return roundToTenth(summary.totals.calories);
+    }
+    return roundToTenth(
+      calculateCaloriesFromMacros(summary.totals.proteinGrams, summary.totals.carbsGrams, summary.totals.fatGrams)
+    );
+  }, [summary]);
   const intakeDeltas = useMemo(() => {
     if (!summary || !activeTargets) {
       return null;
     }
 
     return {
-      calories: roundToTenth(summary.totals.calories - activeTargets.targetCalories),
+      calories: roundToTenth(dailyDisplayCalories - activeTargets.targetCalories),
       proteinGrams: roundToTenth(summary.totals.proteinGrams - activeTargets.targetProteinGrams),
       carbsGrams: roundToTenth(summary.totals.carbsGrams - activeTargets.targetCarbsGrams),
       fatGrams: roundToTenth(summary.totals.fatGrams - activeTargets.targetFatGrams)
     };
-  }, [summary, activeTargets]);
+  }, [summary, activeTargets, dailyDisplayCalories]);
   const parsedMealItems = useMemo(
     () => parseMealItemDrafts(mealItemDrafts, customFoods),
     [mealItemDrafts, customFoods]
@@ -1705,7 +1732,7 @@ export function NutritionView(): JSX.Element {
                       </p>
                       <p>
                         <span>Calories</span>
-                        <strong>{Math.round(meal.calories)}</strong>
+                        <strong>{Math.round(mealDisplayCalories(meal))}</strong>
                       </p>
                     </div>
                   </article>
@@ -1743,7 +1770,7 @@ export function NutritionView(): JSX.Element {
                 </article>
                 <article className="nutrition-daily-metric">
                   <p className="summary-label">Calories</p>
-                  <p className="summary-value">{summary ? String(Math.round(summary.totals.calories)) : "0"} kcal</p>
+                  <p className="summary-value">{summary ? String(Math.round(dailyDisplayCalories)) : "0"} kcal</p>
                   <p className={`nutrition-daily-delta ${intakeDeltas ? deltaToneClass("calories", intakeDeltas.calories) : "nutrition-delta-neutral"}`}>
                     {intakeDeltas ? formatSignedDelta(intakeDeltas.calories, " kcal") : "Set targets"}
                   </p>
