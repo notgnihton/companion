@@ -413,7 +413,7 @@ export const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "saveNutritionPlanSnapshot",
     description:
-      "Save a reusable nutrition meal-plan snapshot from a date's meals/targets so it can be loaded later.",
+      "Save a reusable nutrition meal-plan snapshot from a date's meals/targets so it can be loaded later. Fails if the source date has zero meals.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -895,6 +895,28 @@ export const functionDeclarations: FunctionDeclaration[] = [
         }
       },
       required: []
+    }
+  },
+  {
+    name: "setNutritionMealOrder",
+    description:
+      "Set exact top-to-bottom meal order for a day in one call using ordered meal names. Unspecified meals are appended in their current order.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        date: {
+          type: SchemaType.STRING,
+          description: "Optional day key YYYY-MM-DD. Defaults to today."
+        },
+        orderedMealNames: {
+          type: SchemaType.ARRAY,
+          description: "Desired meal names in display order (first name appears at the top).",
+          items: {
+            type: SchemaType.STRING
+          }
+        }
+      },
+      required: ["orderedMealNames"]
     }
   },
   {
@@ -2463,7 +2485,7 @@ export function handleGetNutritionPlanSnapshots(
 export function handleSaveNutritionPlanSnapshot(
   store: RuntimeStore,
   args: Record<string, unknown> = {}
-): { success: true; snapshot: NutritionPlanSnapshot; message: string } | { error: string } {
+): { success: true; snapshot: NutritionPlanSnapshot; mealsSaved: number; message: string } | { error: string } {
   const dateRaw = asTrimmedString(args.date);
   const date = parseNutritionDate(dateRaw);
   if (dateRaw && !date) {
@@ -2480,13 +2502,14 @@ export function handleSaveNutritionPlanSnapshot(
   });
 
   if (!snapshot) {
-    return { error: "Unable to save nutrition plan snapshot." };
+    return { error: "Unable to save nutrition plan snapshot. Add at least one meal first." };
   }
 
   return {
     success: true,
     snapshot,
-    message: `Saved nutrition plan snapshot "${snapshot.name}".`
+    mealsSaved: snapshot.meals.length,
+    message: `Saved nutrition plan snapshot "${snapshot.name}" with ${snapshot.meals.length} meals.`
   };
 }
 
@@ -3256,6 +3279,91 @@ export function handleMoveNutritionMeal(
     moved: true,
     meal: updatedMovedMeal,
     message: `Moved "${updatedMovedMeal.name}" ${direction}.`
+  };
+}
+
+export function handleSetNutritionMealOrder(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+):
+  | { success: true; orderedMealNames: string[]; message: string }
+  | { error: string } {
+  const rawNames = Array.isArray(args.orderedMealNames)
+    ? args.orderedMealNames
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+    : [];
+  if (rawNames.length === 0) {
+    return { error: "orderedMealNames must contain at least one meal name." };
+  }
+
+  const uniqueNames: string[] = [];
+  const seen = new Set<string>();
+  rawNames.forEach((name) => {
+    const key = normalizeSearchText(name);
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueNames.push(name);
+    }
+  });
+
+  const date = parseNutritionDate(args.date) ?? toDateKey(new Date());
+  const meals = store.getNutritionMeals({ date, limit: 1000 });
+  if (meals.length === 0) {
+    return { error: `No meals found for ${date}.` };
+  }
+
+  const remaining = [...meals];
+  const ordered: NutritionMeal[] = [];
+  for (const name of uniqueNames) {
+    const needle = normalizeSearchText(name);
+    const exactMatches = remaining.filter((meal) => normalizeSearchText(meal.name) === needle);
+    const partialMatches =
+      exactMatches.length > 0
+        ? exactMatches
+        : remaining.filter((meal) => {
+            const normalized = normalizeSearchText(meal.name);
+            return normalized.includes(needle) || needle.includes(normalized);
+          });
+    if (partialMatches.length === 0) {
+      return { error: `Could not find meal "${name}" on ${date}.` };
+    }
+    if (partialMatches.length > 1) {
+      return {
+        error: `Meal name "${name}" is ambiguous on ${date}. Matches: ${partialMatches
+          .slice(0, 4)
+          .map((meal) => meal.name)
+          .join(", ")}`
+      };
+    }
+
+    const matched = partialMatches[0]!;
+    const index = remaining.findIndex((meal) => meal.id === matched.id);
+    if (index !== -1) {
+      const [meal] = remaining.splice(index, 1);
+      if (meal) {
+        ordered.push(meal);
+      }
+    }
+  }
+
+  const finalOrder = [...ordered, ...remaining];
+  const dayStart = new Date(`${date}T00:00:00.000Z`).getTime();
+  const updatedNames: string[] = [];
+  for (const [orderIndex, meal] of finalOrder.entries()) {
+    const consumedAt = new Date(dayStart + orderIndex * 60_000).toISOString();
+    const updated = store.updateNutritionMeal(meal.id, { consumedAt });
+    if (!updated) {
+      return { error: `Unable to reorder meal "${meal.name}".` };
+    }
+    updatedNames.push(updated.name);
+  }
+
+  return {
+    success: true,
+    orderedMealNames: updatedNames,
+    message: `Set meal order for ${date}: ${updatedNames.join(" → ")}`
   };
 }
 
@@ -4909,6 +5017,9 @@ export function executeFunctionCall(
       break;
     case "moveNutritionMeal":
       response = handleMoveNutritionMeal(store, args);
+      break;
+    case "setNutritionMealOrder":
+      response = handleSetNutritionMealOrder(store, args);
       break;
     case "logMeal":
       response = handleLogMeal(store, args);

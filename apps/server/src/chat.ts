@@ -1230,6 +1230,8 @@ Core behavior:
 - Never tell the user to use the habits/goals tab for check-ins; handle it in chat.
 - If user asks to "clear", "free up", or remove the rest of today's plan, prefer clearScheduleWindow.
 - If the user asks to save/update a meal plan, persist it via nutrition tools (targets/meals/items/custom foods).
+- For explicit meal ordering requests, prefer setNutritionMealOrder with the full desired sequence (one call) instead of multiple moveNutritionMeal calls.
+- After saving a meal-plan snapshot, verify it by calling getNutritionPlanSnapshots with a name query before claiming it is saved.
 - When user intent to mutate data is clear, execute the available mutation tool directly instead of asking for extra permission.
 - Never claim a write action succeeded unless a tool call in this turn returned success.
 - If a tool call is needed, emit tool calls only first and wait to write user-facing text until tool results are available.

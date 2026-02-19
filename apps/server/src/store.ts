@@ -4582,6 +4582,7 @@ export class RuntimeStore {
     replaceId?: string;
     targetProfile?: NutritionPlanSnapshotTarget | null;
     meals?: NutritionPlanSnapshotMeal[];
+    allowEmptyMeals?: boolean;
   }): NutritionPlanSnapshot | null {
     const name = entry.name.trim();
     if (!name) {
@@ -4618,8 +4619,12 @@ export class RuntimeStore {
                   fatGrams: meal.fatGrams
                 }
               : {}),
-            ...(meal.notes ? { notes: meal.notes } : {})
-          }));
+                ...(meal.notes ? { notes: meal.notes } : {})
+              }));
+    const allowEmptyMeals = entry.allowEmptyMeals === true;
+    if (!allowEmptyMeals && meals.length === 0) {
+      return null;
+    }
 
     const now = nowIso();
     const replaceId = typeof entry.replaceId === "string" && entry.replaceId.trim().length > 0 ? entry.replaceId.trim() : null;

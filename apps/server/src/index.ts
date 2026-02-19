@@ -2208,7 +2208,7 @@ app.post("/api/nutrition/plan-snapshots", (req, res) => {
     replaceId: parsed.data.replaceId
   });
   if (!snapshot) {
-    return res.status(400).json({ error: "Unable to save nutrition plan snapshot" });
+    return res.status(400).json({ error: "Unable to save nutrition plan snapshot. Add at least one meal first." });
   }
 
   return res.status(201).json({ snapshot });
