@@ -107,7 +107,7 @@ describe("Proactive Chat Triggers", () => {
       const deadlineTime = new Date("2026-02-18T18:00:00"); // 32 hours away
       
       store.createDeadline({
-        task: "Lab 3 submission",
+        task: "Assignment 3 submission",
         course: "DAT520",
         dueDate: deadlineTime.toISOString(),
         priority: "high",
@@ -127,7 +127,7 @@ describe("Proactive Chat Triggers", () => {
       const deadlineTime = new Date("2026-02-18T18:00:00");
       
       const deadline = store.createDeadline({
-        task: "Lab 3 submission",
+        task: "Assignment 3 submission",
         course: "DAT520",
         dueDate: deadlineTime.toISOString(),
         priority: "high",
@@ -147,7 +147,7 @@ describe("Proactive Chat Triggers", () => {
       const deadlineTime = new Date("2026-02-20T18:00:00"); // 80+ hours away
       
       store.createDeadline({
-        task: "Lab 4 submission",
+        task: "Assignment 4 submission",
         course: "DAT520",
         dueDate: deadlineTime.toISOString(),
         priority: "high",
@@ -220,6 +220,59 @@ describe("Proactive Chat Triggers", () => {
     });
   });
 
+  describe("New Email Trigger", () => {
+    it("fires when unread email state changes", async () => {
+      const now = new Date("2026-02-17T12:00:00.000Z");
+
+      store.setGmailMessages(
+        [
+          {
+            id: "gmail-1",
+            from: "course@uis.no",
+            subject: "DAT560 deadline update",
+            snippet: "Assignment 2 deadline extended",
+            receivedAt: "2026-02-17T11:45:00.000Z",
+            labels: ["INBOX", "UNREAD"],
+            isRead: false
+          }
+        ],
+        "2026-02-17T11:50:00.000Z"
+      );
+
+      const notifications = await checkProactiveTriggers(store, now);
+      const emailNudge = notifications.find((n) => n.metadata?.triggerType === "new-email");
+      expect(emailNudge).toBeDefined();
+      expect(emailNudge?.title).toBe("New email");
+      expect(emailNudge?.priority).toBe("medium");
+      expect(emailNudge?.url).toBe("/companion/?tab=chat");
+    });
+
+    it("does not repeatedly fire for the same unread snapshot", async () => {
+      const now = new Date("2026-02-17T12:00:00.000Z");
+
+      store.setGmailMessages(
+        [
+          {
+            id: "gmail-1",
+            from: "course@uis.no",
+            subject: "DAT560 deadline update",
+            snippet: "Assignment 2 deadline extended",
+            receivedAt: "2026-02-17T11:45:00.000Z",
+            labels: ["INBOX", "UNREAD"],
+            isRead: false
+          }
+        ],
+        "2026-02-17T11:50:00.000Z"
+      );
+
+      const first = await checkProactiveTriggersWithCooldown(store, now);
+      expect(first.find((n) => n.metadata?.triggerType === "new-email")).toBeDefined();
+
+      const second = await checkProactiveTriggersWithCooldown(store, now);
+      expect(second.find((n) => n.metadata?.triggerType === "new-email")).toBeUndefined();
+    });
+  });
+
   describe("Cooldown Logic", () => {
     it("should respect cooldown period", () => {
       // Mark a trigger as fired
@@ -277,8 +330,8 @@ describe("Proactive Chat Triggers", () => {
   });
 
   describe("All Triggers Configuration", () => {
-    it("should have all 5 trigger types configured", () => {
-      expect(ALL_TRIGGERS).toHaveLength(5);
+    it("should have all 6 trigger types configured", () => {
+      expect(ALL_TRIGGERS).toHaveLength(6);
       
       const types = ALL_TRIGGERS.map(t => t.type);
       expect(types).toContain("morning-briefing");
@@ -286,6 +339,7 @@ describe("Proactive Chat Triggers", () => {
       expect(types).toContain("deadline-approaching");
       expect(types).toContain("post-lecture");
       expect(types).toContain("evening-reflection");
+      expect(types).toContain("new-email");
     });
 
     it("should have priority levels set", () => {
