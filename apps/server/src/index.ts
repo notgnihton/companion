@@ -975,7 +975,7 @@ const chatImageAttachmentSchema = z.object({
 });
 
 const chatRequestSchema = z.object({
-  message: z.string().max(4000).default(""),
+  message: z.string().max(10000).default(""),
   attachments: z.array(chatImageAttachmentSchema).max(3).optional()
 }).refine(
   (payload) => payload.message.trim().length > 0 || (payload.attachments?.length ?? 0) > 0,
