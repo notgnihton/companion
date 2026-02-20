@@ -381,7 +381,10 @@ function calculateCaloriesFromMacros(proteinGrams: number, carbsGrams: number, f
   return proteinGrams * 4 + carbsGrams * 4 + fatGrams * 9;
 }
 
-function mealDisplayCalories(meal: Pick<NutritionMeal, "calories" | "proteinGrams" | "carbsGrams" | "fatGrams">): number {
+function mealDisplayCalories(meal: Pick<NutritionMeal, "calories" | "proteinGrams" | "carbsGrams" | "fatGrams" | "items">): number {
+  if (meal.items && meal.items.length > 0) {
+    return meal.items.reduce((sum, item) => sum + item.quantity * item.caloriesPerUnit, 0);
+  }
   const hasMacroSignal = meal.proteinGrams > 0 || meal.carbsGrams > 0 || meal.fatGrams > 0;
   if (!hasMacroSignal) {
     return roundToTenth(meal.calories);
