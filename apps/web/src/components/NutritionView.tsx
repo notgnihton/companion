@@ -1753,7 +1753,7 @@ export function NutritionView(): JSX.Element {
                               <div className="nutrition-meal-food-main">
                                 <span>
                                   {formatMetric(item.quantity)}
-                                  g
+                                  {item.unitLabel || "g"}
                                 </span>
                                 <span>{itemCalories} kcal</span>
                               </div>
