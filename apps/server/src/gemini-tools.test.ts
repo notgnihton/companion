@@ -684,7 +684,8 @@ describe("gemini-tools", () => {
 
       const marked = handleUpdateNutritionMeal(store, {
         mealId: second.meal.id,
-        completed: true
+        completed: true,
+        consumedAt: "2026-02-17T12:00:00.000Z"
       });
       if ("error" in marked) {
         throw new Error(marked.error);

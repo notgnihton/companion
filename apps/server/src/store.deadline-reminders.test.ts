@@ -20,14 +20,16 @@ describe("RuntimeStore - deadline completion reminders", () => {
       task: "Problem Set 8",
       dueDate: "2026-03-10T09:00:00.000Z",
       priority: "high",
-      completed: false
+      completed: false,
+      canvasAssignmentId: 1001
     });
     store.createDeadline({
       course: "Systems",
       task: "Lab 5",
       dueDate: "2026-03-10T16:00:00.000Z",
       priority: "medium",
-      completed: false
+      completed: false,
+      canvasAssignmentId: 1002
     });
 
     const overdueCandidates = store.getOverdueDeadlinesRequiringReminder();

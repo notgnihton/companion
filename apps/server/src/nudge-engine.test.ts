@@ -75,7 +75,7 @@ describe("buildContextAwareNudge", () => {
     });
 
     expect(nudge).not.toBeNull();
-    expect(nudge?.title).toBe("Journal prompt");
+    expect(nudge?.title).toBe("Reflection prompt");
     expect(nudge?.priority).toBe("medium");
     expect(nudge?.message).toMatch(/Capture one concise update/);
   });

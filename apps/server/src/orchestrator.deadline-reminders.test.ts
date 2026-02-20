@@ -25,7 +25,8 @@ describe("OrchestratorRuntime - deadline reminder checks", () => {
       task: "Lab report",
       dueDate: "2026-03-10T09:00:00.000Z",
       priority: "high",
-      completed: false
+      completed: false,
+      canvasAssignmentId: 2001
     });
 
     const received: Notification[] = [];
@@ -55,7 +56,8 @@ describe("OrchestratorRuntime - deadline reminder checks", () => {
       task: "Problem set",
       dueDate: "2026-03-10T08:00:00.000Z",
       priority: "critical",
-      completed: false
+      completed: false,
+      canvasAssignmentId: 2002
     });
 
     orchestrator.start();
