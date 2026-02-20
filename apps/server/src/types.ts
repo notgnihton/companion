@@ -602,6 +602,9 @@ export interface NutritionDayHistoryEntry {
   targets: NutritionMacros | null;
   mealsLogged: number;
   weightKg: number | null;
+  fatRatioPercent: number | null;
+  muscleMassKg: number | null;
+  gymCheckedIn: boolean;
 }
 
 export interface PushSubscriptionRecord {

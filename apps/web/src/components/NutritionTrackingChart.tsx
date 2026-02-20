@@ -208,8 +208,8 @@ export function CalorieWeightChart({ entries }: DualAxisChartProps) {
     ctx.fillStyle = CAL_CLR;
     ctx.fillText("Calories", PAD.left, 16);
     if (weights.some((v) => v !== null)) {
-      ctx.fillStyle = LABEL_CLR;
       const cw = ctx.measureText("Calories").width;
+      ctx.fillStyle = LABEL_CLR;
       ctx.fillText(" · ", PAD.left + cw, 16);
       ctx.fillStyle = W_CLR;
       ctx.fillText("Weight", PAD.left + cw + ctx.measureText(" · ").width, 16);
@@ -223,6 +223,7 @@ export function CalorieWeightChart({ entries }: DualAxisChartProps) {
       ctx.fillStyle = CAL_CLR;
       ctx.fillText(`${Math.round(lastCal[lastCal.length - 1]!)} kcal`, w - PAD.right - 2, 16);
     }
+
   }, [entries]);
 
   useEffect(() => {
@@ -235,13 +236,13 @@ export function CalorieWeightChart({ entries }: DualAxisChartProps) {
   return <canvas ref={ref} className="nutrition-tracking-canvas" style={{ width: "100%", height: 200 }} />;
 }
 
-/* ── MacroAdherenceChart: P/C/F as % of daily target ─────────────── */
+/* ── BodyCompChart: Body Fat % (left axis) + Muscle Mass kg (right axis) ── */
 
-interface MacroAdherenceProps {
+interface BodyCompProps {
   entries: NutritionDayHistoryEntry[];
 }
 
-export function MacroAdherenceChart({ entries }: MacroAdherenceProps) {
+export function BodyCompChart({ entries }: BodyCompProps) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   const draw = useCallback(() => {
@@ -260,50 +261,31 @@ export function MacroAdherenceChart({ entries }: MacroAdherenceProps) {
     const plotH = h - PAD.top - PAD.bottom;
     const xStep = entries.length > 1 ? plotW / (entries.length - 1) : plotW;
 
-    const P_CLR = "rgb(129, 199, 132)";
-    const C_CLR = "rgb(100, 181, 246)";
-    const F_CLR = "rgb(239, 154, 154)";
+    const bfVals = entries.map((e) => e.fatRatioPercent);
+    const mmVals = entries.map((e) => e.muscleMassKg);
 
-    type MacroKey = "proteinGrams" | "carbsGrams" | "fatGrams";
-    const macros: { key: MacroKey; color: string; label: string }[] = [
-      { key: "proteinGrams", color: P_CLR, label: "Protein" },
-      { key: "carbsGrams", color: C_CLR, label: "Carbs" },
-      { key: "fatGrams", color: F_CLR, label: "Fat" },
-    ];
+    const hasBf = bfVals.some((v) => v !== null);
+    const hasMm = mmVals.some((v) => v !== null);
 
-    // Compute % of that day's target for each macro
-    const pctData: Record<MacroKey, (number | null)[]> = {
-      proteinGrams: [],
-      carbsGrams: [],
-      fatGrams: [],
-    };
-    for (const e of entries) {
-      for (const m of macros) {
-        if (e.mealsLogged === 0 || !e.targets || e.targets[m.key] === 0) {
-          pctData[m.key].push(null);
-        } else {
-          pctData[m.key].push((e.totals[m.key] / e.targets[m.key]) * 100);
-        }
-      }
-    }
-
-    const allPcts = Object.values(pctData).flat().filter((v): v is number => v !== null);
-    if (allPcts.length === 0) {
+    if (!hasBf && !hasMm) {
       ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = LABEL_CLR;
       ctx.font = BOLD;
       ctx.textAlign = "center";
-      ctx.fillText("No target data for this period", w / 2, h / 2);
+      ctx.fillText("No body composition data for this period", w / 2, h / 2);
       return;
     }
 
-    const yMin = Math.max(0, Math.min(...allPcts) - 15);
-    const yMax = Math.max(...allPcts) + 15;
-    const yRange = yMax - yMin || 1;
+    const BF_CLR = "rgb(239, 154, 154)";
+    const MM_CLR = "rgb(129, 199, 132)";
+    const GYM_CLR = "rgb(76, 175, 80)";
+
+    const bfAxis = computeAxis(bfVals, 0.12);
+    const mmAxis = computeAxis(mmVals, 0.12);
 
     ctx.clearRect(0, 0, w, h);
 
-    // Grid
+    // Grid + axis labels
     ctx.strokeStyle = GRID;
     ctx.lineWidth = 1;
     for (let i = 0; i <= GRID_LINES; i++) {
@@ -313,78 +295,119 @@ export function MacroAdherenceChart({ entries }: MacroAdherenceProps) {
       ctx.lineTo(w - PAD.right, y);
       ctx.stroke();
 
-      const val = yMax - (yRange / GRID_LINES) * i;
-      ctx.fillStyle = LABEL_CLR;
-      ctx.font = FONT;
-      ctx.textAlign = "right";
-      ctx.fillText(`${Math.round(val)}%`, PAD.left - 6, y + 3);
+      // Left axis (body fat %)
+      if (hasBf) {
+        const bv = bfAxis.max - (bfAxis.range / GRID_LINES) * i;
+        ctx.fillStyle = toAlpha(BF_CLR, 0.5);
+        ctx.font = FONT;
+        ctx.textAlign = "right";
+        ctx.fillText(`${bv.toFixed(1)}%`, PAD.left - 6, y + 3);
+      }
+
+      // Right axis (muscle mass kg)
+      if (hasMm) {
+        const mv = mmAxis.max - (mmAxis.range / GRID_LINES) * i;
+        ctx.fillStyle = toAlpha(MM_CLR, 0.5);
+        ctx.font = FONT;
+        ctx.textAlign = "left";
+        ctx.fillText(`${mv.toFixed(1)}`, w - PAD.right + 6, y + 3);
+      }
     }
 
-    // 100% reference line
-    const y100 = PAD.top + plotH - ((100 - yMin) / yRange) * plotH;
-    if (y100 >= PAD.top && y100 <= PAD.top + plotH) {
-      ctx.setLineDash([6, 3]);
-      ctx.strokeStyle = "rgba(255,255,255,0.2)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(PAD.left, y100);
-      ctx.lineTo(w - PAD.right, y100);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.fillStyle = "rgba(255,255,255,0.25)";
-      ctx.font = FONT;
-      ctx.textAlign = "left";
-      ctx.fillText("target", w - PAD.right + 6, y100 + 3);
-    }
-
-    // Draw each macro line
-    for (const m of macros) {
-      const pts: { x: number; y: number }[] = [];
+    // Body fat % line
+    if (hasBf) {
+      const bfPts: { x: number; y: number }[] = [];
       for (let i = 0; i < entries.length; i++) {
-        const v = pctData[m.key][i];
+        const v = bfVals[i];
         if (v === null) continue;
         const x = PAD.left + (entries.length > 1 ? i * xStep : plotW / 2);
-        const y = PAD.top + plotH - ((v - yMin) / yRange) * plotH;
-        pts.push({ x, y });
+        const y = PAD.top + plotH - ((v - bfAxis.min) / bfAxis.range) * plotH;
+        bfPts.push({ x, y });
       }
-      drawLine(ctx, pts, m.color, 2);
-      drawDots(ctx, pts, m.color, 2.5);
+      drawGradientFill(ctx, bfPts, BF_CLR, PAD.top, PAD.top + plotH);
+      drawLine(ctx, bfPts, BF_CLR, 2);
+      drawDots(ctx, bfPts, BF_CLR, 3);
+    }
+
+    // Muscle mass line
+    if (hasMm) {
+      const mmPts: { x: number; y: number }[] = [];
+      for (let i = 0; i < entries.length; i++) {
+        const v = mmVals[i];
+        if (v === null) continue;
+        const x = PAD.left + (entries.length > 1 ? i * xStep : plotW / 2);
+        const y = PAD.top + plotH - ((v - mmAxis.min) / mmAxis.range) * plotH;
+        mmPts.push({ x, y });
+      }
+      drawLine(ctx, mmPts, MM_CLR, 2);
+      drawDots(ctx, mmPts, MM_CLR, 3);
     }
 
     drawXLabels(ctx, entries, plotW, xStep, h);
+
+    // Gym day markers — small triangles at the top of the chart
+    const hasGym = entries.some((e) => e.gymCheckedIn);
+    if (hasGym) {
+      for (let i = 0; i < entries.length; i++) {
+        if (!entries[i]!.gymCheckedIn) continue;
+        const x = PAD.left + (entries.length > 1 ? i * xStep : plotW / 2);
+        const y = PAD.top + 4;
+        ctx.beginPath();
+        ctx.moveTo(x, y - 4);
+        ctx.lineTo(x - 3.5, y + 3);
+        ctx.lineTo(x + 3.5, y + 3);
+        ctx.closePath();
+        ctx.fillStyle = GYM_CLR;
+        ctx.fill();
+      }
+    }
 
     // Legend
     ctx.font = BOLD;
     ctx.textAlign = "left";
     let lx = PAD.left;
-    for (let mi = 0; mi < macros.length; mi++) {
-      const m = macros[mi]!;
-      ctx.fillStyle = m.color;
-      ctx.fillText(m.label, lx, 16);
-      lx += ctx.measureText(m.label).width + 4;
-      if (mi < macros.length - 1) {
-        ctx.fillStyle = LABEL_CLR;
-        ctx.fillText("·", lx, 16);
-        lx += ctx.measureText("·").width + 4;
-      }
+    if (hasBf) {
+      ctx.fillStyle = BF_CLR;
+      ctx.fillText("Body Fat %", lx, 16);
+      lx += ctx.measureText("Body Fat %").width;
     }
-    ctx.fillStyle = LABEL_CLR;
-    ctx.font = FONT;
-    ctx.fillText("  (% of target)", lx, 16);
+    if (hasBf && hasMm) {
+      ctx.fillStyle = LABEL_CLR;
+      ctx.fillText(" · ", lx, 16);
+      lx += ctx.measureText(" · ").width;
+    }
+    if (hasMm) {
+      ctx.fillStyle = MM_CLR;
+      ctx.fillText("Muscle kg", lx, 16);
+      lx += ctx.measureText("Muscle kg").width;
+    }
+    if (hasGym) {
+      ctx.fillStyle = LABEL_CLR;
+      ctx.fillText(" · ", lx, 16);
+      lx += ctx.measureText(" · ").width;
+      ctx.fillStyle = GYM_CLR;
+      ctx.fillText("▲ Gym", lx, 16);
+    }
 
-    // Latest % values on right
+    // Latest values on right
     ctx.font = BOLD;
     ctx.textAlign = "right";
     let rx = w - PAD.right;
-    for (const m of [...macros].reverse()) {
-      const vals = pctData[m.key].filter((v): v is number => v !== null);
-      if (vals.length === 0) continue;
-      const pct = Math.round(vals[vals.length - 1]!);
-      const txt = `${pct}%`;
-      ctx.fillStyle = m.color;
-      ctx.fillText(txt, rx, 16);
-      rx -= ctx.measureText(txt).width + 8;
+    if (hasMm) {
+      const lastMm = mmVals.filter((v): v is number => v !== null);
+      if (lastMm.length > 0) {
+        ctx.fillStyle = MM_CLR;
+        const txt = `${lastMm[lastMm.length - 1]!.toFixed(1)} kg`;
+        ctx.fillText(txt, rx, 16);
+        rx -= ctx.measureText(txt).width + 8;
+      }
+    }
+    if (hasBf) {
+      const lastBf = bfVals.filter((v): v is number => v !== null);
+      if (lastBf.length > 0) {
+        ctx.fillStyle = BF_CLR;
+        ctx.fillText(`${lastBf[lastBf.length - 1]!.toFixed(1)}%`, rx, 16);
+      }
     }
   }, [entries]);
 

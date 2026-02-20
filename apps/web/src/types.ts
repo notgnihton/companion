@@ -340,6 +340,9 @@ export interface NutritionDayHistoryEntry {
   } | null;
   mealsLogged: number;
   weightKg: number | null;
+  fatRatioPercent: number | null;
+  muscleMassKg: number | null;
+  gymCheckedIn: boolean;
 }
 
 export interface CalendarImportPayload {

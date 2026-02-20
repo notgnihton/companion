@@ -26,7 +26,7 @@ import {
   NutritionTargetProfile,
 } from "../types";
 import { hapticSuccess } from "../lib/haptics";
-import { CalorieWeightChart, MacroAdherenceChart } from "./NutritionTrackingChart";
+import { CalorieWeightChart, BodyCompChart } from "./NutritionTrackingChart";
 
 interface MealDraft {
   name: string;
@@ -2037,9 +2037,22 @@ export function NutritionView(): JSX.Element {
                     const avgCalPct = daysWithTargets.length > 0
                       ? Math.round(daysWithTargets.reduce((s, e) => s + (e.totals.calories / e.targets!.calories) * 100, 0) / daysWithTargets.length)
                       : null;
-                    const avgProteinPct = daysWithTargets.length > 0
-                      ? Math.round(daysWithTargets.reduce((s, e) => s + (e.totals.proteinGrams / e.targets!.proteinGrams) * 100, 0) / daysWithTargets.length)
-                      : null;
+
+                    // Gym consistency
+                    const gymDays = historyEntries.filter((e) => e.gymCheckedIn).length;
+                    const gymPct = historyEntries.length > 0 ? Math.round((gymDays / historyEntries.length) * 100) : null;
+
+                    // Body fat delta
+                    const bfEntries = historyEntries.filter((e) => e.fatRatioPercent !== null);
+                    const latestBf = bfEntries.length > 0 ? bfEntries[bfEntries.length - 1]!.fatRatioPercent : null;
+                    const firstBf = bfEntries.length > 1 ? bfEntries[0]!.fatRatioPercent : null;
+                    const bfDelta = latestBf !== null && firstBf !== null ? latestBf - firstBf : null;
+
+                    // Muscle mass delta
+                    const mmEntries = historyEntries.filter((e) => e.muscleMassKg !== null);
+                    const latestMm = mmEntries.length > 0 ? mmEntries[mmEntries.length - 1]!.muscleMassKg : null;
+                    const firstMm = mmEntries.length > 1 ? mmEntries[0]!.muscleMassKg : null;
+                    const mmDelta = latestMm !== null && firstMm !== null ? latestMm - firstMm : null;
 
                     const weightEntries = historyEntries.filter((e) => e.weightKg !== null);
                     const latestWeight = weightEntries.length > 0
@@ -2060,13 +2073,27 @@ export function NutritionView(): JSX.Element {
                           <p className="summary-sub">of daily target</p>
                         </article>
                         <article className="summary-tile">
-                          <p className="summary-label">Avg Protein Hit</p>
-                          <p className="summary-value">{avgProteinPct !== null ? `${avgProteinPct}%` : "—"}</p>
-                          <p className="summary-sub">of daily target</p>
+                          <p className="summary-label">Gym Consistency</p>
+                          <p className="summary-value">{gymPct !== null ? `${gymPct}%` : "—"}</p>
+                          <p className="summary-sub">{gymDays} of {historyEntries.length} days</p>
                         </article>
                         <article className="summary-tile">
-                          <p className="summary-label">Days Tracked</p>
-                          <p className="summary-value">{daysWithMeals.length}<span className="summary-sub-inline"> / {historyEntries.length}</span></p>
+                          <p className="summary-label">Body Fat</p>
+                          <p className="summary-value">{latestBf !== null ? `${latestBf.toFixed(1)}%` : "—"}</p>
+                          {bfDelta !== null && (
+                            <p className={`summary-sub ${bfDelta <= 0 ? "summary-sub-positive" : "summary-sub-negative"}`}>
+                              {bfDelta >= 0 ? "+" : ""}{bfDelta.toFixed(1)}%
+                            </p>
+                          )}
+                        </article>
+                        <article className="summary-tile">
+                          <p className="summary-label">Muscle Mass</p>
+                          <p className="summary-value">{latestMm !== null ? `${latestMm.toFixed(1)} kg` : "—"}</p>
+                          {mmDelta !== null && (
+                            <p className={`summary-sub ${mmDelta >= 0 ? "summary-sub-positive" : "summary-sub-negative"}`}>
+                              {mmDelta >= 0 ? "+" : ""}{mmDelta.toFixed(1)} kg
+                            </p>
+                          )}
                         </article>
                         <article className="summary-tile">
                           <p className="summary-label">Weight</p>
@@ -2079,6 +2106,10 @@ export function NutritionView(): JSX.Element {
                             </p>
                           )}
                         </article>
+                        <article className="summary-tile">
+                          <p className="summary-label">Days Tracked</p>
+                          <p className="summary-value">{daysWithMeals.length}<span className="summary-sub-inline"> / {historyEntries.length}</span></p>
+                        </article>
                       </div>
                     );
                   })()}
@@ -2090,9 +2121,9 @@ export function NutritionView(): JSX.Element {
                 <CalorieWeightChart entries={historyEntries} />
               </article>
 
-              {/* Macros as % of daily target */}
+              {/* Body Composition chart */}
               <article className="nutrition-card nutrition-tracking-chart-card">
-                <MacroAdherenceChart entries={historyEntries} />
+                <BodyCompChart entries={historyEntries} />
               </article>
             </>
           )}

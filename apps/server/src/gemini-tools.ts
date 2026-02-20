@@ -159,6 +159,25 @@ export const functionDeclarations: FunctionDeclaration[] = [
     }
   },
   {
+    name: "checkInGym",
+    description:
+      "Log a gym visit for a specific date (defaults to today). Auto-creates the Gym habit if it doesn't exist. Use when user says they went to the gym.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        date: {
+          type: SchemaType.STRING,
+          description: "Date in YYYY-MM-DD format. Defaults to today."
+        },
+        undo: {
+          type: SchemaType.BOOLEAN,
+          description: "Set true to remove a gym check-in."
+        }
+      },
+      required: []
+    }
+  },
+  {
     name: "updateGoalCheckIn",
     description:
       "Update a goal check-in for today. Use this when the user asks to log or undo progress on a specific goal.",
@@ -1911,6 +1930,23 @@ export function handleUpdateHabitCheckIn(
     message: next.todayCompleted
       ? `Checked in habit "${next.name}" for today.`
       : `Removed today's check-in for habit "${next.name}".`
+  };
+}
+
+export function handleCheckInGym(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): { success: true; message: string } | { error: string } {
+  const gym = store.ensureGymHabit();
+  const completed = args.undo === true ? false : true;
+  const date = typeof args.date === "string" ? args.date : undefined;
+  const result = store.toggleHabitCheckIn(gym.id, { completed, date });
+  if (!result) return { error: "Failed to update gym check-in." };
+  return {
+    success: true,
+    message: completed
+      ? `Gym visit logged for ${date ?? "today"}.`
+      : `Gym check-in removed for ${date ?? "today"}.`
   };
 }
 
@@ -5028,6 +5064,9 @@ export function executeFunctionCall(
       break;
     case "updateHabitCheckIn":
       response = handleUpdateHabitCheckIn(store, args);
+      break;
+    case "checkInGym":
+      response = handleCheckInGym(store, args);
       break;
     case "updateGoalCheckIn":
       response = handleUpdateGoalCheckIn(store, args);

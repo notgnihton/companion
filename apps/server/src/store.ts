@@ -3207,6 +3207,30 @@ export class RuntimeStore {
     }));
   }
 
+  /** Find a habit named "Gym" (case-insensitive), or create one if it doesn't exist. */
+  ensureGymHabit(): Habit {
+    const habits = this.getHabits();
+    const gym = habits.find((h) => h.name.toLowerCase() === "gym");
+    if (gym) return gym;
+    const created = this.createHabit({ name: "Gym", cadence: "daily", targetPerWeek: 5 });
+    return created;
+  }
+
+  /** Get set of date keys where the gym habit was checked-in within the range. */
+  getGymCheckInDates(from: string, to: string): Set<string> {
+    const habits = this.getHabits();
+    const gym = habits.find((h) => h.name.toLowerCase() === "gym");
+    if (!gym) return new Set();
+
+    const rows = this.db
+      .prepare(
+        "SELECT checkInDate FROM habit_check_ins WHERE habitId = ? AND completed = 1 AND checkInDate >= ? AND checkInDate <= ?"
+      )
+      .all(gym.id, from, to) as Array<{ checkInDate: string }>;
+
+    return new Set(rows.map((r) => r.checkInDate));
+  }
+
   getHabitById(id: string): Habit | null {
     const row = this.db.prepare("SELECT * FROM habits WHERE id = ?").get(id) as
       | {
@@ -4662,15 +4686,22 @@ export class RuntimeStore {
     const fromKey = this.toDateKey(from);
     const toKey = this.toDateKey(to);
 
-    // Get all weight entries for the range
+    // Get all weight entries for the range (includes body comp)
     const withingsData = this.getWithingsData();
     const weightByDate = new Map<string, number>();
+    const fatByDate = new Map<string, number>();
+    const muscleByDate = new Map<string, number>();
     for (const w of withingsData.weight) {
       const wDate = this.toDateKey(w.measuredAt);
       if (wDate >= fromKey && wDate <= toKey) {
         weightByDate.set(wDate, w.weightKg);
+        if (w.fatRatioPercent != null) fatByDate.set(wDate, w.fatRatioPercent);
+        if (w.muscleMassKg != null) muscleByDate.set(wDate, w.muscleMassKg);
       }
     }
+
+    // Get gym habit check-in dates
+    const gymDates = this.getGymCheckInDates(fromKey, toKey);
 
     const entries: NutritionDayHistoryEntry[] = [];
     const cursor = new Date(fromKey + "T00:00:00Z");
@@ -4718,7 +4749,10 @@ export class RuntimeStore {
             }
           : null,
         mealsLogged: meals.length,
-        weightKg: weightByDate.get(dateKey) ?? null
+        weightKg: weightByDate.get(dateKey) ?? null,
+        fatRatioPercent: fatByDate.get(dateKey) ?? null,
+        muscleMassKg: muscleByDate.get(dateKey) ?? null,
+        gymCheckedIn: gymDates.has(dateKey)
       });
 
       cursor.setUTCDate(cursor.getUTCDate() + 1);
