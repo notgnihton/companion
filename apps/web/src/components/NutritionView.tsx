@@ -381,10 +381,7 @@ function calculateCaloriesFromMacros(proteinGrams: number, carbsGrams: number, f
   return proteinGrams * 4 + carbsGrams * 4 + fatGrams * 9;
 }
 
-function mealDisplayCalories(meal: Pick<NutritionMeal, "calories" | "proteinGrams" | "carbsGrams" | "fatGrams" | "items">): number {
-  if (meal.items && meal.items.length > 0) {
-    return meal.items.reduce((sum, item) => sum + item.quantity * item.caloriesPerUnit, 0);
-  }
+function mealDisplayCalories(meal: Pick<NutritionMeal, "calories" | "proteinGrams" | "carbsGrams" | "fatGrams">): number {
   const hasMacroSignal = meal.proteinGrams > 0 || meal.carbsGrams > 0 || meal.fatGrams > 0;
   if (!hasMacroSignal) {
     return roundToTenth(meal.calories);
@@ -498,16 +495,13 @@ export function NutritionView(): JSX.Element {
     if (!summary) {
       return 0;
     }
-    if (summary.meals.length > 0) {
-      return roundToTenth(summary.meals.reduce((total, meal) => total + mealDisplayCalories(meal), 0));
-    }
     const hasMacroSignal = summary.totals.proteinGrams > 0 || summary.totals.carbsGrams > 0 || summary.totals.fatGrams > 0;
-    if (!hasMacroSignal) {
-      return roundToTenth(summary.totals.calories);
+    if (hasMacroSignal) {
+      return roundToTenth(
+        calculateCaloriesFromMacros(summary.totals.proteinGrams, summary.totals.carbsGrams, summary.totals.fatGrams)
+      );
     }
-    return roundToTenth(
-      calculateCaloriesFromMacros(summary.totals.proteinGrams, summary.totals.carbsGrams, summary.totals.fatGrams)
-    );
+    return roundToTenth(summary.totals.calories);
   }, [summary]);
   const intakeDeltas = useMemo(() => {
     if (!summary || !activeTargets) {
