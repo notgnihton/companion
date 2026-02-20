@@ -37,6 +37,7 @@ import {
   handleQueueClearScheduleWindow,
   handleQueueCreateRoutinePreset,
   handleQueueUpdateRoutinePreset,
+  handleScheduleReminder,
   executePendingChatAction,
   executeFunctionCall
 } from "./gemini-tools.js";
@@ -51,8 +52,8 @@ describe("gemini-tools", () => {
   });
 
   describe("functionDeclarations", () => {
-    it("should define 44 function declarations", () => {
-      expect(functionDeclarations).toHaveLength(44);
+    it("should define 45 function declarations", () => {
+      expect(functionDeclarations).toHaveLength(45);
     });
 
     it("should include getSchedule function", () => {
@@ -1633,6 +1634,100 @@ describe("gemini-tools", () => {
       expect(() => {
         executeFunctionCall("unknownFunction", {}, store);
       }).toThrow("Unknown function: unknownFunction");
+    });
+  });
+
+  describe("handleScheduleReminder", () => {
+    it("schedules a reminder with icon", () => {
+      const futureTime = new Date(Date.now() + 3600_000).toISOString();
+      const result = handleScheduleReminder(store, {
+        title: "Start DAT520 lab",
+        message: "Time to work on the distributed systems lab",
+        scheduledFor: futureTime,
+        icon: "📚",
+        priority: "high"
+      });
+
+      expect(result).toHaveProperty("success", true);
+      const scheduled = (result as { scheduledNotification: { id: string; notification: { title: string; icon?: string; priority: string }; scheduledFor: string } }).scheduledNotification;
+      expect(scheduled.notification.title).toBe("Start DAT520 lab");
+      expect(scheduled.notification.icon).toBe("📚");
+      expect(scheduled.notification.priority).toBe("high");
+      expect(scheduled.scheduledFor).toBe(futureTime);
+    });
+
+    it("schedules a reminder without icon (defaults to medium priority)", () => {
+      const futureTime = new Date(Date.now() + 7200_000).toISOString();
+      const result = handleScheduleReminder(store, {
+        title: "Check emails",
+        message: "Review inbox for professor replies",
+        scheduledFor: futureTime
+      });
+
+      expect(result).toHaveProperty("success", true);
+      const scheduled = (result as { scheduledNotification: { notification: { title: string; icon?: string; priority: string } } }).scheduledNotification;
+      expect(scheduled.notification.title).toBe("Check emails");
+      expect(scheduled.notification.icon).toBeUndefined();
+      expect(scheduled.notification.priority).toBe("medium");
+    });
+
+    it("returns error when required fields are missing", () => {
+      const result = handleScheduleReminder(store, { title: "No message" });
+      expect(result).toHaveProperty("error");
+      expect((result as { error: string }).error).toContain("required");
+    });
+
+    it("returns error when scheduledFor is in the past", () => {
+      const pastTime = new Date(Date.now() - 120_000).toISOString();
+      const result = handleScheduleReminder(store, {
+        title: "Late reminder",
+        message: "This is too late",
+        scheduledFor: pastTime
+      });
+      expect(result).toHaveProperty("error");
+      expect((result as { error: string }).error).toContain("future");
+    });
+
+    it("returns error for invalid datetime format", () => {
+      const result = handleScheduleReminder(store, {
+        title: "Bad date",
+        message: "Invalid format",
+        scheduledFor: "not-a-date"
+      });
+      expect(result).toHaveProperty("error");
+      expect((result as { error: string }).error).toContain("Invalid");
+    });
+
+    it("icon persists through DB round-trip via getDueScheduledNotifications", () => {
+      const scheduledFor = new Date(Date.now() - 1000); // slightly in the past for immediate retrieval
+      // Use a time just barely in the past but within the 60s grace window
+      const justPast = new Date(Date.now() - 30_000).toISOString();
+      const result = handleScheduleReminder(store, {
+        title: "Gym time",
+        message: "Hit the weights",
+        scheduledFor: justPast,
+        icon: "🏋️"
+      });
+
+      expect(result).toHaveProperty("success", true);
+
+      // Retrieve due notifications — the one we just scheduled should be due
+      const due = store.getDueScheduledNotifications(new Date());
+      const match = due.find((d) => d.notification.title === "Gym time");
+      expect(match).toBeDefined();
+      expect(match!.notification.icon).toBe("🏋️");
+    });
+
+    it("works via executeFunctionCall", () => {
+      const futureTime = new Date(Date.now() + 3600_000).toISOString();
+      const result = executeFunctionCall(
+        "scheduleReminder",
+        { title: "Test reminder", message: "Via executeFunctionCall", scheduledFor: futureTime, icon: "🔔" },
+        store
+      );
+
+      expect(result.name).toBe("scheduleReminder");
+      expect(result.response).toHaveProperty("success", true);
     });
   });
 });

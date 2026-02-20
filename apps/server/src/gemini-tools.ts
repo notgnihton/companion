@@ -16,6 +16,7 @@ import {
   NutritionMeal,
   NutritionPlanSnapshot,
   NutritionMealType,
+  ScheduledNotification,
   WithingsSleepSummaryEntry,
   WithingsWeightEntry
 } from "./types.js";
@@ -1014,6 +1015,37 @@ export const functionDeclarations: FunctionDeclaration[] = [
         }
       },
       required: ["deadlineId", "action"]
+    }
+  },
+  {
+    name: "scheduleReminder",
+    description:
+      "Schedule a custom reminder/notification to be delivered at a specific time. Use this when the user asks to be reminded about something, or when you proactively want to set a follow-up notification. Delivers as a push notification.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        title: {
+          type: SchemaType.STRING,
+          description: "Short notification title (e.g. 'Time to start DAT520 lab')"
+        },
+        message: {
+          type: SchemaType.STRING,
+          description: "Notification body with detail or encouragement"
+        },
+        scheduledFor: {
+          type: SchemaType.STRING,
+          description: "ISO 8601 datetime when the notification should fire (e.g. 2026-02-22T09:00:00)"
+        },
+        icon: {
+          type: SchemaType.STRING,
+          description: "Single emoji icon for the notification (e.g. ⏰, 📚, 🏋️, 💊, 🎯). Pick one that fits the reminder context."
+        },
+        priority: {
+          type: SchemaType.STRING,
+          description: "Priority: low, medium, high, or critical (default: medium)"
+        }
+      },
+      required: ["title", "message", "scheduledFor"]
     }
   },
   {
@@ -3922,6 +3954,54 @@ export function handleQueueDeadlineAction(
   return { error: "Unsupported deadline action. Use complete or reschedule." };
 }
 
+export function handleScheduleReminder(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): { success: true; scheduledNotification: ScheduledNotification; message: string } | { error: string } {
+  const title = asTrimmedString(args.title);
+  const message = asTrimmedString(args.message);
+  const scheduledForRaw = asTrimmedString(args.scheduledFor);
+
+  if (!title || !message || !scheduledForRaw) {
+    return { error: "title, message, and scheduledFor are required." };
+  }
+
+  const scheduledFor = new Date(scheduledForRaw);
+  if (Number.isNaN(scheduledFor.getTime())) {
+    return { error: `Invalid scheduledFor datetime: ${scheduledForRaw}. Use ISO 8601 format.` };
+  }
+
+  if (scheduledFor.getTime() < Date.now() - 60_000) {
+    return { error: "scheduledFor must be in the future." };
+  }
+
+  const priorityRaw = asTrimmedString(args.priority)?.toLowerCase();
+  const priority: "low" | "medium" | "high" | "critical" =
+    priorityRaw === "low" || priorityRaw === "medium" || priorityRaw === "high" || priorityRaw === "critical"
+      ? priorityRaw
+      : "medium";
+
+  const icon = asTrimmedString(args.icon) ?? undefined;
+
+  const scheduled = store.scheduleNotification(
+    {
+      title,
+      message,
+      priority,
+      source: "orchestrator",
+      actions: ["snooze", "view"],
+      ...(icon ? { icon } : {})
+    },
+    scheduledFor
+  );
+
+  return {
+    success: true,
+    scheduledNotification: scheduled,
+    message: `Reminder scheduled: "${title}" at ${scheduledFor.toISOString()}${icon ? ` ${icon}` : ""}`
+  };
+}
+
 export function handleCreateScheduleBlock(
   store: RuntimeStore,
   args: Record<string, unknown> = {}
@@ -5144,6 +5224,9 @@ export function executeFunctionCall(
       break;
     case "queueDeadlineAction":
       response = handleQueueDeadlineAction(store, args);
+      break;
+    case "scheduleReminder":
+      response = handleScheduleReminder(store, args);
       break;
     case "createScheduleBlock":
       response = handleCreateScheduleBlock(store, args);

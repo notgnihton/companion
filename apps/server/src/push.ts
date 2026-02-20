@@ -43,7 +43,7 @@ export function hasStaticVapidKeys(): boolean {
 
 export async function sendPushNotification(
   subscription: PushSubscriptionRecord,
-  notification: Pick<Notification, "id" | "title" | "message" | "priority" | "source" | "timestamp" | "metadata" | "actions" | "url">,
+  notification: Pick<Notification, "id" | "title" | "message" | "priority" | "source" | "timestamp" | "metadata" | "actions" | "url" | "icon">,
   options: PushRetryOptions = {}
 ): Promise<PushSendResult> {
   const payload = JSON.stringify({
@@ -55,7 +55,8 @@ export async function sendPushNotification(
     timestamp: notification.timestamp,
     deadlineId: notification.metadata?.deadlineId,
     actions: notification.actions,
-    url: notification.url
+    url: notification.url,
+    icon: notification.icon
   });
 
   const maxRetries = options.maxRetries ?? 2;

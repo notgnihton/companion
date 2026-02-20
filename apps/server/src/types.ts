@@ -28,6 +28,7 @@ export interface Notification {
   metadata?: Record<string, unknown>;
   actions?: NotificationAction[];
   url?: string;
+  icon?: string;
 }
 
 export type ChatRole = "user" | "assistant";

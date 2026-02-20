@@ -819,6 +819,13 @@ export class RuntimeStore {
     if (!hasTurnCountColumn) {
       this.db.prepare("ALTER TABLE reflection_entries ADD COLUMN turnCount INTEGER NOT NULL DEFAULT 1").run();
     }
+
+    // Migration: add icon column to scheduled_notifications
+    const scheduledNotifColumns = this.db.prepare("PRAGMA table_info(scheduled_notifications)").all() as Array<{ name: string }>;
+    const hasScheduledIconColumn = scheduledNotifColumns.some((col) => col.name === "icon");
+    if (!hasScheduledIconColumn) {
+      this.db.prepare("ALTER TABLE scheduled_notifications ADD COLUMN icon TEXT").run();
+    }
   }
 
   private loadOrInitializeDefaults(): void {
@@ -6173,8 +6180,8 @@ export class RuntimeStore {
 
     this.db
       .prepare(
-        `INSERT INTO scheduled_notifications (id, source, title, message, priority, scheduledFor, createdAt, eventId)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO scheduled_notifications (id, source, title, message, priority, scheduledFor, createdAt, eventId, icon)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         scheduled.id,
@@ -6184,7 +6191,8 @@ export class RuntimeStore {
         notification.priority,
         scheduled.scheduledFor,
         scheduled.createdAt,
-        eventId ?? null
+        eventId ?? null,
+        notification.icon ?? null
       );
 
     return scheduled;
@@ -6205,6 +6213,7 @@ export class RuntimeStore {
       scheduledFor: string;
       createdAt: string;
       eventId: string | null;
+      icon: string | null;
     }>;
 
     return rows.map((row) => ({
@@ -6213,7 +6222,8 @@ export class RuntimeStore {
         source: row.source as Notification["source"],
         title: row.title,
         message: row.message,
-        priority: row.priority as Notification["priority"]
+        priority: row.priority as Notification["priority"],
+        ...(row.icon ? { icon: row.icon } : {})
       },
       scheduledFor: row.scheduledFor,
       createdAt: row.createdAt,

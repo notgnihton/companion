@@ -1326,6 +1326,7 @@ Core behavior:
 - For email follow-ups like "what did it contain?" after inbox discussion, call getEmails again and answer from sender/subject/snippet.
 - For deadline completion or rescheduling/extension requests, use queueDeadlineAction with action 'complete' or 'reschedule' (with newDueDate in ISO 8601). Apply immediately (no confirmation step).
 - For schedule mutations, execute immediately with createScheduleBlock/updateScheduleBlock/deleteScheduleBlock/clearScheduleWindow.
+- When the user asks to be reminded about something at a specific time, use scheduleReminder. Pick a fitting emoji icon for the reminder (e.g. 📚 for study, 💊 for meds, 🏋️ for gym, 📧 for emails). If the user doesn't specify a time, infer a reasonable one from context.
 - For recurring routine preferences from conversation (for example "I go gym every day at 07:00"), create or update routine presets immediately with queueCreateRoutinePreset/queueUpdateRoutinePreset.
 - Treat habits/goals as conversation-managed: you should proactively ask lightweight check-in questions during natural pauses instead of directing users to manual check-in buttons.
 - If habits/goals are pending today, include one brief check-in prompt in suitable replies (at most one per reply).
@@ -2995,6 +2996,24 @@ function collectToolCitations(
         timestamp: deadline.dueDate
       }
     ];
+  }
+
+  if (functionName === "scheduleReminder") {
+    const payload = asRecord(response);
+    const scheduled = asRecord(payload?.scheduled);
+    const title = asNonEmptyString(scheduled?.title) ?? asNonEmptyString(asRecord(scheduled?.notification)?.title);
+    const scheduledFor = asNonEmptyString(scheduled?.scheduledFor);
+    const icon = asNonEmptyString(scheduled?.icon) ?? asNonEmptyString(asRecord(scheduled?.notification)?.icon);
+    if (title) {
+      return [
+        {
+          id: asNonEmptyString(scheduled?.id) ?? `reminder-${Date.now()}`,
+          type: "schedule" as const,
+          label: icon ? `${icon} ${title}` : title,
+          timestamp: scheduledFor ?? undefined
+        }
+      ];
+    }
   }
 
   return [];

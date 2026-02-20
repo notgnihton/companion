@@ -7,7 +7,8 @@ self.addEventListener("push", (event) => {
     source: null,
     priority: "medium",
     notificationId: null,
-    actions: null
+    actions: null,
+    icon: null
   };
 
   if (event.data) {
@@ -21,13 +22,18 @@ self.addEventListener("push", (event) => {
         source: typeof parsed.source === "string" ? parsed.source : payload.source,
         priority: typeof parsed.priority === "string" ? parsed.priority : payload.priority,
         notificationId: typeof parsed.notificationId === "string" ? parsed.notificationId : payload.notificationId,
-        actions: Array.isArray(parsed.actions) ? parsed.actions : payload.actions
+        actions: Array.isArray(parsed.actions) ? parsed.actions : payload.actions,
+        icon: typeof parsed.icon === "string" ? parsed.icon : payload.icon
       };
     } catch {
       const text = event.data.text();
       payload.message = text || payload.message;
     }
   }
+
+  const displayTitle = payload.icon
+    ? `${payload.icon} ${payload.title}`
+    : payload.title;
 
   const notificationOptions = {
     body: payload.message,
@@ -81,7 +87,7 @@ self.addEventListener("push", (event) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(payload.title, notificationOptions)
+    self.registration.showNotification(displayTitle, notificationOptions)
   );
 });
 
