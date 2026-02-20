@@ -461,6 +461,7 @@ export interface HabitCheckIn {
 export interface HabitWithStatus extends Habit {
   todayCompleted: boolean;
   streak: number;
+  streakGraceUsed: boolean;
   completionRate7d: number;
   recentCheckIns: Array<{ date: string; completed: boolean }>;
 }
@@ -487,6 +488,7 @@ export interface GoalWithStatus extends Goal {
   remaining: number;
   todayCompleted: boolean;
   streak: number;
+  streakGraceUsed: boolean;
   completionRate7d: number;
   recentCheckIns: Array<{ date: string; completed: boolean }>;
 }

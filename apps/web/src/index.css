@@ -976,6 +976,10 @@ button:disabled {
 .habit-visual-progress-fill {
   height: 100%;
   background: linear-gradient(90deg, #7dd3a8, #6ab8e5);
+  transition: background 0.2s ease;
+}
+.habit-visual-progress-fill.habit-visual-progress-grace {
+  background: linear-gradient(90deg, #f6c37f, #e8a84c);
 }
 
 .pill-button {
@@ -1067,6 +1071,10 @@ button:disabled {
 .goal-progress-fill {
   height: 100%;
   background: linear-gradient(90deg, #7dd3a8, #f6c37f);
+  transition: background 0.2s ease;
+}
+.goal-progress-fill.goal-progress-grace {
+  background: linear-gradient(90deg, #f6c37f, #e8a84c);
 }
 
 .goal-progress-meta {

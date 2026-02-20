@@ -111,7 +111,7 @@ export function HabitsGoalsView(): JSX.Element {
           </button>
         </header>
         <div className="habit-visual-progress">
-          <div className="habit-visual-progress-fill" style={{ width: `${completionPercent}%` }} />
+          <div className={`habit-visual-progress-fill${habit.streakGraceUsed ? " habit-visual-progress-grace" : ""}`} style={{ width: `${completionPercent}%` }} />
         </div>
       </article>
     );
@@ -149,7 +149,7 @@ export function HabitsGoalsView(): JSX.Element {
         </header>
         <div className="goal-progress">
           <div className="goal-progress-bar">
-            <div className="goal-progress-fill" style={{ width: `${progressPercent}%` }} />
+            <div className={`goal-progress-fill${goal.streakGraceUsed ? " goal-progress-grace" : ""}`} style={{ width: `${progressPercent}%` }} />
           </div>
         </div>
       </article>

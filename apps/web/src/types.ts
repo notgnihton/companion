@@ -198,6 +198,7 @@ export interface Habit {
   targetPerWeek: number;
   motivation?: string;
   streak: number;
+  streakGraceUsed?: boolean;
   completionRate7d: number;
   todayCompleted: boolean;
   recentCheckIns: CheckInDay[];
@@ -213,6 +214,7 @@ export interface Goal {
   progressCount: number;
   remaining: number;
   streak: number;
+  streakGraceUsed?: boolean;
   completionRate7d: number;
   todayCompleted: boolean;
   recentCheckIns: CheckInDay[];

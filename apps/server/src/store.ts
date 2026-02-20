@@ -3308,13 +3308,14 @@ export class RuntimeStore {
     const todayKey = this.toDateKey();
     const recent = this.buildRecentCheckIns(checkIns);
     const completionRate7d = recent.length === 0 ? 0 : Math.round((recent.filter((c) => c.completed).length / recent.length) * 100);
-    const streak = this.computeStreak(checkIns, todayKey);
+    const { streak, graceUsed } = this.computeStreak(checkIns, todayKey);
     const todayCompleted = recent.find((c) => c.date === todayKey)?.completed ?? false;
 
     return {
       ...habit,
       todayCompleted,
       streak,
+      streakGraceUsed: graceUsed,
       completionRate7d,
       recentCheckIns: recent
     };
@@ -3490,7 +3491,7 @@ export class RuntimeStore {
     const todayKey = this.toDateKey();
     const recent = this.buildRecentCheckIns(checkIns);
     const completionRate7d = recent.length === 0 ? 0 : Math.round((recent.filter((c) => c.completed).length / recent.length) * 100);
-    const streak = this.computeStreak(checkIns, todayKey);
+    const { streak, graceUsed } = this.computeStreak(checkIns, todayKey);
     const todayCompleted = recent.find((c) => c.date === todayKey)?.completed ?? false;
     const progressCount = checkIns.filter((c) => c.completed).length;
     const remaining = Math.max(goal.targetCount - progressCount, 0);
@@ -3501,6 +3502,7 @@ export class RuntimeStore {
       remaining,
       todayCompleted,
       streak,
+      streakGraceUsed: graceUsed,
       completionRate7d,
       recentCheckIns: recent
     };
@@ -6293,7 +6295,7 @@ export class RuntimeStore {
     return recent;
   }
 
-  private computeStreak(checkIns: Array<{ date: string; completed: boolean }>, referenceDateKey: string): number {
+  private computeStreak(checkIns: Array<{ date: string; completed: boolean }>, referenceDateKey: string): { streak: number; graceUsed: boolean } {
     const completedDates = new Set(checkIns.filter((c) => c.completed).map((c) => this.toDateKey(c.date)));
     let streak = 0;
     let graceUsed = false;
@@ -6320,7 +6322,7 @@ export class RuntimeStore {
       cursor.setUTCDate(cursor.getUTCDate() - 1);
     }
 
-    return streak;
+    return { streak, graceUsed };
   }
 
   private trimNutritionMeals(): void {
