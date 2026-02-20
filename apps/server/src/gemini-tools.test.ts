@@ -980,6 +980,51 @@ describe("gemini-tools", () => {
       expect(store.getPendingChatActions()).toHaveLength(0);
     });
 
+    it("reschedules a deadline to an exact date", () => {
+      const deadline = store.createDeadline({
+        course: "DAT560",
+        task: "Assignment 2",
+        dueDate: "2026-02-20T12:00:00.000Z",
+        priority: "high",
+        completed: false
+      });
+
+      const result = handleQueueDeadlineAction(store, {
+        deadlineId: deadline.id,
+        action: "reschedule",
+        newDueDate: "2026-02-22T23:59:00.000Z"
+      });
+
+      expect("error" in result).toBe(false);
+      expect("pendingAction" in result).toBe(false);
+      expect(result).toHaveProperty("requiresConfirmation", false);
+      if ("error" in result || "pendingAction" in result) {
+        throw new Error("Expected immediate reschedule response.");
+      }
+
+      expect(result.success).toBe(true);
+      expect(result.action).toBe("reschedule");
+      expect(result.deadline.dueDate).toBe("2026-02-22T23:59:00.000Z");
+      expect(store.getPendingChatActions()).toHaveLength(0);
+    });
+
+    it("returns error when reschedule is missing newDueDate", () => {
+      const deadline = store.createDeadline({
+        course: "DAT560",
+        task: "Assignment 2",
+        dueDate: "2026-02-20T12:00:00.000Z",
+        priority: "high",
+        completed: false
+      });
+
+      const result = handleQueueDeadlineAction(store, {
+        deadlineId: deadline.id,
+        action: "reschedule"
+      });
+
+      expect(result).toHaveProperty("error");
+    });
+
     it("queues a schedule block action", () => {
       const result = handleQueueScheduleBlock(store, {
         title: "DAT520 revision",

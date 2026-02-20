@@ -996,7 +996,7 @@ export const functionDeclarations: FunctionDeclaration[] = [
   {
     name: "queueDeadlineAction",
     description:
-      "Modify a deadline immediately by action. Supports complete and snooze without extra confirmation.",
+      "Modify a deadline immediately by action. Supports complete, snooze, and reschedule without extra confirmation.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -1006,11 +1006,15 @@ export const functionDeclarations: FunctionDeclaration[] = [
         },
         action: {
           type: SchemaType.STRING,
-          description: "Action: complete or snooze"
+          description: "Action: complete, snooze, or reschedule"
         },
         snoozeHours: {
           type: SchemaType.NUMBER,
           description: "When action is snooze, number of hours to delay (default: 24)"
+        },
+        newDueDate: {
+          type: SchemaType.STRING,
+          description: "When action is reschedule, the new due date/time in ISO 8601 format (e.g. 2026-02-22T23:59:00). Required for reschedule."
         }
       },
       required: ["deadlineId", "action"]
@@ -3709,7 +3713,7 @@ export interface PendingActionToolResponse {
 export interface ImmediateDeadlineActionResponse {
   success: true;
   requiresConfirmation: false;
-  action: "complete" | "snooze";
+  action: "complete" | "snooze" | "reschedule";
   snoozeHours?: number;
   message: string;
   deadline: Deadline;
@@ -3879,8 +3883,8 @@ export function handleQueueDeadlineAction(
     return { error: `Deadline not found: ${deadlineId}` };
   }
 
-  if (action !== "complete" && action !== "snooze") {
-    return { error: "Unsupported deadline action. Use complete or snooze." };
+  if (action !== "complete" && action !== "snooze" && action !== "reschedule") {
+    return { error: "Unsupported deadline action. Use complete, snooze, or reschedule." };
   }
 
   if (action === "complete") {
@@ -3894,6 +3898,28 @@ export function handleQueueDeadlineAction(
       requiresConfirmation: false,
       action: "complete",
       message: `Marked ${updated.course} ${updated.task} as completed.`,
+      deadline: updated
+    };
+  }
+
+  if (action === "reschedule") {
+    const rawDate = asTrimmedString(args.newDueDate);
+    if (!rawDate) {
+      return { error: "newDueDate is required for reschedule action (ISO 8601 format)." };
+    }
+    const newDue = new Date(rawDate);
+    if (Number.isNaN(newDue.getTime())) {
+      return { error: `Invalid newDueDate: ${rawDate}. Use ISO 8601 format.` };
+    }
+    const updated = store.updateDeadline(deadline.id, { dueDate: newDue.toISOString() });
+    if (!updated) {
+      return { error: "Unable to reschedule deadline." };
+    }
+    return {
+      success: true,
+      requiresConfirmation: false,
+      action: "reschedule",
+      message: `Rescheduled ${updated.course} ${updated.task} to ${newDue.toISOString()}.`,
       deadline: updated
     };
   }
@@ -4458,6 +4484,46 @@ export function executePendingChatAction(
         success: true,
         message: `Snoozed ${updated.course} ${updated.task} by ${snoozeHours} hours.`,
         deadline: updated
+      };
+    }
+    case "reschedule-deadline": {
+      const deadlineId = asTrimmedString(pendingAction.payload.deadlineId);
+      const rawDate = asTrimmedString(pendingAction.payload.newDueDate);
+      if (!deadlineId || !rawDate) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Invalid reschedule action payload."
+        };
+      }
+
+      const newDue = new Date(rawDate);
+      if (Number.isNaN(newDue.getTime())) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: `Invalid date: ${rawDate}.`
+        };
+      }
+
+      const rescheduled = store.updateDeadline(deadlineId, { dueDate: newDue.toISOString() });
+      if (!rescheduled) {
+        return {
+          actionId: pendingAction.id,
+          actionType: pendingAction.actionType,
+          success: false,
+          message: "Deadline not found for reschedule."
+        };
+      }
+
+      return {
+        actionId: pendingAction.id,
+        actionType: pendingAction.actionType,
+        success: true,
+        message: `Rescheduled ${rescheduled.course} ${rescheduled.task} to ${newDue.toISOString()}.`,
+        deadline: rescheduled
       };
     }
     case "create-schedule-block": {
