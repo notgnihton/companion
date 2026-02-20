@@ -331,7 +331,7 @@ export function ScheduleView({ focusLectureId }: ScheduleViewProps): JSX.Element
     <section className="schedule-card">
       <div className="schedule-card-header">
         <div className="schedule-card-title-row">
-          <span className="schedule-card-icon">�</span>
+          <span className="schedule-card-icon schedule-card-icon-svg"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/><path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
           <h2>Today&apos;s Schedule</h2>
         </div>
         <div className="schedule-card-meta">

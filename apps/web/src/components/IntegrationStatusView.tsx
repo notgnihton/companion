@@ -26,6 +26,18 @@ function formatRelative(timestamp: string | null): string {
   return `${diffDay}d ago`;
 }
 
+type IntegrationId = "canvas" | "gemini" | "ical" | "github" | "youtube" | "gmail" | "twitter" | "twitch";
+
+interface IntegrationDef {
+  id: IntegrationId;
+  name: string;
+  description: string;
+  icon: string;
+  status: "connected" | "configured" | "not-configured" | "syncing";
+  detail?: string;
+  action?: { label: string; handler: () => void; disabled?: boolean };
+}
+
 export function IntegrationStatusView(): JSX.Element {
   const [canvasStatus, setCanvasStatus] = useState<CanvasStatus>({
     baseUrl: "",
@@ -57,91 +69,135 @@ export function IntegrationStatusView(): JSX.Element {
     setCanvasMessage("");
 
     const result = await triggerCanvasSync(undefined);
-    setCanvasMessage(result.success ? "Canvas synced successfully." : result.error ?? "Canvas sync failed.");
+    setCanvasMessage(result.success ? "Synced successfully" : result.error ?? "Sync failed");
 
     const nextStatus = await getCanvasStatus();
     setCanvasStatus(nextStatus);
     saveCanvasStatus(nextStatus);
     setCanvasSyncing(false);
+    setTimeout(() => setCanvasMessage(""), 3000);
   };
 
-  const canvasStatusLabel = canvasSyncing
-    ? "Syncing..."
-    : canvasStatus.lastSyncedAt
-      ? "Connected"
-      : "Not synced yet";
-  const canvasStatusClass = canvasSyncing
-    ? "status-running"
-    : canvasStatus.lastSyncedAt
-      ? "status-running"
-      : "status-idle";
+  const integrations: IntegrationDef[] = [
+    {
+      id: "canvas",
+      name: "Canvas LMS",
+      description: "Courses, assignments, deadlines, grades",
+      icon: "🎓",
+      status: canvasSyncing ? "syncing" : canvasStatus.lastSyncedAt ? "connected" : "not-configured",
+      detail: canvasStatus.lastSyncedAt
+        ? `${canvasStatus.courses.length} courses · Synced ${formatRelative(canvasStatus.lastSyncedAt)}`
+        : "Add CANVAS_API_TOKEN to connect",
+      action: {
+        label: canvasSyncing ? "Syncing…" : "Sync",
+        handler: () => void handleCanvasSync(),
+        disabled: canvasSyncing
+      }
+    },
+    {
+      id: "gemini",
+      name: "Gemini AI",
+      description: "Conversational AI, summaries, coaching",
+      icon: "✨",
+      status: geminiStatus.apiConfigured ? "connected" : "not-configured",
+      detail: geminiStatus.apiConfigured
+        ? `${geminiStatus.model} · Last used ${formatRelative(geminiStatus.lastRequestAt)}`
+        : "Add GEMINI_API_KEY to connect"
+    },
+    {
+      id: "ical",
+      name: "TP EduCloud (iCal)",
+      description: "Lecture schedule from UiS timetable",
+      icon: "📅",
+      status: "configured",
+      detail: "DAT520, DAT560, DAT600 · Syncs weekly"
+    },
+    {
+      id: "github",
+      name: "GitHub Course Repos",
+      description: "Lab assignments, deadlines from repos",
+      icon: "🐙",
+      status: "not-configured",
+      detail: "Add COURSE_GITHUB_PAT to connect"
+    },
+    {
+      id: "youtube",
+      name: "YouTube",
+      description: "Subscriptions, video summaries for digest",
+      icon: "📺",
+      status: "not-configured",
+      detail: "Add YOUTUBE_API_KEY to connect"
+    },
+    {
+      id: "gmail",
+      name: "Gmail",
+      description: "Inbox summary, email digest",
+      icon: "📧",
+      status: "not-configured",
+      detail: "Add Gmail OAuth credentials to connect"
+    },
+    {
+      id: "twitter",
+      name: "X (Twitter)",
+      description: "Timeline digest, trending in tech",
+      icon: "𝕏",
+      status: "not-configured",
+      detail: "Add X_BEARER_TOKEN to connect"
+    },
+    {
+      id: "twitch",
+      name: "Twitch",
+      description: "Live stream alerts for followed channels",
+      icon: "🎮",
+      status: "not-configured",
+      detail: "Add Twitch client credentials to connect"
+    }
+  ];
 
-  const geminiStatusLabel = geminiStatus.apiConfigured ? "Configured" : "Not configured";
-  const geminiStatusClass = geminiStatus.apiConfigured ? "status-running" : "status-idle";
-  const geminiRateLimitLabel =
-    geminiStatus.rateLimitRemaining === null ? "Provider-managed" : String(geminiStatus.rateLimitRemaining);
+  const statusBadge = (status: IntegrationDef["status"]): JSX.Element => {
+    const classes: Record<IntegrationDef["status"], string> = {
+      connected: "intg-badge intg-badge-connected",
+      configured: "intg-badge intg-badge-configured",
+      "not-configured": "intg-badge intg-badge-inactive",
+      syncing: "intg-badge intg-badge-syncing"
+    };
+    const labels: Record<IntegrationDef["status"], string> = {
+      connected: "Connected",
+      configured: "Configured",
+      "not-configured": "Not connected",
+      syncing: "Syncing…"
+    };
+    return <span className={classes[status]}>{labels[status]}</span>;
+  };
 
   return (
-    <section id="integration-status-panel" className="panel">
-      <header className="panel-header">
-        <h2>Integrations</h2>
-      </header>
+    <section className="intg-hub">
+      {canvasMessage && <p className="intg-toast">{canvasMessage}</p>}
 
-      <div className="settings-stack">
-        <div className="panel">
-          <header className="panel-header">
-            <h3>Canvas LMS</h3>
-            <span className={`status ${canvasStatusClass}`}>{canvasStatusLabel}</span>
-          </header>
-
-          <div className="panel-header">
-            <div>
-              <p className="muted">Last synced</p>
-              <strong>{formatRelative(canvasStatus.lastSyncedAt)}</strong>
+      <div className="intg-grid">
+        {integrations.map((intg) => (
+          <div key={intg.id} className={`intg-card ${intg.status === "not-configured" ? "intg-card-inactive" : ""}`}>
+            <div className="intg-card-header">
+              <span className="intg-card-icon">{intg.icon}</span>
+              <div className="intg-card-title">
+                <h4>{intg.name}</h4>
+                {statusBadge(intg.status)}
+              </div>
             </div>
-            <button type="button" onClick={() => void handleCanvasSync()} disabled={canvasSyncing}>
-              {canvasSyncing ? "Syncing..." : "Sync now"}
-            </button>
+            <p className="intg-card-desc">{intg.description}</p>
+            <p className="intg-card-detail">{intg.detail}</p>
+            {intg.action && (
+              <button
+                type="button"
+                className="intg-card-action"
+                onClick={intg.action.handler}
+                disabled={intg.action.disabled}
+              >
+                {intg.action.label}
+              </button>
+            )}
           </div>
-
-          {canvasMessage && <p>{canvasMessage}</p>}
-
-          <div>
-            <p className="muted">Synced courses: {canvasStatus.courses.length}</p>
-          </div>
-        </div>
-
-        <div className="panel">
-          <header className="panel-header">
-            <h3>Gemini AI</h3>
-            <span className={`status ${geminiStatusClass}`}>{geminiStatusLabel}</span>
-          </header>
-
-          <div className="panel-header">
-            <div>
-              <p className="muted">Model</p>
-              <strong>{geminiStatus.model}</strong>
-              {geminiStatus.growthImageModelResolved && (
-                <p className="muted-small">
-                  Growth image model: {geminiStatus.growthImageModel} ({geminiStatus.growthImageModelResolved})
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="panel-header">
-            <div>
-              <p className="muted">Last request</p>
-              <strong>{formatRelative(geminiStatus.lastRequestAt)}</strong>
-            </div>
-            <div>
-              <p className="muted">Rate limit</p>
-              <strong>{geminiRateLimitLabel}</strong>
-            </div>
-          </div>
-
-          {geminiStatus.error && <p className="error">{geminiStatus.error}</p>}
-        </div>
+        ))}
       </div>
     </section>
   );

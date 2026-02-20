@@ -1407,14 +1407,6 @@ export function NutritionView(): JSX.Element {
             <div className="nutrition-plan-hero-actions">
               <button
                 type="button"
-                className="nutrition-secondary-button"
-                onClick={() => void handleResetDay()}
-                disabled={dayControlBusy || loading}
-              >
-                Reset Day
-              </button>
-              <button
-                type="button"
                 onClick={() => setShowDayControlPanel((current) => !current)}
                 disabled={dayControlBusy}
               >

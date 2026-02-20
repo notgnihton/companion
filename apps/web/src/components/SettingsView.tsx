@@ -1,6 +1,5 @@
 import { NotificationSettings } from "./NotificationSettings";
 import { CalendarImportView } from "./CalendarImportView";
-import { NotificationHistoryView } from "./NotificationHistoryView";
 import { IntegrationStatusView } from "./IntegrationStatusView";
 import { IntegrationScopeSettings } from "./IntegrationScopeSettings";
 
@@ -21,6 +20,10 @@ export function SettingsView({
       <div className="settings-section">
         <h3 className="settings-section-title">🔌 Integrations</h3>
         <IntegrationStatusView />
+      </div>
+
+      <div className="settings-section">
+        <h3 className="settings-section-title">🎯 Data Scope</h3>
         <IntegrationScopeSettings />
       </div>
 
@@ -30,13 +33,8 @@ export function SettingsView({
       </div>
 
       <div className="settings-section">
-        <h3 className="settings-section-title">📅 Calendar</h3>
+        <h3 className="settings-section-title">📅 Calendar Import</h3>
         <CalendarImportView onImported={onCalendarImported} />
-      </div>
-
-      <div className="settings-section">
-        <h3 className="settings-section-title">📊 History</h3>
-        <NotificationHistoryView />
       </div>
     </div>
   );

@@ -97,10 +97,7 @@ export function NotificationSettings(): JSX.Element {
 
   return (
     <section className="noti-settings">
-      <header className="noti-settings-header">
-        <h2>🔔 Notifications</h2>
-        {message && <span className="noti-settings-saved">{message}</span>}
-      </header>
+      {message && <span className="noti-settings-saved">{message}</span>}
 
       {/* Quiet Hours */}
       <div className="noti-settings-card">
@@ -180,29 +177,6 @@ export function NotificationSettings(): JSX.Element {
             </div>
           </>
         )}
-      </div>
-
-      {/* Priority Filter */}
-      <div className="noti-settings-card">
-        <div className="noti-settings-row">
-          <div className="noti-settings-row-text">
-            <span className="noti-settings-label">📊 Minimum Priority</span>
-            <span className="noti-settings-desc">{priorityLabels[preferences.minimumPriority]}</span>
-          </div>
-        </div>
-        <div className="noti-priority-options">
-          {(["low", "medium", "high", "critical"] as const).map((p) => (
-            <button
-              key={p}
-              type="button"
-              className={`noti-priority-btn ${preferences.minimumPriority === p ? "noti-priority-active" : ""}`}
-              onClick={() => void save({ minimumPriority: p })}
-              disabled={busy}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Category Toggles */}
