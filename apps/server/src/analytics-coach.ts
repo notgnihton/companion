@@ -67,6 +67,16 @@ function normalizeText(text: string, maxLength: number): string {
   if (compact.length <= maxLength) {
     return compact;
   }
+  // Never truncate output text — only compress whitespace
+  return compact;
+}
+
+/** Truncate input data for prompts only (not user-facing output) */
+function truncateForPrompt(text: string, maxLength: number): string {
+  const compact = text.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxLength) {
+    return compact;
+  }
   return `${compact.slice(0, maxLength)}...`;
 }
 
@@ -104,7 +114,7 @@ function uniqueTrimmed(items: string[], maxItems: number): string[] {
   const normalized: string[] = [];
 
   items.forEach((item) => {
-    const cleaned = normalizeText(item, 220);
+    const cleaned = item.replace(/\s+/g, " ").trim();
     if (!cleaned || seen.has(cleaned.toLowerCase())) {
       return;
     }
@@ -192,7 +202,7 @@ function buildDataset(store: RuntimeStore, periodDays: 7 | 14 | 30, now: Date): 
     habits,
     goals,
     reflections,
-    nutritionHistory: store.getNutritionDailyHistory(windowStartDate, now),
+    nutritionHistory: store.getNutritionDailyHistory(windowStartDate, now, { eatenOnly: true }),
     bodyComp: store.getWithingsData().weight.filter((w) => inWindow(w.measuredAt, windowStartMs, nowMs)),
     sleepHistory: store.getWithingsData().sleepSummary.filter((s) => inWindow(s.date, windowStartMs, nowMs)),
     scheduleEvents: store.getScheduleEvents().filter((e) => inWindow(e.startTime, windowStartMs, nowMs))
@@ -303,7 +313,7 @@ function buildFallbackInsight(dataset: AnalyticsDataset): AnalyticsCoachInsight 
     windowEnd: dataset.windowEnd,
     generatedAt: nowIso(),
     source: "fallback",
-    summary: normalizeText(summary, 500),
+    summary,
     correlations: uniqueTrimmed(correlations, 5),
     strengths: uniqueTrimmed(strengths, 5),
     risks: uniqueTrimmed(risks, 5),
@@ -321,13 +331,13 @@ function buildPrompt(dataset: AnalyticsDataset): string {
     .slice(0, MAX_DEADLINE_SNIPPETS)
     .map((deadline) => {
       const status = deadline.completed ? "completed" : "open";
-      return `- ${deadline.course}: ${normalizeText(deadline.task, 90)} | due=${deadline.dueDate} | priority=${deadline.priority} | ${status}`;
+      return `- ${deadline.course}: ${truncateForPrompt(deadline.task, 90)} | due=${deadline.dueDate} | priority=${deadline.priority} | ${status}`;
     })
     .join("\n");
 
   const urgentLines = dataset.openUrgentDeadlines
     .slice(0, MAX_DEADLINE_SNIPPETS)
-    .map((deadline) => `- ${deadline.course}: ${normalizeText(deadline.task, 90)} | due=${deadline.dueDate}`)
+    .map((deadline) => `- ${deadline.course}: ${truncateForPrompt(deadline.task, 90)} | due=${deadline.dueDate}`)
     .join("\n");
 
   const habitLines = dataset.habits
@@ -349,7 +359,7 @@ function buildPrompt(dataset: AnalyticsDataset): string {
   const reflectionLines = dataset.reflections
     .map(
       (entry) =>
-        `- [${entry.timestamp}] event=${normalizeText(entry.event, 80)} | feeling=${normalizeText(entry.feelingStress, 70)} | intent=${normalizeText(entry.intent, 90)} | commitment=${normalizeText(entry.commitment, 90)} | outcome=${normalizeText(entry.outcome, 100)} | evidence=${normalizeText(entry.evidenceSnippet, 130)}`
+        `- [${entry.timestamp}] event=${truncateForPrompt(entry.event, 120)} | feeling=${truncateForPrompt(entry.feelingStress, 100)} | intent=${truncateForPrompt(entry.intent, 120)} | commitment=${truncateForPrompt(entry.commitment, 120)} | outcome=${truncateForPrompt(entry.outcome, 150)} | evidence=${truncateForPrompt(entry.evidenceSnippet, 200)}`
     )
     .join("\n");
 
@@ -389,34 +399,35 @@ function buildPrompt(dataset: AnalyticsDataset): string {
     .map((e) => `- ${e.startTime.slice(0, 10)} ${e.title} (${e.durationMinutes}min, ${e.workload})`)
     .join("\n");
 
-  return `You are a cross-domain behavior analyst. Your strongest skill is finding CORRELATIONS between different data domains.
+  return `You are Lucy's personal performance coach. You have deep expertise in habit psychology, academic productivity, nutrition, and fitness.
 
 Analyze Lucy's data from the last ${dataset.periodDays} days. Address her directly (you/your). Never say "the user" or "the student".
 
-YOUR PRIMARY TASK: Find non-obvious correlations across domains. Examples of what to look for:
-- Sleep quality on nights before high study-completion days vs low ones
-- Whether gym/workout days correlate with higher productivity or habit completion
-- Nutrition patterns (calorie surplus/deficit, protein intake) and their timing relative to energy levels or study output
-- Body composition trends and their relationship to consistency in gym/nutrition habits
-- Stress/energy from journal entries and how they correlate with deadline completion rates
-- Schedule density (lecture-heavy days) and its impact on habit completion or nutrition tracking
-- Whether reflection/journaling frequency correlates with better habit adherence
-- Deadline proximity pressure and its effect on sleep, nutrition, or workout consistency
+Your coaching approach:
+- Look at the data holistically — notice how sleep, nutrition, gym habits, stress, and academic work affect each other
+- When you see patterns (e.g., poor sleep → skipped gym → lower study output), translate them into actionable coaching insights
+- Be warm, direct, and solution-oriented — like a trusted coach who genuinely cares
+- Lead with what's working, be honest about what isn't, and always offer a concrete next step
+- Don't just describe data — interpret it and suggest what to DO differently
+
+IMPORTANT CONTEXT:
+- The "weightKg" in the nutrition target profile is Lucy's BASELINE/STARTING weight used to calculate macros (protein per lb, fat per lb). It is NOT a goal weight. Do not treat it as a weight target.
+- Nutrition data reflects EATEN meals only (meals marked as consumed). Planned/templated meals that haven't been eaten yet are excluded.
 
 Return strict JSON only:
 {
-  "summary": "3-5 sentence narrative that LEADS with the most interesting cross-domain correlation discovered",
-  "correlations": ["3-5 specific cross-domain correlations found in the data, each stating the two domains and the observed relationship"],
-  "strengths": ["2-4 concise strengths"],
-  "risks": ["2-4 concise risks, especially where one domain is undermining another"],
-  "recommendations": ["3-5 recommendations that leverage the discovered correlations to suggest concrete changes"]
+  "summary": "3-5 sentence coaching narrative. Weave in cross-domain observations naturally (e.g., how gym consistency affects energy for studying). Don't just list facts — connect them and coach.",
+  "correlations": ["3-5 coaching observations that connect different areas of Lucy's life. Frame as insights, not raw data points. E.g., 'Your gym sessions seem to energize your study focus the next day — protecting that routine matters.' NOT 'Gym days correlate with 20% higher study completion.'"],
+  "strengths": ["2-4 things Lucy is doing well, framed encouragingly"],
+  "risks": ["2-4 patterns to watch out for, framed as coaching warnings not alarms"],
+  "recommendations": ["3-5 specific, immediately actionable steps Lucy can take this week"]
 }
 
 Rules:
 - No markdown. No extra keys.
-- Every correlation MUST reference at least two different data domains (e.g., sleep+study, nutrition+gym, stress+deadlines).
-- Recommendations should be grounded in the correlations you found, not generic advice.
-- If data is sparse in any domain, note it but still reason about available cross-domain signals.
+- Write like a personal coach, not a data analyst. Observations should feel like insights from someone who knows Lucy, not a spreadsheet.
+- If a pattern connects two domains (sleep+study, nutrition+gym, stress+deadlines), mention the connection naturally in your coaching.
+- Never truncate or cut off sentences — complete every thought fully.
 
 Aggregate metrics:
 - deadlinesDue=${dataset.metrics.deadlinesDue} completed=${dataset.metrics.deadlinesCompleted}
@@ -482,7 +493,7 @@ function parseInsightJson(raw: string): ParsedCoachInsight | null {
   }
 
   const record = candidate as Record<string, unknown>;
-  const summary = typeof record.summary === "string" ? normalizeText(record.summary, 500) : "";
+  const summary = typeof record.summary === "string" ? record.summary.replace(/\s+/g, " ").trim() : "";
   const correlations = Array.isArray(record.correlations)
     ? record.correlations.filter((value): value is string => typeof value === "string")
     : [];
@@ -527,7 +538,7 @@ export async function generateAnalyticsCoachInsight(
   try {
     const response = await gemini.generateChatResponse({
       systemInstruction:
-        "You are a cross-domain behavior analyst specializing in finding correlations between academic performance, habits, nutrition, sleep, body composition, and emotional state. Return strict JSON only, grounded exclusively in provided data, and address Lucy directly in second person.",
+        "You are Lucy's personal performance coach — warm, direct, and insight-driven. You notice patterns across all domains of her life and translate them into actionable coaching. Return strict JSON only, grounded exclusively in provided data, and address Lucy directly in second person. Never truncate your output.",
       messages: [
         {
           role: "user",

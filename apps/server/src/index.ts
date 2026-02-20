@@ -656,6 +656,23 @@ app.get("/api/growth/daily-summary", async (req, res) => {
   const habits = store.getHabitsWithStatus();
   const goals = store.getGoalsWithStatus();
   const nutritionSummary = store.getNutritionDailySummary(referenceDate);
+  // For AI context, only count meals actually marked as eaten (not pre-planned templates)
+  const eatenMeals = store.getNutritionMeals({ date: dateKey, limit: 1000, skipBaselineHydration: true, eatenOnly: true });
+  const eatenTotals = eatenMeals.reduce(
+    (acc, meal) => {
+      if (meal.items.length > 0) {
+        for (const item of meal.items) {
+          acc.calories += item.caloriesPerUnit * item.quantity;
+          acc.proteinGrams += item.proteinGramsPerUnit * item.quantity;
+        }
+      } else {
+        acc.calories += meal.calories;
+        acc.proteinGrams += meal.proteinGrams;
+      }
+      return acc;
+    },
+    { calories: 0, proteinGrams: 0 }
+  );
   const withingsData = store.getWithingsData();
   const todayWeight = withingsData.weight.find((w) => w.measuredAt.startsWith(dateKey));
   const scheduleEvents = store.getScheduleEvents().filter((e) => e.startTime.startsWith(dateKey));
@@ -669,13 +686,13 @@ app.get("/api/growth/daily-summary", async (req, res) => {
     .map((g) => `- ${g.title}: ${g.todayCompleted ? "done" : "not done"}, ${g.progressCount}/${g.targetCount}, streak=${g.streak}`)
     .join("\n");
 
-  const calActual = Math.round(nutritionSummary.totals.calories);
+  const calActual = Math.round(eatenTotals.calories);
   const calTarget = nutritionSummary.targetProfile?.targetCalories ? Math.round(nutritionSummary.targetProfile.targetCalories) : null;
-  const proteinActual = Math.round(nutritionSummary.totals.proteinGrams);
+  const proteinActual = Math.round(eatenTotals.proteinGrams);
   const proteinTarget = nutritionSummary.targetProfile?.targetProteinGrams ? Math.round(nutritionSummary.targetProfile.targetProteinGrams) : null;
   const nutritionLine = calTarget
-    ? `Calories: ${calActual}/${calTarget} kcal, Protein: ${proteinActual}/${proteinTarget ?? "?"}g, ${nutritionSummary.mealsLogged} meals logged`
-    : `Calories: ${calActual} kcal, Protein: ${proteinActual}g, ${nutritionSummary.mealsLogged} meals logged`;
+    ? `Calories eaten: ${calActual}/${calTarget} kcal, Protein eaten: ${proteinActual}/${proteinTarget ?? "?"}g, ${eatenMeals.length} meals eaten of ${nutritionSummary.mealsLogged} planned`
+    : `Calories eaten: ${calActual} kcal, Protein eaten: ${proteinActual}g, ${eatenMeals.length} meals eaten`;
 
   const bodyCompLine = todayWeight
     ? `Weight: ${todayWeight.weightKg.toFixed(1)} kg${todayWeight.fatRatioPercent ? `, BF: ${todayWeight.fatRatioPercent.toFixed(1)}%` : ""}${todayWeight.muscleMassKg ? `, MM: ${todayWeight.muscleMassKg.toFixed(1)} kg` : ""}`
@@ -709,19 +726,25 @@ app.get("/api/growth/daily-summary", async (req, res) => {
     if (gemini.isConfigured()) {
       try {
         const prompt = `Write a daily reflection for Lucy for ${dateKey}.
-Address Lucy directly (you/your). Be encouraging but honest. Focus on CORRELATIONS between data points.
+Address Lucy directly (you/your). Be warm, encouraging, and honest — like a personal coach who genuinely cares.
 
 Return strict JSON only:
 {
-  "summary": "3-5 sentence narrative synthesizing the day — connect nutrition to energy, gym to body comp, habits to momentum, schedule to productivity",
-  "highlights": ["3-5 key insights that correlate across domains, not just restated facts"]
+  "summary": "3-5 sentence coaching narrative about the day. Weave in how different areas connect (nutrition, gym, habits, energy, study). Don't just list facts — coach.",
+  "highlights": ["3-5 coaching insights that help Lucy understand what's working and what to adjust. Complete sentences, no truncation."]
 }
 
+IMPORTANT CONTEXT:
+- The "weightKg" in the nutrition target profile is Lucy's BASELINE/STARTING weight for macro calculation, NOT a goal weight.
+- Nutrition numbers reflect ONLY meals marked as eaten. Pre-planned template meals that haven't been eaten yet are excluded.
+- "meals eaten of X planned" means some meals are still templates waiting to be consumed.
+
 Rules:
-- Identify cause-effect relationships (e.g. "high protein + gym = good for muscle", "calorie surplus explains BF% trend")
+- Write like a personal coach, not a data analyst
+- When you see connections across domains, express them as coaching advice
 - Note patterns (streak health, consistency trends)
-- Flag risks (missed targets, broken streaks) concisely
-- Keep each highlight under 120 characters
+- Flag risks warmly — as things to watch, not alarms
+- Never truncate or cut off sentences — complete every thought fully
 - No markdown, no extra keys
 
 Today's data:
@@ -747,7 +770,7 @@ ${reflectionLines || "- none"}
 Chat messages today: ${chats.length}`;
 
         const response = await gemini.generateChatResponse({
-          systemInstruction: "You are a personal wellness coach analyzing daily data. Return strict JSON only. Be concise and insight-driven.",
+          systemInstruction: "You are Lucy's personal performance coach — warm, direct, and insight-driven. Return strict JSON only. Never truncate your output. Complete every sentence fully.",
           messages: [{ role: "user", parts: [{ text: prompt }] }]
         });
 

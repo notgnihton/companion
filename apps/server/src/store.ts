@@ -3997,6 +3997,7 @@ export class RuntimeStore {
     to?: string;
     limit?: number;
     skipBaselineHydration?: boolean;
+    eatenOnly?: boolean;
   } = {}): NutritionMeal[] {
     const clauses: string[] = [];
     const params: unknown[] = [];
@@ -4031,6 +4032,9 @@ export class RuntimeStore {
     }
 
     let query = "SELECT * FROM nutrition_meals";
+    if (options.eatenOnly) {
+      clauses.push("notes LIKE '%[done]%'");
+    }
     if (clauses.length > 0) {
       query += ` WHERE ${clauses.join(" AND ")}`;
     }
@@ -4684,7 +4688,7 @@ export class RuntimeStore {
     };
   }
 
-  getNutritionDailyHistory(from: string | Date, to: string | Date): NutritionDayHistoryEntry[] {
+  getNutritionDailyHistory(from: string | Date, to: string | Date, options: { eatenOnly?: boolean } = {}): NutritionDayHistoryEntry[] {
     const fromKey = this.toDateKey(from);
     const toKey = this.toDateKey(to);
 
@@ -4711,7 +4715,7 @@ export class RuntimeStore {
 
     while (cursor <= end) {
       const dateKey = this.toDateKey(cursor);
-      const meals = this.getNutritionMeals({ date: dateKey, limit: 1000, skipBaselineHydration: true });
+      const meals = this.getNutritionMeals({ date: dateKey, limit: 1000, skipBaselineHydration: true, eatenOnly: options.eatenOnly });
       const targetProfile = this.getNutritionTargetProfile(dateKey);
 
       const totals = meals.reduce(

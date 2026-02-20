@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getAnalyticsCoachInsight } from "../lib/api";
 import { AnalyticsCoachInsight } from "../types";
 
@@ -44,18 +44,6 @@ export function AnalyticsDashboard(): JSX.Element {
   useEffect(() => {
     void loadInsight(periodDays);
   }, [periodDays, loadInsight]);
-
-  const metricRows = useMemo(() => {
-    if (!insight) {
-      return [];
-    }
-
-    return [
-      `${insight.metrics.deadlinesCompleted}/${insight.metrics.deadlinesDue} deadlines completed`,
-      `${insight.metrics.averageHabitCompletion7d}% average habit completion (7d)`,
-      `${insight.metrics.reflectionEntries + insight.metrics.userReflections} reflection signals`
-    ];
-  }, [insight]);
 
   return (
     <div className="analytics-container">
@@ -113,17 +101,9 @@ export function AnalyticsDashboard(): JSX.Element {
             </div>
           </section>
 
-          <section className="analytics-metrics-grid">
-            {metricRows.map((metric) => (
-              <p key={metric} className="analytics-metric-pill">
-                {metric}
-              </p>
-            ))}
-          </section>
-
           <div className="analytics-grid">
             <section className="analytics-card analytics-card-correlation">
-              <h3>Cross-Domain Correlations</h3>
+              <h3>Coaching Observations</h3>
               <ul className="analytics-list">
                 {insight.correlations.map((item) => (
                   <li key={item}>{item}</li>
