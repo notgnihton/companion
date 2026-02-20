@@ -37,6 +37,7 @@ import {
   generateWeeklyGrowthReview,
   isSundayInOslo
 } from "./weekly-growth-review.js";
+import { maybeGenerateDailySummaryVisual } from "./growth-visuals.js";
 import { PostgresRuntimeSnapshotStore } from "./postgres-persistence.js";
 import type { PostgresPersistenceDiagnostics } from "./postgres-persistence.js";
 import { Notification, NotificationPreferencesPatch } from "./types.js";
@@ -149,6 +150,7 @@ let githubOnDemandSyncInFlight: Promise<void> | null = null;
 let lastGithubOnDemandSyncAt = 0;
 const MAX_ANALYTICS_CACHE_ITEMS = 15;
 const ANALYTICS_COACH_MIN_REFRESH_MS = config.GROWTH_ANALYTICS_MIN_REFRESH_MINUTES * 60 * 1000;
+const DAILY_SUMMARY_MIN_REFRESH_MS = 15 * 60 * 1000;
 
 interface AnalyticsCoachCacheEntry {
   signature: string;
@@ -156,6 +158,9 @@ interface AnalyticsCoachCacheEntry {
 }
 
 const analyticsCoachCache = new Map<string, AnalyticsCoachCacheEntry>();
+
+import type { DailyGrowthSummary } from "./types.js";
+const dailySummaryCache = new Map<string, DailyGrowthSummary>();
 
 function toDateKey(value: Date): string {
   return value.toISOString().slice(0, 10);
@@ -612,19 +617,30 @@ app.get("/api/analytics/coach", async (req, res) => {
   return res.json({ insight });
 });
 
-app.get("/api/growth/daily-summary", (req, res) => {
+app.get("/api/growth/daily-summary", async (req, res) => {
   const parsed = growthDailySummaryQuerySchema.safeParse(req.query ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid daily summary query", issues: parsed.error.issues });
   }
 
+  const forceRefresh = parseBooleanQueryFlag(req.query?.force);
   const referenceDate = parsed.data.date ? new Date(parsed.data.date) : new Date();
   if (Number.isNaN(referenceDate.getTime())) {
     return res.status(400).json({ error: "Invalid date parameter" });
   }
 
   const dateKey = toDateKey(referenceDate);
+  const nowMs = Date.now();
+
+  // Check cache
+  if (!forceRefresh) {
+    const cached = dailySummaryCache.get(dateKey);
+    if (cached && isCacheEntryFresh(cached.generatedAt, DAILY_SUMMARY_MIN_REFRESH_MS, nowMs)) {
+      return res.json({ summary: cached });
+    }
+  }
+
   const dayStartIso = `${dateKey}T00:00:00.000Z`;
   const dayEndIso = `${dateKey}T23:59:59.999Z`;
   const reflections = store.getReflectionEntriesInRange(dayStartIso, dayEndIso, 280);
@@ -636,32 +652,181 @@ app.get("/api/growth/daily-summary", (req, res) => {
         message.content.trim().length > 0 &&
         startsWithDateKey(message.timestamp, dateKey)
     );
-  const habitsDone = store.getHabitsWithStatus().filter((habit) => habit.todayCompleted).length;
-  const goalsDone = store.getGoalsWithStatus().filter((goal) => goal.todayCompleted).length;
 
-  const summary =
-    reflections.length === 0
-      ? "No structured journal entries yet today. Share one quick update so I can tune your plan."
-      : `You logged ${reflections.length} structured journal entr${reflections.length === 1 ? "y" : "ies"} today, with ${habitsDone} habit and ${goalsDone} goal check-ins completed.`;
+  const habits = store.getHabitsWithStatus();
+  const goals = store.getGoalsWithStatus();
+  const nutritionSummary = store.getNutritionDailySummary(referenceDate);
+  const withingsData = store.getWithingsData();
+  const todayWeight = withingsData.weight.find((w) => w.measuredAt.startsWith(dateKey));
+  const scheduleEvents = store.getScheduleEvents().filter((e) => e.startTime.startsWith(dateKey));
 
-  const highlights = reflections
+  // Build Gemini prompt for cross-domain reasoning
+  const habitLines = habits
+    .map((h) => `- ${h.name}: ${h.todayCompleted ? "done" : "not done"}, streak=${h.streak}${h.streakGraceUsed ? " (grace)" : ""}, 7d rate=${h.completionRate7d}%`)
+    .join("\n");
+
+  const goalLines = goals
+    .map((g) => `- ${g.title}: ${g.todayCompleted ? "done" : "not done"}, ${g.progressCount}/${g.targetCount}, streak=${g.streak}`)
+    .join("\n");
+
+  const calActual = Math.round(nutritionSummary.totals.calories);
+  const calTarget = nutritionSummary.targetProfile?.targetCalories ? Math.round(nutritionSummary.targetProfile.targetCalories) : null;
+  const proteinActual = Math.round(nutritionSummary.totals.proteinGrams);
+  const proteinTarget = nutritionSummary.targetProfile?.targetProteinGrams ? Math.round(nutritionSummary.targetProfile.targetProteinGrams) : null;
+  const nutritionLine = calTarget
+    ? `Calories: ${calActual}/${calTarget} kcal, Protein: ${proteinActual}/${proteinTarget ?? "?"}g, ${nutritionSummary.mealsLogged} meals logged`
+    : `Calories: ${calActual} kcal, Protein: ${proteinActual}g, ${nutritionSummary.mealsLogged} meals logged`;
+
+  const bodyCompLine = todayWeight
+    ? `Weight: ${todayWeight.weightKg.toFixed(1)} kg${todayWeight.fatRatioPercent ? `, BF: ${todayWeight.fatRatioPercent.toFixed(1)}%` : ""}${todayWeight.muscleMassKg ? `, MM: ${todayWeight.muscleMassKg.toFixed(1)} kg` : ""}`
+    : "No weigh-in today";
+
+  const scheduleLines = scheduleEvents
+    .slice(0, 6)
+    .map((e) => {
+      const startHHMM = e.startTime.slice(11, 16);
+      const endDate = new Date(new Date(e.startTime).getTime() + e.durationMinutes * 60_000);
+      const endHHMM = `${String(endDate.getHours()).padStart(2, "0")}:${String(endDate.getMinutes()).padStart(2, "0")}`;
+      return `- ${startHHMM}-${endHHMM} ${e.title}${e.location ? ` @ ${e.location}` : ""}`;
+    })
+    .join("\n");
+
+  const reflectionLines = reflections
+    .slice(0, 10)
+    .map((r) => `- [${r.event}] feeling=${r.feelingStress || "?"}, intent=${r.intent || "?"}, outcome=${r.outcome || "?"}`)
+    .join("\n");
+
+  const dataAvailable = reflections.length > 0 || calActual > 0 || habits.length > 0 || todayWeight;
+
+  let summary: string;
+  let highlights: string[];
+
+  if (!dataAvailable) {
+    summary = "No data yet today. Share an update, log a meal, or check in on a habit so I can start connecting the dots.";
+    highlights = [];
+  } else {
+    const gemini = getGeminiClient();
+    if (gemini.isConfigured()) {
+      try {
+        const prompt = `Write a daily reflection for Lucy for ${dateKey}.
+Address Lucy directly (you/your). Be encouraging but honest. Focus on CORRELATIONS between data points.
+
+Return strict JSON only:
+{
+  "summary": "3-5 sentence narrative synthesizing the day — connect nutrition to energy, gym to body comp, habits to momentum, schedule to productivity",
+  "highlights": ["3-5 key insights that correlate across domains, not just restated facts"]
+}
+
+Rules:
+- Identify cause-effect relationships (e.g. "high protein + gym = good for muscle", "calorie surplus explains BF% trend")
+- Note patterns (streak health, consistency trends)
+- Flag risks (missed targets, broken streaks) concisely
+- Keep each highlight under 120 characters
+- No markdown, no extra keys
+
+Today's data:
+
+Nutrition:
+${nutritionLine}
+
+Body composition:
+${bodyCompLine}
+
+Habits (${habits.length}):
+${habitLines || "- none"}
+
+Goals (${goals.length}):
+${goalLines || "- none"}
+
+Schedule:
+${scheduleLines || "- no events"}
+
+Journal entries (${reflections.length}):
+${reflectionLines || "- none"}
+
+Chat messages today: ${chats.length}`;
+
+        const response = await gemini.generateChatResponse({
+          systemInstruction: "You are a personal wellness coach analyzing daily data. Return strict JSON only. Be concise and insight-driven.",
+          messages: [{ role: "user", parts: [{ text: prompt }] }]
+        });
+
+        const raw = response.text.trim();
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed2 = JSON.parse(jsonMatch[0]) as { summary?: string; highlights?: string[] };
+          summary = typeof parsed2.summary === "string" ? parsed2.summary : "";
+          highlights = Array.isArray(parsed2.highlights)
+            ? parsed2.highlights.filter((h): h is string => typeof h === "string").slice(0, 5)
+            : [];
+        } else {
+          summary = buildFallbackSummary(reflections.length, habits, goals);
+          highlights = buildFallbackHighlights(reflections);
+        }
+      } catch {
+        summary = buildFallbackSummary(reflections.length, habits, goals);
+        highlights = buildFallbackHighlights(reflections);
+      }
+    } else {
+      summary = buildFallbackSummary(reflections.length, habits, goals);
+      highlights = buildFallbackHighlights(reflections);
+    }
+  }
+
+  const result: DailyGrowthSummary = {
+    date: dateKey,
+    generatedAt: nowIso(),
+    summary,
+    highlights,
+    journalEntryCount: reflections.length,
+    reflectionEntryCount: reflections.length,
+    chatMessageCount: chats.length
+  };
+
+  // Generate visual
+  try {
+    const gemini = getGeminiClient();
+    if (gemini.isConfigured()) {
+      const visual = await maybeGenerateDailySummaryVisual(gemini, result);
+      if (visual) {
+        result.visual = visual;
+      }
+    }
+  } catch {
+    // visual generation failed — continue without it
+  }
+
+  // Cache result
+  dailySummaryCache.set(dateKey, result);
+  // Evict old entries
+  if (dailySummaryCache.size > 10) {
+    const oldestKey = dailySummaryCache.keys().next().value;
+    if (oldestKey) dailySummaryCache.delete(oldestKey);
+  }
+
+  return res.json({ summary: result });
+});
+
+function buildFallbackSummary(
+  reflectionCount: number,
+  habits: Array<{ todayCompleted: boolean }>,
+  goals: Array<{ todayCompleted: boolean }>
+): string {
+  const habitsDone = habits.filter((h) => h.todayCompleted).length;
+  const goalsDone = goals.filter((g) => g.todayCompleted).length;
+  if (reflectionCount === 0) {
+    return "No structured journal entries yet today. Share one quick update so I can tune your plan.";
+  }
+  return `You logged ${reflectionCount} structured journal entr${reflectionCount === 1 ? "y" : "ies"} today, with ${habitsDone} habit and ${goalsDone} goal check-ins completed.`;
+}
+
+function buildFallbackHighlights(reflections: Array<{ event: string; evidenceSnippet: string }>): string[] {
+  return reflections
     .slice(0, 5)
     .map((entry) => `${entry.event}: ${entry.evidenceSnippet}`)
     .filter((item) => item.length > 0)
     .map((item) => (item.length > 120 ? `${item.slice(0, 120)}...` : item));
-
-  return res.json({
-    summary: {
-      date: dateKey,
-      generatedAt: nowIso(),
-      summary,
-      highlights,
-      journalEntryCount: reflections.length,
-      reflectionEntryCount: reflections.length,
-      chatMessageCount: chats.length
-    }
-  });
-});
+}
 
 app.post("/api/chat", async (req, res) => {
   const parsed = chatRequestSchema.safeParse(req.body ?? {});
