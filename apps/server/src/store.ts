@@ -39,6 +39,7 @@ import {
   GoalCheckIn,
   GoalWithStatus,
   NutritionDailySummary,
+  NutritionDayHistoryEntry,
   NutritionCustomFood,
   NutritionMeal,
   NutritionMealItem,
@@ -4655,6 +4656,75 @@ export class RuntimeStore {
       mealsLogged: meals.length,
       meals
     };
+  }
+
+  getNutritionDailyHistory(from: string | Date, to: string | Date): NutritionDayHistoryEntry[] {
+    const fromKey = this.toDateKey(from);
+    const toKey = this.toDateKey(to);
+
+    // Get all weight entries for the range
+    const withingsData = this.getWithingsData();
+    const weightByDate = new Map<string, number>();
+    for (const w of withingsData.weight) {
+      const wDate = this.toDateKey(w.measuredAt);
+      if (wDate >= fromKey && wDate <= toKey) {
+        weightByDate.set(wDate, w.weightKg);
+      }
+    }
+
+    const entries: NutritionDayHistoryEntry[] = [];
+    const cursor = new Date(fromKey + "T00:00:00Z");
+    const end = new Date(toKey + "T00:00:00Z");
+
+    while (cursor <= end) {
+      const dateKey = this.toDateKey(cursor);
+      const meals = this.getNutritionMeals({ date: dateKey, limit: 1000, skipBaselineHydration: true });
+      const targetProfile = this.getNutritionTargetProfile(dateKey);
+
+      const totals = meals.reduce(
+        (acc, meal) => {
+          if (meal.items.length > 0) {
+            for (const item of meal.items) {
+              acc.calories += item.caloriesPerUnit * item.quantity;
+              acc.proteinGrams += item.proteinGramsPerUnit * item.quantity;
+              acc.carbsGrams += item.carbsGramsPerUnit * item.quantity;
+              acc.fatGrams += item.fatGramsPerUnit * item.quantity;
+            }
+          } else {
+            acc.calories += meal.calories;
+            acc.proteinGrams += meal.proteinGrams;
+            acc.carbsGrams += meal.carbsGrams;
+            acc.fatGrams += meal.fatGrams;
+          }
+          return acc;
+        },
+        { calories: 0, proteinGrams: 0, carbsGrams: 0, fatGrams: 0 }
+      );
+
+      entries.push({
+        date: dateKey,
+        totals: {
+          calories: this.clampNutritionMetric(totals.calories, 0, 50000),
+          proteinGrams: this.clampNutritionMetric(totals.proteinGrams, 0, 10000),
+          carbsGrams: this.clampNutritionMetric(totals.carbsGrams, 0, 10000),
+          fatGrams: this.clampNutritionMetric(totals.fatGrams, 0, 6000)
+        },
+        targets: targetProfile && typeof targetProfile.targetCalories === "number"
+          ? {
+              calories: targetProfile.targetCalories,
+              proteinGrams: targetProfile.targetProteinGrams!,
+              carbsGrams: targetProfile.targetCarbsGrams!,
+              fatGrams: targetProfile.targetFatGrams!
+            }
+          : null,
+        mealsLogged: meals.length,
+        weightKg: weightByDate.get(dateKey) ?? null
+      });
+
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    return entries;
   }
 
   getNutritionPlanSnapshotById(id: string): NutritionPlanSnapshot | null {

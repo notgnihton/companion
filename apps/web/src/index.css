@@ -3808,6 +3808,164 @@ body.keyboard-open .pull-to-refresh-container {
   }
 }
 
+/* Foods dropdown (details/summary) */
+.nutrition-food-picker-details {
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.nutrition-food-picker-details[open] {
+  border-color: rgba(106, 149, 238, 0.45);
+}
+
+.nutrition-food-picker-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.nutrition-food-picker-summary::-webkit-details-marker {
+  display: none;
+}
+
+.nutrition-food-picker-summary::before {
+  content: "▸";
+  font-size: 0.9em;
+  transition: transform 0.15s ease;
+}
+
+.nutrition-food-picker-details[open] .nutrition-food-picker-summary::before {
+  transform: rotate(90deg);
+}
+
+.nutrition-food-picker-details .nutrition-quick-food-grid {
+  padding: 0 12px 12px;
+}
+
+/* Tracking tab */
+.nutrition-tracking-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nutrition-tracking-header h3 {
+  margin: 0;
+}
+
+.nutrition-tracking-range-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.nutrition-tracking-range-picker button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.nutrition-tracking-stat-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.summary-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.summary-sub-positive {
+  color: var(--accent);
+}
+
+.summary-sub-negative {
+  color: var(--warn);
+}
+
+.summary-sub-inline {
+  font-size: 0.8em;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.nutrition-tracking-chart-card {
+  padding: 8px !important;
+}
+
+.nutrition-tracking-canvas {
+  display: block;
+  border-radius: 8px;
+}
+
+.nutrition-tracking-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.nutrition-tracking-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.nutrition-tracking-table th {
+  text-align: left;
+  padding: 6px 8px;
+  color: var(--muted);
+  font-weight: 700;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.nutrition-tracking-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.nutrition-tracking-row-empty td {
+  opacity: 0.35;
+}
+
+.tracking-delta-positive {
+  color: var(--accent);
+  font-size: 0.72rem;
+}
+
+.tracking-delta-negative {
+  color: var(--warn);
+  font-size: 0.72rem;
+}
+
+@media (min-width: 720px) {
+  .nutrition-tracking-stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 @media (min-width: 720px) {
   .nutrition-plan-actions {
     justify-content: flex-end;

@@ -324,6 +324,24 @@ export interface NutritionDailySummary {
   meals: NutritionMeal[];
 }
 
+export interface NutritionDayHistoryEntry {
+  date: string;
+  totals: {
+    calories: number;
+    proteinGrams: number;
+    carbsGrams: number;
+    fatGrams: number;
+  };
+  targets: {
+    calories: number;
+    proteinGrams: number;
+    carbsGrams: number;
+    fatGrams: number;
+  } | null;
+  mealsLogged: number;
+  weightKg: number | null;
+}
+
 export interface CalendarImportPayload {
   ics?: string;
   url?: string;

@@ -2079,6 +2079,36 @@ app.get("/api/nutrition/summary", (req, res) => {
   return res.json({ summary });
 });
 
+app.get("/api/nutrition/history", (req, res) => {
+  const schema = z.object({
+    from: nutritionDateSchema.optional(),
+    to: nutritionDateSchema.optional(),
+    days: z.coerce.number().int().min(1).max(365).optional()
+  });
+  const parsed = schema.safeParse(req.query ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid nutrition history query", issues: parsed.error.issues });
+  }
+
+  let fromDate: string;
+  let toDate: string;
+
+  if (parsed.data.from && parsed.data.to) {
+    fromDate = parsed.data.from;
+    toDate = parsed.data.to;
+  } else {
+    const days = parsed.data.days ?? 30;
+    const end = parsed.data.to ? new Date(parsed.data.to + "T00:00:00Z") : new Date();
+    const start = new Date(end);
+    start.setUTCDate(start.getUTCDate() - (days - 1));
+    fromDate = start.toISOString().slice(0, 10);
+    toDate = end.toISOString().slice(0, 10);
+  }
+
+  const entries = store.getNutritionDailyHistory(fromDate, toDate);
+  return res.json({ entries, from: fromDate, to: toDate });
+});
+
 app.get("/api/nutrition/custom-foods", (req, res) => {
   const parsed = nutritionCustomFoodsQuerySchema.safeParse(req.query ?? {});
   if (!parsed.success) {

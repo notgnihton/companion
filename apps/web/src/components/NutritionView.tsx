@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyNutritionPlanSnapshot,
   createNutritionPlanSnapshot,
@@ -8,6 +8,7 @@ import {
   deleteNutritionCustomFood,
   deleteNutritionMeal,
   getNutritionCustomFoods,
+  getNutritionHistory,
   getNutritionMeals,
   getNutritionPlanSnapshots,
   getNutritionSummary,
@@ -18,12 +19,19 @@ import {
 import {
   NutritionCustomFood,
   NutritionDailySummary,
+  NutritionDayHistoryEntry,
   NutritionMeal,
   NutritionMealItem,
   NutritionPlanSnapshot,
   NutritionTargetProfile,
 } from "../types";
 import { hapticSuccess } from "../lib/haptics";
+import { NutritionTrackingChart } from "./NutritionTrackingChart";
+
+function formatDateLabel(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00Z");
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+}
 
 interface MealDraft {
   name: string;
@@ -487,10 +495,11 @@ export function NutritionView(): JSX.Element {
   const mealItemPersistInFlight = useRef<Record<string, boolean>>({});
   const mealItemPersistQueued = useRef<Record<string, boolean>>({});
   const mealsRef = useRef<NutritionMeal[]>([]);
+  const customFoodFormRef = useRef<HTMLFormElement>(null);
   const [summary, setSummary] = useState<NutritionDailySummary | null>(null);
   const [meals, setMeals] = useState<NutritionMeal[]>([]);
   const [customFoods, setCustomFoods] = useState<NutritionCustomFood[]>([]);
-  const [activeTab, setActiveTab] = useState<"meals" | "settings">("meals");
+  const [activeTab, setActiveTab] = useState<"meals" | "tracking" | "settings">("meals");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [editingCustomFoodId, setEditingCustomFoodId] = useState<string | null>(null);
@@ -505,6 +514,30 @@ export function NutritionView(): JSX.Element {
   const [showLogMealPanel, setShowLogMealPanel] = useState(false);
   const [showCustomFoodsPanel, setShowCustomFoodsPanel] = useState(false);
   const [mealFoodPickerByMeal, setMealFoodPickerByMeal] = useState<Record<string, string>>({});
+
+  // Tracking tab state
+  const [historyEntries, setHistoryEntries] = useState<NutritionDayHistoryEntry[]>([]);
+  const [historyDays, setHistoryDays] = useState(14);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const loadHistory = useCallback(async (days: number) => {
+    setHistoryLoading(true);
+    try {
+      const result = await getNutritionHistory({ days });
+      if (result) {
+        setHistoryEntries(result.entries);
+      }
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  // Load history when tracking tab is activated
+  useEffect(() => {
+    if (activeTab === "tracking") {
+      void loadHistory(historyDays);
+    }
+  }, [activeTab, historyDays, loadHistory]);
 
   const [mealDraft, setMealDraft] = useState<MealDraft>({
     name: ""
@@ -1309,6 +1342,10 @@ export function NutritionView(): JSX.Element {
       carbsGramsPerUnit: String(food.carbsGramsPerUnit),
       fatGramsPerUnit: String(food.fatGramsPerUnit)
     });
+    setShowCustomFoodsPanel(true);
+    requestAnimationFrame(() => {
+      customFoodFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const handleDeleteCustomFood = async (foodId: string): Promise<void> => {
@@ -1344,6 +1381,14 @@ export function NutritionView(): JSX.Element {
           aria-pressed={activeTab === "meals"}
         >
           Meals
+        </button>
+        <button
+          type="button"
+          className={activeTab === "tracking" ? "nutrition-tab-switcher-active" : ""}
+          onClick={() => setActiveTab("tracking")}
+          aria-pressed={activeTab === "tracking"}
+        >
+          Tracking
         </button>
         <button
           type="button"
@@ -1529,18 +1574,23 @@ export function NutritionView(): JSX.Element {
                     </div>
 
                     {customFoods.length > 0 && (
-                      <div className="nutrition-quick-food-grid" aria-label="Quick add custom foods">
-                        {customFoods.map((food) => (
-                          <button
-                            key={food.id}
-                            type="button"
-                            className="nutrition-quick-food-chip"
-                            onClick={() => handleQuickAddCustomFood(food.id)}
-                          >
-                            + {food.name}
-                          </button>
-                        ))}
-                      </div>
+                      <details className="nutrition-food-picker-details">
+                        <summary className="nutrition-food-picker-summary">
+                          Browse foods ({customFoods.length})
+                        </summary>
+                        <div className="nutrition-quick-food-grid" aria-label="Quick add custom foods">
+                          {customFoods.map((food) => (
+                            <button
+                              key={food.id}
+                              type="button"
+                              className="nutrition-quick-food-chip"
+                              onClick={() => handleQuickAddCustomFood(food.id)}
+                            >
+                              + {food.name}
+                            </button>
+                          ))}
+                        </div>
+                      </details>
                     )}
 
                     <div className="nutrition-item-editor-list">
@@ -1666,7 +1716,7 @@ export function NutritionView(): JSX.Element {
               </div>
               {showCustomFoodsPanel && (
                 <>
-                  <form className="nutrition-form" onSubmit={(event) => void handleCustomFoodSubmit(event)}>
+                  <form ref={customFoodFormRef} className="nutrition-form" onSubmit={(event) => void handleCustomFoodSubmit(event)}>
                     <div className="nutrition-form-row">
                       <label>
                         Name
@@ -1950,6 +2000,197 @@ export function NutritionView(): JSX.Element {
               </div>
             )}
           </article>
+        </>
+      )}
+
+      {activeTab === "tracking" && (
+        <>
+          <article className="nutrition-card">
+            <div className="nutrition-tracking-header">
+              <h3>Nutrition Trends</h3>
+              <div className="nutrition-tracking-range-picker">
+                {[7, 14, 30].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={historyDays === d ? "nutrition-tab-switcher-active" : ""}
+                    onClick={() => setHistoryDays(d)}
+                  >
+                    {d}d
+                  </button>
+                ))}
+              </div>
+            </div>
+          </article>
+
+          {historyLoading && <p className="nutrition-message">Loading history...</p>}
+
+          {!historyLoading && historyEntries.length === 0 && (
+            <p className="nutrition-message">No nutrition data for this period.</p>
+          )}
+
+          {!historyLoading && historyEntries.length > 0 && (
+            <>
+              {/* Summary stats */}
+              <article className="nutrition-card">
+                <div className="nutrition-tracking-stats">
+                  {(() => {
+                    const daysWithMeals = historyEntries.filter((e) => e.mealsLogged > 0);
+                    const avgCalories = daysWithMeals.length > 0
+                      ? Math.round(daysWithMeals.reduce((s, e) => s + e.totals.calories, 0) / daysWithMeals.length)
+                      : 0;
+                    const avgProtein = daysWithMeals.length > 0
+                      ? Math.round(daysWithMeals.reduce((s, e) => s + e.totals.proteinGrams, 0) / daysWithMeals.length)
+                      : 0;
+                    const latestTarget = [...historyEntries].reverse().find((e) => e.targets)?.targets;
+                    const weightEntries = historyEntries.filter((e) => e.weightKg !== null);
+                    const latestWeight = weightEntries.length > 0
+                      ? weightEntries[weightEntries.length - 1]!.weightKg
+                      : null;
+                    const firstWeight = weightEntries.length > 1
+                      ? weightEntries[0]!.weightKg
+                      : null;
+                    const weightDelta = latestWeight !== null && firstWeight !== null
+                      ? latestWeight - firstWeight
+                      : null;
+
+                    return (
+                      <div className="nutrition-summary-grid nutrition-tracking-stat-grid">
+                        <article className="summary-tile">
+                          <p className="summary-label">Avg Calories</p>
+                          <p className="summary-value">{avgCalories} kcal</p>
+                          {latestTarget && (
+                            <p className="summary-sub">Target: {Math.round(latestTarget.calories)}</p>
+                          )}
+                        </article>
+                        <article className="summary-tile">
+                          <p className="summary-label">Avg Protein</p>
+                          <p className="summary-value">{avgProtein}g</p>
+                          {latestTarget && (
+                            <p className="summary-sub">Target: {Math.round(latestTarget.proteinGrams)}g</p>
+                          )}
+                        </article>
+                        <article className="summary-tile">
+                          <p className="summary-label">Days Tracked</p>
+                          <p className="summary-value">{daysWithMeals.length}<span className="summary-sub-inline"> / {historyEntries.length}</span></p>
+                        </article>
+                        <article className="summary-tile">
+                          <p className="summary-label">Weight</p>
+                          <p className="summary-value">
+                            {latestWeight !== null ? `${latestWeight.toFixed(1)} kg` : "—"}
+                          </p>
+                          {weightDelta !== null && (
+                            <p className={`summary-sub ${weightDelta >= 0 ? "summary-sub-positive" : "summary-sub-negative"}`}>
+                              {weightDelta >= 0 ? "+" : ""}{weightDelta.toFixed(1)} kg
+                            </p>
+                          )}
+                        </article>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </article>
+
+              {/* Charts */}
+              <article className="nutrition-card nutrition-tracking-chart-card">
+                <NutritionTrackingChart
+                  entries={historyEntries}
+                  metric="calories"
+                  label="Calories"
+                  color="rgb(255, 179, 71)"
+                  targetColor="rgba(255, 179, 71, 0.3)"
+                  unit="kcal"
+                />
+              </article>
+
+              <article className="nutrition-card nutrition-tracking-chart-card">
+                <NutritionTrackingChart
+                  entries={historyEntries}
+                  metric="proteinGrams"
+                  label="Protein"
+                  color="rgb(129, 199, 132)"
+                  targetColor="rgba(129, 199, 132, 0.3)"
+                  unit="g"
+                />
+              </article>
+
+              <article className="nutrition-card nutrition-tracking-chart-card">
+                <NutritionTrackingChart
+                  entries={historyEntries}
+                  metric="carbsGrams"
+                  label="Carbs"
+                  color="rgb(100, 181, 246)"
+                  targetColor="rgba(100, 181, 246, 0.3)"
+                  unit="g"
+                />
+              </article>
+
+              <article className="nutrition-card nutrition-tracking-chart-card">
+                <NutritionTrackingChart
+                  entries={historyEntries}
+                  metric="fatGrams"
+                  label="Fat"
+                  color="rgb(239, 154, 154)"
+                  targetColor="rgba(239, 154, 154, 0.3)"
+                  unit="g"
+                />
+              </article>
+
+              {historyEntries.some((e) => e.weightKg !== null) && (
+                <article className="nutrition-card nutrition-tracking-chart-card">
+                  <NutritionTrackingChart
+                    entries={historyEntries}
+                    metric="weight"
+                    label="Weight"
+                    color="rgb(186, 147, 232)"
+                    unit="kg"
+                  />
+                </article>
+              )}
+
+              {/* Daily breakdown table */}
+              <article className="nutrition-card">
+                <h3>Daily Breakdown</h3>
+                <div className="nutrition-tracking-table-wrap">
+                  <table className="nutrition-tracking-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Cal</th>
+                        <th>P (g)</th>
+                        <th>C (g)</th>
+                        <th>F (g)</th>
+                        <th>Meals</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...historyEntries].reverse().map((entry) => {
+                        const hasTarget = entry.targets !== null;
+                        const calDiff = hasTarget ? entry.totals.calories - entry.targets!.calories : null;
+                        return (
+                          <tr key={entry.date} className={entry.mealsLogged === 0 ? "nutrition-tracking-row-empty" : ""}>
+                            <td>{formatDateLabel(entry.date)}</td>
+                            <td>
+                              {Math.round(entry.totals.calories)}
+                              {calDiff !== null && (
+                                <span className={calDiff >= 0 ? "tracking-delta-positive" : "tracking-delta-negative"}>
+                                  {" "}{calDiff >= 0 ? "+" : ""}{Math.round(calDiff)}
+                                </span>
+                              )}
+                            </td>
+                            <td>{Math.round(entry.totals.proteinGrams)}</td>
+                            <td>{Math.round(entry.totals.carbsGrams)}</td>
+                            <td>{Math.round(entry.totals.fatGrams)}</td>
+                            <td>{entry.mealsLogged}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            </>
+          )}
         </>
       )}
 

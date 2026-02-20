@@ -596,6 +596,14 @@ export interface NutritionDailySummary {
   meals: NutritionMeal[];
 }
 
+export interface NutritionDayHistoryEntry {
+  date: string;
+  totals: NutritionMacros;
+  targets: NutritionMacros | null;
+  mealsLogged: number;
+  weightKg: number | null;
+}
+
 export interface PushSubscriptionRecord {
   endpoint: string;
   expirationTime: number | null;

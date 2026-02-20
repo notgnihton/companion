@@ -16,6 +16,7 @@ import {
   Habit,
   NutritionCustomFood,
   NutritionDailySummary,
+  NutritionDayHistoryEntry,
   NutritionMealItem,
   NutritionMeal,
   NutritionPlanSnapshot,
@@ -654,6 +655,26 @@ export async function getNutritionSummary(date?: string): Promise<NutritionDaily
   try {
     const response = await jsonOrThrow<{ summary: NutritionDailySummary }>(endpoint);
     return response.summary;
+  } catch {
+    return null;
+  }
+}
+
+export async function getNutritionHistory(options?: {
+  from?: string;
+  to?: string;
+  days?: number;
+}): Promise<{ entries: NutritionDayHistoryEntry[]; from: string; to: string } | null> {
+  const params = new URLSearchParams();
+  if (options?.from) params.set("from", options.from);
+  if (options?.to) params.set("to", options.to);
+  if (options?.days) params.set("days", String(options.days));
+
+  const query = params.toString();
+  const endpoint = query ? `/api/nutrition/history?${query}` : "/api/nutrition/history";
+
+  try {
+    return await jsonOrThrow<{ entries: NutritionDayHistoryEntry[]; from: string; to: string }>(endpoint);
   } catch {
     return null;
   }

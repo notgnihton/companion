@@ -11,6 +11,7 @@ import {
   LectureEvent,
   RoutinePreset,
   NutritionDailySummary,
+  NutritionDayHistoryEntry,
   NutritionCustomFood,
   NutritionMeal,
   NutritionPlanSnapshot,
@@ -286,6 +287,29 @@ export const functionDeclarations: FunctionDeclaration[] = [
         date: {
           type: SchemaType.STRING,
           description: "Optional date in YYYY-MM-DD format. Defaults to today."
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: "getNutritionHistory",
+    description:
+      "Get multi-day nutrition history with daily totals, targets, and weight data. Use this to analyze trends, compare actual intake vs targets over time, and correlate nutrition with weight changes. Returns an array of daily entries.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        from: {
+          type: SchemaType.STRING,
+          description: "Start date in YYYY-MM-DD format. If omitted, defaults to (days) before 'to'."
+        },
+        to: {
+          type: SchemaType.STRING,
+          description: "End date in YYYY-MM-DD format. Defaults to today."
+        },
+        days: {
+          type: SchemaType.NUMBER,
+          description: "Number of days to look back from 'to' (default: 7, max: 90). Ignored when both from/to are set."
         }
       },
       required: []
@@ -2177,6 +2201,32 @@ export function handleGetNutritionSummary(
 ): NutritionDailySummary {
   const date = parseNutritionDate(args.date);
   return store.getNutritionDailySummary(date ?? new Date());
+}
+
+export function handleGetNutritionHistory(
+  store: RuntimeStore,
+  args: Record<string, unknown> = {}
+): { entries: NutritionDayHistoryEntry[]; from: string; to: string } {
+  const rawFrom = parseNutritionDate(args.from);
+  const rawTo = parseNutritionDate(args.to);
+  const days = Math.min(Math.max(Number(args.days) || 7, 1), 90);
+
+  let fromDate: string;
+  let toDate: string;
+
+  if (rawFrom && rawTo) {
+    fromDate = rawFrom;
+    toDate = rawTo;
+  } else {
+    const end = rawTo ? new Date(rawTo + "T00:00:00Z") : new Date();
+    const start = new Date(end);
+    start.setUTCDate(start.getUTCDate() - (days - 1));
+    fromDate = start.toISOString().slice(0, 10);
+    toDate = end.toISOString().slice(0, 10);
+  }
+
+  const entries = store.getNutritionDailyHistory(fromDate, toDate);
+  return { entries, from: fromDate, to: toDate };
 }
 
 const NUTRITION_MEAL_DONE_TOKEN = "[done]";
@@ -4996,6 +5046,9 @@ export function executeFunctionCall(
       break;
     case "getNutritionSummary":
       response = handleGetNutritionSummary(store, args);
+      break;
+    case "getNutritionHistory":
+      response = handleGetNutritionHistory(store, args);
       break;
     case "getNutritionTargets":
       response = handleGetNutritionTargets(store, args);
