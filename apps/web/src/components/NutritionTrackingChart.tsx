@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { NutritionDayHistoryEntry } from "../types";
 
 /* ── shared constants ──────────────────────────────────────────── */
-const PAD = { top: 28, right: 52, bottom: 36, left: 48 };
+const PAD = { top: 40, right: 52, bottom: 36, left: 48 };
 const FONT = "10px system-ui, sans-serif";
 const BOLD = "bold 11px system-ui, sans-serif";
 const GRID = "rgba(255,255,255,0.06)";
@@ -392,7 +392,7 @@ export function CalorieWeightChart({ entries }: DualAxisChartProps) {
   return <canvas ref={ref} className="nutrition-tracking-canvas" style={{ width: "100%", height: 200 }} />;
 }
 
-/* ── BodyCompChart: Body Fat % (left) + Muscle Mass % (right) ── */
+/* ── BodyCompChart: Body Fat % (left axis) + Muscle Mass kg (right axis) ── */
 
 interface BodyCompProps {
   entries: NutritionDayHistoryEntry[];
@@ -421,15 +421,10 @@ export function BodyCompChart({ entries }: BodyCompProps) {
     const xStep = entries.length > 1 ? plotW / (entries.length - 1) : plotW;
 
     const bfVals = entries.map((e) => e.fatRatioPercent);
-    // Derive muscle mass % from muscleMassKg / weightKg
-    const mmPctVals = entries.map((e) =>
-      e.muscleMassKg !== null && e.weightKg !== null && e.weightKg > 0
-        ? (e.muscleMassKg / e.weightKg) * 100
-        : null
-    );
+    const mmVals = entries.map((e) => e.muscleMassKg);
 
     const hasBf = bfVals.some((v) => v !== null);
-    const hasMm = mmPctVals.some((v) => v !== null);
+    const hasMm = mmVals.some((v) => v !== null);
 
     if (!hasBf && !hasMm) {
       ctx.clearRect(0, 0, w, h);
@@ -444,10 +439,8 @@ export function BodyCompChart({ entries }: BodyCompProps) {
     const MM_CLR = "rgb(129, 199, 132)";
     const GYM_CLR = "rgb(76, 175, 80)";
 
-    // Both axes in % — use a unified axis if both present
-    const allPctVals = [...bfVals, ...mmPctVals];
     const bfAxis = computeAxis(bfVals, 0.12);
-    const mmAxis = computeAxis(mmPctVals, 0.12);
+    const mmAxis = computeAxis(mmVals, 0.12);
 
     ctx.clearRect(0, 0, w, h);
 
@@ -474,7 +467,7 @@ export function BodyCompChart({ entries }: BodyCompProps) {
         ctx.fillStyle = toAlpha(MM_CLR, 0.5);
         ctx.font = FONT;
         ctx.textAlign = "left";
-        ctx.fillText(`${mv.toFixed(1)}%`, w - PAD.right + 6, y + 3);
+        ctx.fillText(`${mv.toFixed(1)}`, w - PAD.right + 6, y + 3);
       }
     }
 
@@ -493,11 +486,11 @@ export function BodyCompChart({ entries }: BodyCompProps) {
       drawDots(ctx, bfPts, BF_CLR, 3);
     }
 
-    // Muscle mass % line
+    // Muscle mass line (kg)
     if (hasMm) {
       const mmPts: { x: number; y: number }[] = [];
       for (let i = 0; i < entries.length; i++) {
-        const v = mmPctVals[i];
+        const v = mmVals[i];
         if (v === null) continue;
         const x = PAD.left + (entries.length > 1 ? i * xStep : plotW / 2);
         const y = PAD.top + plotH - ((v - mmAxis.min) / mmAxis.range) * plotH;
@@ -542,8 +535,8 @@ export function BodyCompChart({ entries }: BodyCompProps) {
     }
     if (hasMm) {
       ctx.fillStyle = MM_CLR;
-      ctx.fillText("Muscle %", lx, 16);
-      lx += ctx.measureText("Muscle %").width;
+      ctx.fillText("Muscle kg", lx, 16);
+      lx += ctx.measureText("Muscle kg").width;
     }
     if (hasGym) {
       ctx.fillStyle = LABEL_CLR;
@@ -553,24 +546,30 @@ export function BodyCompChart({ entries }: BodyCompProps) {
       ctx.fillText("▲ Gym", lx, 16);
     }
 
-    // Latest values on right
+    // Latest values on second row (below legend) to avoid overlap on mobile
     ctx.font = BOLD;
-    ctx.textAlign = "right";
-    let rx = w - PAD.right;
-    if (hasMm) {
-      const lastMm = mmPctVals.filter((v): v is number => v !== null);
-      if (lastMm.length > 0) {
-        ctx.fillStyle = MM_CLR;
-        const txt = `${lastMm[lastMm.length - 1]!.toFixed(1)}%`;
-        ctx.fillText(txt, rx, 16);
-        rx -= ctx.measureText(txt).width + 8;
-      }
-    }
+    ctx.textAlign = "left";
+    let vx = PAD.left;
     if (hasBf) {
       const lastBf = bfVals.filter((v): v is number => v !== null);
       if (lastBf.length > 0) {
         ctx.fillStyle = BF_CLR;
-        ctx.fillText(`${lastBf[lastBf.length - 1]!.toFixed(1)}%`, rx, 16);
+        const txt = `${lastBf[lastBf.length - 1]!.toFixed(1)}%`;
+        ctx.fillText(txt, vx, 30);
+        vx += ctx.measureText(txt).width;
+      }
+    }
+    if (hasBf && hasMm) {
+      ctx.fillStyle = LABEL_CLR;
+      ctx.fillText("  ", vx, 30);
+      vx += ctx.measureText("  ").width;
+    }
+    if (hasMm) {
+      const lastMm = mmVals.filter((v): v is number => v !== null);
+      if (lastMm.length > 0) {
+        ctx.fillStyle = MM_CLR;
+        const txt = `${lastMm[lastMm.length - 1]!.toFixed(1)} kg`;
+        ctx.fillText(txt, vx, 30);
       }
     }
 
@@ -579,8 +578,7 @@ export function BodyCompChart({ entries }: BodyCompProps) {
       const e = entries[highlightIdx]!;
       const tipLines = [fmtDate(e.date)];
       if (e.fatRatioPercent !== null) tipLines.push(`BF: ${e.fatRatioPercent.toFixed(1)}%`);
-      const mmPct = mmPctVals[highlightIdx];
-      if (mmPct !== null) tipLines.push(`Muscle: ${mmPct.toFixed(1)}%`);
+      if (e.muscleMassKg !== null) tipLines.push(`Muscle: ${e.muscleMassKg.toFixed(1)} kg`);
       if (e.gymCheckedIn) tipLines.push("🏋️ Gym day");
       drawTooltip(ctx, highlightIdx, entries, tipLines, w, h, plotW);
     }

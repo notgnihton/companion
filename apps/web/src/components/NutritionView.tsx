@@ -2036,15 +2036,11 @@ export function NutritionView(): JSX.Element {
                     const firstBf = bfEntries.length > 1 ? bfEntries[0]!.fatRatioPercent : null;
                     const bfDelta = latestBf !== null && firstBf !== null ? latestBf - firstBf : null;
 
-                    // Muscle mass % delta (derived from muscleMassKg / weightKg)
-                    const mmEntries = historyEntries.filter((e) => e.muscleMassKg !== null && e.weightKg !== null && e.weightKg > 0);
-                    const latestMmPct = mmEntries.length > 0
-                      ? (mmEntries[mmEntries.length - 1]!.muscleMassKg! / mmEntries[mmEntries.length - 1]!.weightKg!) * 100
-                      : null;
-                    const firstMmPct = mmEntries.length > 1
-                      ? (mmEntries[0]!.muscleMassKg! / mmEntries[0]!.weightKg!) * 100
-                      : null;
-                    const mmDelta = latestMmPct !== null && firstMmPct !== null ? latestMmPct - firstMmPct : null;
+                    // Muscle mass delta (kg)
+                    const mmEntries = historyEntries.filter((e) => e.muscleMassKg !== null);
+                    const latestMm = mmEntries.length > 0 ? mmEntries[mmEntries.length - 1]!.muscleMassKg : null;
+                    const firstMm = mmEntries.length > 1 ? mmEntries[0]!.muscleMassKg : null;
+                    const mmDelta = latestMm !== null && firstMm !== null ? latestMm - firstMm : null;
 
                     const weightEntries = historyEntries.filter((e) => e.weightKg !== null);
                     const latestWeight = weightEntries.length > 0
@@ -2081,10 +2077,10 @@ export function NutritionView(): JSX.Element {
                         </article>
                         <article className="summary-tile">
                           <p className="summary-label">Muscle Mass</p>
-                          <p className="summary-value">{latestMmPct !== null ? `${latestMmPct.toFixed(1)}%` : "—"}</p>
+                          <p className="summary-value">{latestMm !== null ? `${latestMm.toFixed(1)} kg` : "—"}</p>
                           {mmDelta !== null && (
                             <p className={`summary-sub ${mmDelta >= 0 ? "summary-sub-positive" : "summary-sub-negative"}`}>
-                              {mmDelta >= 0 ? "+" : ""}{mmDelta.toFixed(1)}%
+                              {mmDelta >= 0 ? "+" : ""}{mmDelta.toFixed(1)} kg
                             </p>
                           )}
                         </article>
