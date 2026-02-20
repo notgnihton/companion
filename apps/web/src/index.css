@@ -3885,7 +3885,7 @@ body.keyboard-open .pull-to-refresh-container {
 }
 
 .nutrition-tracking-stat-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .summary-sub {
@@ -3921,7 +3921,7 @@ body.keyboard-open .pull-to-refresh-container {
 
 @media (min-width: 720px) {
   .nutrition-tracking-stat-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

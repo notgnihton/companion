@@ -2030,18 +2030,6 @@ export function NutritionView(): JSX.Element {
               <article className="nutrition-card">
                 <div className="nutrition-tracking-stats">
                   {(() => {
-                    const daysWithMeals = historyEntries.filter((e) => e.mealsLogged > 0);
-                    const daysWithTargets = daysWithMeals.filter((e) => e.targets !== null);
-
-                    // Avg % adherence (accounts for changing targets)
-                    const avgCalPct = daysWithTargets.length > 0
-                      ? Math.round(daysWithTargets.reduce((s, e) => s + (e.totals.calories / e.targets!.calories) * 100, 0) / daysWithTargets.length)
-                      : null;
-
-                    // Gym consistency
-                    const gymDays = historyEntries.filter((e) => e.gymCheckedIn).length;
-                    const gymPct = historyEntries.length > 0 ? Math.round((gymDays / historyEntries.length) * 100) : null;
-
                     // Body fat delta
                     const bfEntries = historyEntries.filter((e) => e.fatRatioPercent !== null);
                     const latestBf = bfEntries.length > 0 ? bfEntries[bfEntries.length - 1]!.fatRatioPercent : null;
@@ -2068,14 +2056,15 @@ export function NutritionView(): JSX.Element {
                     return (
                       <div className="nutrition-summary-grid nutrition-tracking-stat-grid">
                         <article className="summary-tile">
-                          <p className="summary-label">Avg Cal Adherence</p>
-                          <p className="summary-value">{avgCalPct !== null ? `${avgCalPct}%` : "—"}</p>
-                          <p className="summary-sub">of daily target</p>
-                        </article>
-                        <article className="summary-tile">
-                          <p className="summary-label">Gym Consistency</p>
-                          <p className="summary-value">{gymPct !== null ? `${gymPct}%` : "—"}</p>
-                          <p className="summary-sub">{gymDays} of {historyEntries.length} days</p>
+                          <p className="summary-label">Weight</p>
+                          <p className="summary-value">
+                            {latestWeight !== null ? `${latestWeight.toFixed(1)} kg` : "—"}
+                          </p>
+                          {weightDelta !== null && (
+                            <p className={`summary-sub ${weightDelta >= 0 ? "summary-sub-positive" : "summary-sub-negative"}`}>
+                              {weightDelta >= 0 ? "+" : ""}{weightDelta.toFixed(1)} kg
+                            </p>
+                          )}
                         </article>
                         <article className="summary-tile">
                           <p className="summary-label">Body Fat</p>
@@ -2094,21 +2083,6 @@ export function NutritionView(): JSX.Element {
                               {mmDelta >= 0 ? "+" : ""}{mmDelta.toFixed(1)} kg
                             </p>
                           )}
-                        </article>
-                        <article className="summary-tile">
-                          <p className="summary-label">Weight</p>
-                          <p className="summary-value">
-                            {latestWeight !== null ? `${latestWeight.toFixed(1)} kg` : "—"}
-                          </p>
-                          {weightDelta !== null && (
-                            <p className={`summary-sub ${weightDelta >= 0 ? "summary-sub-positive" : "summary-sub-negative"}`}>
-                              {weightDelta >= 0 ? "+" : ""}{weightDelta.toFixed(1)} kg
-                            </p>
-                          )}
-                        </article>
-                        <article className="summary-tile">
-                          <p className="summary-label">Days Tracked</p>
-                          <p className="summary-value">{daysWithMeals.length}<span className="summary-sub-inline"> / {historyEntries.length}</span></p>
                         </article>
                       </div>
                     );
