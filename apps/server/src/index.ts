@@ -2317,7 +2317,7 @@ app.get("/api/nutrition/history", (req, res) => {
     toDate = end.toISOString().slice(0, 10);
   }
 
-  const entries = store.getNutritionDailyHistory(fromDate, toDate);
+  const entries = store.getNutritionDailyHistory(fromDate, toDate, { eatenOnly: true });
   return res.json({ entries, from: fromDate, to: toDate });
 });
 

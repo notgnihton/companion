@@ -369,6 +369,7 @@ export function ChatView({ mood, onMoodChange }: ChatViewProps): JSX.Element {
   const [inputText, setInputText] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<ChatImageAttachment[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const [sendFlying, setSendFlying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedCitationMessageIds, setExpandedCitationMessageIds] = useState<Set<string>>(new Set());
   const [isListening, setIsListening] = useState(false);
@@ -656,6 +657,8 @@ export function ChatView({ mood, onMoodChange }: ChatViewProps): JSX.Element {
     const trimmedText = inputText.trim();
     const attachmentsToSend = pendingAttachments.slice(0, MAX_ATTACHMENTS);
     if ((trimmedText.length === 0 && attachmentsToSend.length === 0) || isSending) return;
+    setSendFlying(true);
+    setTimeout(() => setSendFlying(false), 400);
     setInputText("");
     setPendingAttachments([]);
     await dispatchMessage(trimmedText, attachmentsToSend);
@@ -1013,7 +1016,7 @@ export function ChatView({ mood, onMoodChange }: ChatViewProps): JSX.Element {
           />
           <button
             type="button"
-            className="chat-send-button"
+            className={`chat-send-button${sendFlying ? " chat-send-flying" : ""}`}
             onClick={() => void handleSend()}
             disabled={isSending || (inputText.trim().length === 0 && pendingAttachments.length === 0)}
           >

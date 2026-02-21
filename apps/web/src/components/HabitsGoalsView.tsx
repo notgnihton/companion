@@ -23,8 +23,6 @@ const CHALLENGE_LABELS: Record<ChallengePrompt["type"], string> = {
   commit: "Commit"
 };
 
-const CHALLENGE_TYPES: ChallengePrompt["type"][] = ["reflect", "predict", "commit", "connect"];
-
 interface BusyState {
   type: "habit" | "goal";
   id: string;
@@ -225,25 +223,21 @@ export function HabitsGoalsView(): JSX.Element {
             )}
             {dailySummary.challenges && dailySummary.challenges.length > 0 && (
               <div className="daily-summary-challenge-groups">
-                {CHALLENGE_TYPES.map((type) => {
-                  const cards = dailySummary.challenges!.filter((c: ChallengePrompt) => c.type === type);
-                  if (cards.length === 0) return null;
-                  return (
-                    <div key={type} className="swipeable-card-stack challenge-type-row">
-                      {cards.map((c: ChallengePrompt, i: number) => (
-                        <div key={i} className="swipe-card challenge-card">
-                          <div className="challenge-header">
-                            <span className="challenge-icon">{CHALLENGE_ICONS[type]}</span>
-                            <span className="challenge-type">{CHALLENGE_LABELS[type]}</span>
-                          </div>
-                          <p className="challenge-question">{c.question}</p>
-                          {c.hint && <p className="challenge-hint">💡 {c.hint}</p>}
-                        </div>
-                      ))}
-                      <div className="swipe-indicator">← →</div>
+                <div className="swipeable-card-stack">
+                  {dailySummary.challenges.map((c: ChallengePrompt, i: number) => (
+                    <div key={i} className="swipe-card challenge-card">
+                      <div className="challenge-header">
+                        <span className="challenge-icon">{CHALLENGE_ICONS[c.type]}</span>
+                        <span className="challenge-type">{CHALLENGE_LABELS[c.type]}</span>
+                      </div>
+                      <p className="challenge-question">{c.question}</p>
+                      {c.hint && <p className="challenge-hint">💡 {c.hint}</p>}
                     </div>
-                  );
-                })}
+                  ))}
+                  {dailySummary.challenges.length > 1 && (
+                    <div className="swipe-indicator">← →</div>
+                  )}
+                </div>
               </div>
             )}
           </>
