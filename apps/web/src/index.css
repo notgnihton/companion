@@ -1371,13 +1371,18 @@ button:disabled {
 }
 
 .skeleton-text-lg {
-  height: 56px;
+  height: 72px;
   width: 100%;
 }
 
 .skeleton-text-md {
   height: 18px;
   width: 85%;
+}
+
+.skeleton-text-sm {
+  height: 14px;
+  width: 60%;
 }
 
 .skeleton-row {
@@ -6092,6 +6097,7 @@ label small.muted {
 .analytics-swipe-stack {
   display: grid;
   gap: 14px;
+  margin-top: 14px;
 }
 
 .swipeable-card-stack {
