@@ -181,6 +181,7 @@ export interface AuthUser {
   plan: PlanId;
   trialEndsAt: string | null;
   stripeCustomerId?: string;
+  vippsAgreementId?: string;
   createdAt: string;
   updatedAt: string;
 }

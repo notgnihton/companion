@@ -79,6 +79,16 @@ import {
   getStripeStatus,
   getPriceForPlan
 } from "./stripe-integration.js";
+import {
+  isVippsConfigured,
+  createAgreement,
+  getAgreement,
+  stopAgreement,
+  getVippsStatus,
+  processWebhookPayload,
+  planIdFromAmount,
+  type VippsWebhookPayload
+} from "./vipps-integration.js";
 import { nowIso } from "./utils.js";
 
 const app = express();
@@ -470,7 +480,8 @@ function isPublicApiRoute(method: string, path: string): boolean {
     (method === "GET" && path === "/api/auth/withings") ||
     (method === "GET" && path === "/api/auth/withings/callback") ||
     (method === "GET" && path === "/api/plan/tiers") ||
-    (method === "POST" && path === "/api/stripe/webhook")
+    (method === "POST" && path === "/api/stripe/webhook") ||
+    (method === "POST" && path === "/api/vipps/webhook")
   );
 }
 
@@ -927,6 +938,159 @@ app.post("/api/stripe/portal", async (req, res) => {
 /** Get Stripe configuration status */
 app.get("/api/stripe/status", (_req, res) => {
   return res.json(getStripeStatus());
+});
+
+// ── Vipps MobilePay Recurring ────────────────────────────────────────────
+
+/** Create a Vipps agreement (redirect user to approve in Vipps app) */
+app.post("/api/vipps/create-agreement", async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.authUser) return res.status(401).json({ error: "Unauthorized" });
+
+  if (!isVippsConfigured()) {
+    return res.status(503).json({ error: "Vipps is not configured yet" });
+  }
+
+  const { planId, phoneNumber } = req.body as { planId?: string; phoneNumber?: string };
+  if (!planId || (planId !== "plus" && planId !== "pro")) {
+    return res.status(400).json({ error: "Invalid plan. Choose 'plus' or 'pro'." });
+  }
+
+  try {
+    const result = await createAgreement({
+      userId: authReq.authUser.id,
+      planId: planId as PlanId,
+      phoneNumber
+    });
+
+    // Store the pending agreement ID on the user
+    store.updateVippsAgreementId(authReq.authUser.id, result.agreementId);
+
+    return res.json({
+      agreementId: result.agreementId,
+      redirectUrl: result.vippsConfirmationUrl
+    });
+  } catch (err) {
+    console.error("[vipps] create agreement error:", err);
+    return res.status(500).json({ error: "Failed to create Vipps agreement" });
+  }
+});
+
+/** Check Vipps agreement status (poll after user returns from Vipps) */
+app.get("/api/vipps/agreement-status", async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.authUser) return res.status(401).json({ error: "Unauthorized" });
+
+  const agreementId = authReq.authUser.vippsAgreementId;
+  if (!agreementId) {
+    return res.json({ status: "none", message: "No Vipps agreement found" });
+  }
+
+  try {
+    const agreement = await getAgreement(agreementId);
+
+    // If agreement became ACTIVE, update user plan
+    if (agreement.status === "ACTIVE" && authReq.authUser.plan === "free") {
+      const plan = planIdFromAmount(agreement.pricing.amount);
+      if (plan) {
+        store.updateUserPlan(authReq.authUser.id, plan);
+      }
+    }
+
+    return res.json({
+      status: agreement.status,
+      agreementId: agreement.id,
+      productName: agreement.productName,
+      amount: agreement.pricing.amount,
+      currency: agreement.pricing.currency
+    });
+  } catch (err) {
+    console.error("[vipps] get agreement error:", err);
+    return res.status(500).json({ error: "Failed to fetch agreement status" });
+  }
+});
+
+/** Cancel Vipps agreement */
+app.post("/api/vipps/cancel-agreement", async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.authUser) return res.status(401).json({ error: "Unauthorized" });
+
+  const agreementId = authReq.authUser.vippsAgreementId;
+  if (!agreementId) {
+    return res.status(400).json({ error: "No active Vipps agreement" });
+  }
+
+  try {
+    await stopAgreement(agreementId);
+    store.updateUserPlan(authReq.authUser.id, "free");
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("[vipps] cancel agreement error:", err);
+    return res.status(500).json({ error: "Failed to cancel Vipps agreement" });
+  }
+});
+
+/** Get Vipps configuration status */
+app.get("/api/vipps/status", (_req, res) => {
+  return res.json(getVippsStatus());
+});
+
+/** Vipps webhook for agreement and charge events */
+app.post("/api/vipps/webhook", (req, res) => {
+  try {
+    const payload = req.body as VippsWebhookPayload;
+    const event = processWebhookPayload(payload);
+    console.log(`[vipps] webhook: ${event.eventType} agreementId=${event.agreementId} userId=${event.userId}`);
+
+    switch (event.eventType) {
+      case "recurring.agreement-activated.v1": {
+        // Agreement was approved by user in Vipps
+        if (event.agreementId) {
+          const user = event.userId
+            ? store.getUserById(event.userId)
+            : store.getUserByVippsAgreementId(event.agreementId);
+          if (user) {
+            // Fetch agreement to get the plan amount
+            void getAgreement(event.agreementId).then((agreement) => {
+              const plan = planIdFromAmount(agreement.pricing.amount);
+              if (plan) {
+                store.updateUserPlan(user.id, plan);
+              }
+            }).catch((err) => {
+              console.error("[vipps] webhook: failed to fetch agreement for plan update:", err);
+            });
+          }
+        }
+        break;
+      }
+      case "recurring.agreement-stopped.v1":
+      case "recurring.agreement-expired.v1": {
+        // Agreement stopped or expired — downgrade to free
+        if (event.agreementId) {
+          const user = event.userId
+            ? store.getUserById(event.userId)
+            : store.getUserByVippsAgreementId(event.agreementId);
+          if (user) {
+            store.updateUserPlan(user.id, "free");
+          }
+        }
+        break;
+      }
+      case "recurring.charge-captured.v1": {
+        console.log(`[vipps] charge captured: ${event.chargeId} amount=${event.amount}`);
+        break;
+      }
+      case "recurring.charge-failed.v1": {
+        console.warn(`[vipps] charge failed: ${event.chargeId} agreementId=${event.agreementId}`);
+        break;
+      }
+    }
+
+    return res.json({ received: true });
+  } catch (err) {
+    console.error("[vipps] webhook error:", err);
+    return res.status(400).json({ error: "Webhook processing failed" });
+  }
 });
 
 

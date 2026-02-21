@@ -6945,6 +6945,49 @@ label small.muted {
   margin: 0;
 }
 
+/* Payment method selector */
+.payment-method-selector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.payment-method-label {
+  font-size: 0.75rem;
+  color: var(--color-muted, #6b7280);
+}
+
+.payment-method-btn {
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1.5px solid var(--color-border, #e5e7eb);
+  background: transparent;
+  color: var(--color-text-secondary, #6b7280);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.payment-method-btn:hover {
+  border-color: var(--color-primary, #6366f1);
+  color: var(--color-primary, #6366f1);
+}
+
+.payment-method-active {
+  background: var(--color-primary, #6366f1);
+  border-color: var(--color-primary, #6366f1);
+  color: #fff;
+}
+
+.payment-method-active:hover {
+  background: var(--color-primary-hover, #4f46e5);
+  border-color: var(--color-primary-hover, #4f46e5);
+  color: #fff;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    PLAN BADGES
    ══════════════════════════════════════════════════════════════════════════ */

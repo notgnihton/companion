@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   createStripeCheckout,
+  createVippsAgreement,
   getPlanTiers,
   getStripeStatus,
+  getVippsStatus,
   getUserPlan,
   startTrial
 } from "../lib/api";
 import type { FeatureId, PlanId, PlanTierSummary, UserPlanInfo } from "../types";
+
+type PaymentMethod = "vipps" | "stripe";
 
 interface UpgradePromptProps {
   feature?: string;
@@ -20,6 +24,8 @@ export function UpgradePrompt({ feature, onDismiss }: UpgradePromptProps): JSX.E
   const [error, setError] = useState<string | null>(null);
   const [stripeReady, setStripeReady] = useState(false);
   const [stripePrices, setStripePrices] = useState<{ plus: boolean; pro: boolean }>({ plus: false, pro: false });
+  const [vippsReady, setVippsReady] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>("vipps");
 
   useEffect(() => {
     void getPlanTiers().then(setTiers).catch(() => {});
@@ -27,6 +33,11 @@ export function UpgradePrompt({ feature, onDismiss }: UpgradePromptProps): JSX.E
     void getStripeStatus().then((s) => {
       setStripeReady(s.configured);
       setStripePrices(s.prices);
+    }).catch(() => {});
+    void getVippsStatus().then((v) => {
+      setVippsReady(v.configured);
+      // Default to Vipps if available, otherwise Stripe
+      if (v.configured) setSelectedPayment("vipps");
     }).catch(() => {});
   }, []);
 
@@ -67,6 +78,36 @@ export function UpgradePrompt({ feature, onDismiss }: UpgradePromptProps): JSX.E
       setStarting(false);
     }
   }, []);
+
+  const handleVippsCheckout = useCallback(async (plan: PlanId) => {
+    setStarting(true);
+    setError(null);
+    try {
+      const result = await createVippsAgreement(plan);
+      // Redirect user to Vipps to approve the agreement
+      window.location.href = result.redirectUrl;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to start Vipps payment";
+      try {
+        const parsed = JSON.parse(msg) as { error?: string };
+        setError(parsed.error ?? msg);
+      } catch {
+        setError(msg);
+      }
+      setStarting(false);
+    }
+  }, []);
+
+  const handlePayment = useCallback(async (plan: PlanId) => {
+    if (selectedPayment === "vipps" && vippsReady) {
+      return handleVippsCheckout(plan);
+    }
+    if (selectedPayment === "stripe" && stripeReady) {
+      return handleStripeCheckout(plan);
+    }
+  }, [selectedPayment, vippsReady, stripeReady, handleVippsCheckout, handleStripeCheckout]);
+
+  const hasPaymentMethod = vippsReady || (stripeReady && stripePrices.plus);
 
   const paidTiers = tiers.filter((t) => t.priceMonthlyNok > 0);
   const canTrial = planInfo?.plan === "free" && !planInfo?.trialEndsAt;
@@ -127,17 +168,17 @@ export function UpgradePrompt({ feature, onDismiss }: UpgradePromptProps): JSX.E
                   onClick={() => {
                     if (canTrial && tier.id === "plus") {
                       void handleStartTrial();
-                    } else if (stripeReady && stripePrices[tier.id as "plus" | "pro"]) {
-                      void handleStripeCheckout(tier.id as PlanId);
+                    } else if (hasPaymentMethod) {
+                      void handlePayment(tier.id as PlanId);
                     }
                   }}
-                  disabled={starting || (!canTrial && !(stripeReady && stripePrices[tier.id as "plus" | "pro"]))}
+                  disabled={starting || (!canTrial && !hasPaymentMethod)}
                 >
                   {starting
                     ? "Processing..."
                     : canTrial && tier.id === "plus"
                       ? `Start ${tier.trialDays}-day free trial`
-                      : stripeReady && stripePrices[tier.id as "plus" | "pro"]
+                      : hasPaymentMethod
                         ? `Subscribe — ${tier.priceMonthlyNok} kr/mo`
                         : "Coming soon"}
                 </button>
@@ -148,12 +189,33 @@ export function UpgradePrompt({ feature, onDismiss }: UpgradePromptProps): JSX.E
 
         {error && <p className="upgrade-error">{error}</p>}
 
+        {/* Payment method selector — show when both Vipps and Stripe are available */}
+        {vippsReady && stripeReady && !canTrial && (
+          <div className="payment-method-selector">
+            <span className="payment-method-label">Pay with:</span>
+            <button
+              className={`payment-method-btn ${selectedPayment === "vipps" ? "payment-method-active" : ""}`}
+              onClick={() => setSelectedPayment("vipps")}
+            >
+              Vipps
+            </button>
+            <button
+              className={`payment-method-btn ${selectedPayment === "stripe" ? "payment-method-active" : ""}`}
+              onClick={() => setSelectedPayment("stripe")}
+            >
+              Card
+            </button>
+          </div>
+        )}
+
         <p className="upgrade-footer">
           {canTrial
             ? "Start your free trial — cancel anytime within 7 days."
-            : stripeReady
-              ? "Secure checkout powered by Stripe. Cancel anytime."
-              : "Payment integration coming soon."}
+            : vippsReady && selectedPayment === "vipps"
+              ? "Pay easily with Vipps MobilePay. Cancel anytime."
+              : stripeReady
+                ? "Secure checkout powered by Stripe. Cancel anytime."
+                : "Payment integration coming soon."}
         </p>
       </div>
     </div>

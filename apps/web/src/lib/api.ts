@@ -1504,3 +1504,44 @@ export async function createStripeCheckout(planId: string): Promise<StripeChecko
 export async function createStripePortal(): Promise<{ url: string }> {
   return await jsonOrThrow<{ url: string }>("/api/stripe/portal", { method: "POST" });
 }
+
+// ── Vipps MobilePay ──────────────────────────────────────────────────────
+
+export interface VippsStatusResponse {
+  configured: boolean;
+  testMode: boolean;
+  plans: { plus: boolean; pro: boolean };
+}
+
+export interface VippsAgreementResult {
+  agreementId: string;
+  redirectUrl: string;
+}
+
+export interface VippsAgreementStatusResponse {
+  status: "PENDING" | "ACTIVE" | "STOPPED" | "EXPIRED" | "none";
+  agreementId?: string;
+  productName?: string;
+  amount?: number;
+  currency?: string;
+  message?: string;
+}
+
+export async function getVippsStatus(): Promise<VippsStatusResponse> {
+  return await jsonOrThrow<VippsStatusResponse>("/api/vipps/status");
+}
+
+export async function createVippsAgreement(planId: string, phoneNumber?: string): Promise<VippsAgreementResult> {
+  return await jsonOrThrow<VippsAgreementResult>("/api/vipps/create-agreement", {
+    method: "POST",
+    body: JSON.stringify({ planId, phoneNumber })
+  });
+}
+
+export async function getVippsAgreementStatus(): Promise<VippsAgreementStatusResponse> {
+  return await jsonOrThrow<VippsAgreementStatusResponse>("/api/vipps/agreement-status");
+}
+
+export async function cancelVippsAgreement(): Promise<{ success: boolean }> {
+  return await jsonOrThrow<{ success: boolean }>("/api/vipps/cancel-agreement", { method: "POST" });
+}

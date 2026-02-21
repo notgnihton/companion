@@ -923,6 +923,12 @@ export class RuntimeStore {
       this.db.prepare("ALTER TABLE users ADD COLUMN stripeCustomerId TEXT").run();
     }
 
+    // Migration: add vippsAgreementId column
+    const hasVippsAgreementId = userColumns.some((col) => col.name === "vippsAgreementId");
+    if (!hasVippsAgreementId) {
+      this.db.prepare("ALTER TABLE users ADD COLUMN vippsAgreementId TEXT").run();
+    }
+
     // Migration: create daily_usage table for rate limiting
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS daily_usage (
@@ -1789,7 +1795,7 @@ export class RuntimeStore {
   }
 
   getUserById(id: string): AuthUser | null {
-    const row = this.db.prepare("SELECT id, email, name, avatarUrl, provider, role, plan, trialEndsAt, stripeCustomerId, createdAt, updatedAt FROM users WHERE id = ?").get(id) as
+    const row = this.db.prepare("SELECT id, email, name, avatarUrl, provider, role, plan, trialEndsAt, stripeCustomerId, vippsAgreementId, createdAt, updatedAt FROM users WHERE id = ?").get(id) as
       | {
           id: string;
           email: string;
@@ -1800,6 +1806,7 @@ export class RuntimeStore {
           plan: string | null;
           trialEndsAt: string | null;
           stripeCustomerId: string | null;
+          vippsAgreementId: string | null;
           createdAt: string;
           updatedAt: string;
         }
@@ -1819,6 +1826,7 @@ export class RuntimeStore {
       plan: this.parsePlanId(row.plan),
       trialEndsAt: row.trialEndsAt ?? null,
       stripeCustomerId: row.stripeCustomerId ?? undefined,
+      vippsAgreementId: row.vippsAgreementId ?? undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt
     };
@@ -1841,6 +1849,20 @@ export class RuntimeStore {
 
   getUserByStripeCustomerId(stripeCustomerId: string): AuthUser | null {
     const row = this.db.prepare("SELECT id FROM users WHERE stripeCustomerId = ?").get(stripeCustomerId) as
+      | { id: string }
+      | undefined;
+    if (!row) return null;
+    return this.getUserById(row.id);
+  }
+
+  updateVippsAgreementId(userId: string, vippsAgreementId: string): void {
+    this.db
+      .prepare("UPDATE users SET vippsAgreementId = ?, updatedAt = ? WHERE id = ?")
+      .run(vippsAgreementId, nowIso(), userId);
+  }
+
+  getUserByVippsAgreementId(agreementId: string): AuthUser | null {
+    const row = this.db.prepare("SELECT id FROM users WHERE vippsAgreementId = ?").get(agreementId) as
       | { id: string }
       | undefined;
     if (!row) return null;
