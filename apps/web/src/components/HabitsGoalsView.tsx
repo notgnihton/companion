@@ -1,27 +1,12 @@
 import { useEffect, useState } from "react";
 import {
-  getDailyGrowthSummary,
   getGoals,
   getHabits,
   toggleHabitCheckIn,
   toggleGoalCheckIn
 } from "../lib/api";
-import { Goal, Habit, DailyGrowthSummary, ChallengePrompt } from "../types";
+import { Goal, Habit } from "../types";
 import { hapticSuccess } from "../lib/haptics";
-
-const CHALLENGE_ICONS: Record<ChallengePrompt["type"], string> = {
-  connect: "🔗",
-  predict: "🔮",
-  reflect: "💭",
-  commit: "✊"
-};
-
-const CHALLENGE_LABELS: Record<ChallengePrompt["type"], string> = {
-  connect: "Connect the dots",
-  predict: "Predict",
-  reflect: "Reflect",
-  commit: "Commit"
-};
 
 interface BusyState {
   type: "habit" | "goal";
@@ -31,44 +16,20 @@ interface BusyState {
 export function HabitsGoalsView(): JSX.Element {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [dailySummary, setDailySummary] = useState<DailyGrowthSummary | null>(null);
-  const [summaryMessage, setSummaryMessage] = useState("");
-  const [summaryLoading, setSummaryLoading] = useState(true);
   const [busy, setBusy] = useState<BusyState | null>(null);
-
-  const refreshSummary = async (): Promise<void> => {
-    setSummaryLoading(true);
-    setSummaryMessage("");
-    const nextSummary = await getDailyGrowthSummary({ forceRefresh: true });
-    if (nextSummary) {
-      setDailySummary(nextSummary);
-    } else {
-      setSummaryMessage("Could not generate daily summary right now.");
-    }
-    setSummaryLoading(false);
-  };
 
   useEffect(() => {
     let disposed = false;
 
     const sync = async (): Promise<void> => {
       try {
-        const [habitData, goalData, summaryData] = await Promise.all([getHabits(), getGoals(), getDailyGrowthSummary()]);
+        const [habitData, goalData] = await Promise.all([getHabits(), getGoals()]);
         if (!disposed) {
           setHabits(habitData);
           setGoals(goalData);
-          if (summaryData) {
-            setDailySummary(summaryData);
-          } else {
-            setSummaryMessage("Could not generate daily summary right now.");
-          }
         }
       } catch {
         // offline fallback already handled by API helpers
-      } finally {
-        if (!disposed) {
-          setSummaryLoading(false);
-        }
       }
     };
 
@@ -171,7 +132,6 @@ export function HabitsGoalsView(): JSX.Element {
   };
 
   return (
-    <>
     <section className="panel habit-goal-panel">
       <header className="panel-header">
         <h2>Habits & Goals</h2>
@@ -191,60 +151,5 @@ export function HabitsGoalsView(): JSX.Element {
         {goals.length === 0 && <p className="muted">No goals yet — ask Gemini to create one.</p>}
       </div>
     </section>
-
-    <section className="daily-summary-panel daily-summary-animate">
-        <header className="panel-header">
-          <h3>Daily Reflection Summary</h3>
-        </header>
-        {summaryLoading && (
-          <div className="daily-summary-skeleton">
-            <div className="skeleton-block skeleton-text-lg" />
-            <div className="skeleton-block skeleton-text-md" />
-            <div className="skeleton-block skeleton-text-md" />
-          </div>
-        )}
-        {!summaryLoading && dailySummary && (
-          <>
-            {dailySummary.visual && (
-              <figure className="daily-summary-visual">
-                <img src={dailySummary.visual.dataUrl} alt={dailySummary.visual.alt} loading="lazy" />
-                <figcaption>
-                  {dailySummary.visual.model} • {new Date(dailySummary.visual.generatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false })}
-                </figcaption>
-              </figure>
-            )}
-            <div className="daily-summary-narrative">
-              <p className="daily-summary-text">{dailySummary.summary}</p>
-            </div>
-            {dailySummary.highlights.length > 0 && (
-              <ul className="daily-summary-list">
-                {dailySummary.highlights.map((item, index) => (
-                  <li key={`${item}-${index}`}>{item}</li>
-                ))}
-              </ul>
-            )}
-            {dailySummary.challenges && dailySummary.challenges.length > 0 && (
-              <div className="daily-summary-challenge-groups">
-                <div className="swipeable-card-stack">
-                  {dailySummary.challenges.map((c: ChallengePrompt, i: number) => (
-                    <div key={i} className="swipe-card challenge-card">
-                      <div className="challenge-header">
-                        <span className="challenge-icon">{CHALLENGE_ICONS[c.type]}</span>
-                        <span className="challenge-type">{CHALLENGE_LABELS[c.type]}</span>
-                      </div>
-                      <p className="challenge-question">{c.question}</p>
-                      {c.hint && <p className="challenge-hint">💡 {c.hint}</p>}
-                    </div>
-                  ))}
-                  {dailySummary.challenges.length > 1 && (
-                    <div className="swipe-indicator">← →</div>
-                  )}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </section>
-    </>
   );
 }

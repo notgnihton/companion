@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { getAnalyticsCoachInsight } from "../lib/api";
-import { AnalyticsCoachInsight, ChallengePrompt } from "../types";
+import { getAnalyticsCoachInsight, getDailyGrowthSummary } from "../lib/api";
+import { AnalyticsCoachInsight, ChallengePrompt, DailyGrowthSummary } from "../types";
 
-type PeriodDays = 7 | 14 | 30;
+type PeriodDays = 1 | 7 | 14 | 30;
 
-const PERIOD_OPTIONS: PeriodDays[] = [7, 14, 30];
+const PERIOD_OPTIONS: PeriodDays[] = [1, 7, 14, 30];
 
 function formatGeneratedAt(value: string): string {
   const date = new Date(value);
@@ -37,8 +37,9 @@ const CHALLENGE_LABELS: Record<ChallengePrompt["type"], string> = {
 const CHALLENGE_TYPES: ChallengePrompt["type"][] = ["reflect", "predict", "commit", "connect"];
 
 export function AnalyticsDashboard(): JSX.Element {
-  const [periodDays, setPeriodDays] = useState<PeriodDays>(14);
+  const [periodDays, setPeriodDays] = useState<PeriodDays>(1);
   const [insight, setInsight] = useState<AnalyticsCoachInsight | null>(null);
+  const [dailySummary, setDailySummary] = useState<DailyGrowthSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,14 +47,26 @@ export function AnalyticsDashboard(): JSX.Element {
     setLoading(true);
     setError(null);
 
-    const next = await getAnalyticsCoachInsight(days, options);
-    if (!next) {
-      setError("Could not load narrative analytics right now.");
-      setLoading(false);
-      return;
+    if (days === 1) {
+      const next = await getDailyGrowthSummary({ forceRefresh: options.forceRefresh });
+      if (!next) {
+        setError("Could not load daily reflection right now.");
+        setLoading(false);
+        return;
+      }
+      setDailySummary(next);
+      setInsight(null);
+    } else {
+      const next = await getAnalyticsCoachInsight(days, options);
+      if (!next) {
+        setError("Could not load narrative analytics right now.");
+        setLoading(false);
+        return;
+      }
+      setInsight(next);
+      setDailySummary(null);
     }
 
-    setInsight(next);
     setLoading(false);
   }, []);
 
@@ -65,8 +78,8 @@ export function AnalyticsDashboard(): JSX.Element {
     <div className="analytics-container">
       <header className="analytics-header">
         <div>
-          <h2 className="analytics-title">Narrative Analytics</h2>
-          <p className="analytics-subtitle">Gemini coaching over your recent patterns.</p>
+          <h2 className="analytics-title">{periodDays === 1 ? "Daily Reflection" : "Narrative Analytics"}</h2>
+          <p className="analytics-subtitle">{periodDays === 1 ? "Gemini coaching on today's activity." : "Gemini coaching over your recent patterns."}</p>
         </div>
 
         <div className="analytics-controls">
@@ -80,7 +93,7 @@ export function AnalyticsDashboard(): JSX.Element {
                 aria-pressed={option === periodDays}
                 disabled={loading && option === periodDays}
               >
-                {option}d
+                {option === 1 ? "1d" : `${option}d`}
               </button>
             ))}
           </div>
@@ -89,13 +102,57 @@ export function AnalyticsDashboard(): JSX.Element {
 
       {error && <p className="error">{error}</p>}
 
-      {loading && !insight && (
+      {loading && !insight && !dailySummary && (
         <div className="daily-summary-skeleton">
           <div className="skeleton-block skeleton-text-lg" />
           <div className="skeleton-block skeleton-text-md" />
           <div className="skeleton-block skeleton-text-md" />
         </div>
       )}
+
+      {/* Daily reflection view (1d) */}
+      {dailySummary && periodDays === 1 && (
+        <>
+          {dailySummary.visual && (
+            <figure className="analytics-visual">
+              <img src={dailySummary.visual.dataUrl} alt={dailySummary.visual.alt} loading="lazy" />
+            </figure>
+          )}
+          <section className="analytics-summary-card analytics-summary-hero">
+            <div className="analytics-summary-content">
+              <p>{dailySummary.summary}</p>
+            </div>
+          </section>
+          {dailySummary.highlights.length > 0 && (
+            <ul className="daily-summary-list">
+              {dailySummary.highlights.map((item, index) => (
+                <li key={`${item}-${index}`}>{item}</li>
+              ))}
+            </ul>
+          )}
+          {dailySummary.challenges && dailySummary.challenges.length > 0 && (
+            <div className="analytics-swipe-stack">
+              <div className="swipeable-card-stack">
+                {dailySummary.challenges.map((c: ChallengePrompt, i: number) => (
+                  <div key={i} className="swipe-card challenge-card">
+                    <div className="challenge-header">
+                      <span className="challenge-icon">{CHALLENGE_ICONS[c.type]}</span>
+                      <span className="challenge-type">{CHALLENGE_LABELS[c.type]}</span>
+                    </div>
+                    <p className="challenge-question">{c.question}</p>
+                    {c.hint && <p className="challenge-hint">💡 {c.hint}</p>}
+                  </div>
+                ))}
+                {dailySummary.challenges.length > 1 && (
+                  <div className="swipe-indicator">← →</div>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Multi-day analytics view (7d/14d/30d) */}
 
       {insight && (
         <>
