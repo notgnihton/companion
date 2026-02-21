@@ -4,7 +4,7 @@
       <stop offset="0%" stop-color="#0e1b26"/>
       <stop offset="100%" stop-color="#14324a"/>
     </linearGradient>
-    <linearGradient id="bubble" x1="0" y1="0" x2="0.5" y2="1">
+    <linearGradient id="bubble" x1="0.2" y1="0" x2="0.8" y2="1">
       <stop offset="0%" stop-color="#f6c37f"/>
       <stop offset="100%" stop-color="#e8a84c"/>
     </linearGradient>
@@ -12,23 +12,30 @@
       <stop offset="0%" stop-color="#4edbcd"/>
       <stop offset="100%" stop-color="#36aca1"/>
     </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
   <!-- Background -->
   <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <!-- Chat bubble -->
-  <path d="M128 150 C128 112, 160 80, 200 80 L360 80 C400 80, 432 112, 432 150 L432 280 C432 318, 400 350, 360 350 L220 350 L160 410 L176 350 L152 350 C140 350, 128 338, 128 318 Z" fill="url(#bubble)" opacity="0.92"/>
-  <!-- Chat lines -->
-  <rect x="176" y="148" width="200" height="16" rx="8" fill="#0e1b26" opacity="0.2"/>
-  <rect x="176" y="188" width="152" height="16" rx="8" fill="#0e1b26" opacity="0.15"/>
-  <rect x="176" y="228" width="180" height="16" rx="8" fill="#0e1b26" opacity="0.12"/>
-  <!-- AI sparkle (4-point star) -->
-  <path d="M390 100 L400 130 L410 100 L400 70 Z" fill="url(#sparkle)"/>
-  <path d="M370 100 L400 110 L430 100 L400 90 Z" fill="url(#sparkle)"/>
-  <!-- Small sparkle -->
-  <path d="M120 320 L126 336 L132 320 L126 304 Z" fill="#4edbcd" opacity="0.6"/>
-  <path d="M112 320 L126 326 L140 320 L126 314 Z" fill="#4edbcd" opacity="0.6"/>
-  <!-- Accent dots -->
-  <circle cx="100" cy="120" r="8" fill="#f6c37f" opacity="0.3"/>
-  <circle cx="440" cy="400" r="12" fill="#4edbcd" opacity="0.25"/>
-  <circle cx="80" cy="400" r="6" fill="#f6c37f" opacity="0.2"/>
+  <!-- Chat bubble — large, rounded, fills most of the icon -->
+  <path d="M90 172 Q90 72, 190 72 L330 72 Q430 72, 430 172 L430 300 Q430 390, 330 390 L200 390 L120 460 L160 390 Q90 390, 90 300 Z" fill="url(#bubble)" opacity="0.95"/>
+  <!-- Large sparkle (center of bubble) with glow -->
+  <g filter="url(#glow)">
+    <path d="M275 190 L293 230 L275 270 L257 230 Z" fill="url(#sparkle)"/>
+    <path d="M240 230 L275 248 L310 230 L275 212 Z" fill="url(#sparkle)"/>
+  </g>
+  <!-- Medium sparkle (upper-right inside bubble) -->
+  <path d="M365 135 L376 160 L365 185 L354 160 Z" fill="#ffffff" opacity="0.8"/>
+  <path d="M343 160 L365 171 L387 160 L365 149 Z" fill="#ffffff" opacity="0.8"/>
+  <!-- Small sparkle (lower-left inside bubble) -->
+  <path d="M195 292 L203 310 L195 328 L187 310 Z" fill="#ffffff" opacity="0.6"/>
+  <path d="M180 310 L195 318 L210 310 L195 302 Z" fill="#ffffff" opacity="0.6"/>
+  <!-- Subtle accent dots -->
+  <circle cx="72" cy="108" r="5" fill="#4edbcd" opacity="0.25"/>
+  <circle cx="452" cy="452" r="7" fill="#f6c37f" opacity="0.2"/>
 </svg>
