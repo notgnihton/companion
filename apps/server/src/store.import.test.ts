@@ -3,6 +3,8 @@ import { RuntimeStore } from "./store.js";
 import { ImportData } from "./types.js";
 
 describe("RuntimeStore - import data", () => {
+  const userId = "test-user";
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-15T15:00:00.000Z"));
@@ -86,7 +88,7 @@ describe("RuntimeStore - import data", () => {
       }
     };
 
-    const result = store.importData(importData);
+    const result = store.importData(userId, importData);
 
     // Verify import counts
     expect(result.imported.journals).toBe(2);
@@ -98,36 +100,36 @@ describe("RuntimeStore - import data", () => {
     expect(result.warnings).toHaveLength(0);
 
     // Verify data was actually imported
-    const journals = store.getJournalEntries();
+    const journals = store.getJournalEntries(userId);
     expect(journals).toHaveLength(2);
     // Journals are ordered by timestamp DESC, so the later one comes first
     expect(journals[0].content).toBe("Had a productive study session");
     expect(journals[1].content).toBe("Finished algorithms homework");
 
-    const schedule = store.getScheduleEvents();
+    const schedule = store.getScheduleEvents(userId);
     expect(schedule).toHaveLength(1);
     expect(schedule[0].title).toBe("Algorithms Lecture");
 
-    const deadlines = store.getDeadlines();
+    const deadlines = store.getDeadlines(userId);
     expect(deadlines).toHaveLength(1);
     expect(deadlines[0].course).toBe("Systems");
 
-    const habits = store.getHabitsWithStatus();
+    const habits = store.getHabitsWithStatus(userId);
     const importedHabit = habits.find((h) => h.id === "habit-1");
     expect(importedHabit).toBeDefined();
     expect(importedHabit?.name).toBe("Evening review");
 
-    const goals = store.getGoalsWithStatus();
+    const goals = store.getGoalsWithStatus(userId);
     const importedGoal = goals.find((g) => g.id === "goal-1");
     expect(importedGoal).toBeDefined();
     expect(importedGoal?.title).toBe("Ship portfolio draft");
 
-    const context = store.getUserContext();
+    const context = store.getUserContext(userId);
     expect(context.stressLevel).toBe("medium");
     expect(context.energyLevel).toBe("high");
     expect(context.mode).toBe("focus");
 
-    const prefs = store.getNotificationPreferences();
+    const prefs = store.getNotificationPreferences(userId);
     expect(prefs.quietHours.enabled).toBe(true);
     expect(prefs.minimumPriority).toBe("medium");
   });
@@ -148,7 +150,7 @@ describe("RuntimeStore - import data", () => {
       ]
     };
 
-    const result = store.importData(importData);
+    const result = store.importData(userId, importData);
 
     expect(result.imported.journals).toBe(1);
     expect(result.imported.schedule).toBe(0);
@@ -156,7 +158,7 @@ describe("RuntimeStore - import data", () => {
     expect(result.imported.habits).toBe(0);
     expect(result.imported.goals).toBe(0);
 
-    const journals = store.getJournalEntries();
+    const journals = store.getJournalEntries(userId);
     expect(journals).toHaveLength(1);
     expect(journals[0].content).toBe("Test journal entry");
   });
@@ -165,14 +167,14 @@ describe("RuntimeStore - import data", () => {
     const store = new RuntimeStore(":memory:");
 
     // Create initial data
-    store.createLectureEvent({
+    store.createLectureEvent(userId, {
       title: "Original Title",
       startTime: "2026-02-16T10:00:00.000Z",
       durationMinutes: 60,
       workload: "low"
     });
 
-    const scheduleEvents = store.getScheduleEvents();
+    const scheduleEvents = store.getScheduleEvents(userId);
     const originalId = scheduleEvents[0].id;
 
     // Import with same ID but different data
@@ -188,13 +190,13 @@ describe("RuntimeStore - import data", () => {
       ]
     };
 
-    const result = store.importData(importData);
+    const result = store.importData(userId, importData);
 
     expect(result.imported.schedule).toBe(1);
     expect(result.warnings).toHaveLength(0);
 
     // Verify the record was updated
-    const updatedSchedule = store.getScheduleEvents();
+    const updatedSchedule = store.getScheduleEvents(userId);
     expect(updatedSchedule).toHaveLength(1);
     expect(updatedSchedule[0].id).toBe(originalId);
     expect(updatedSchedule[0].title).toBe("Updated Title");
@@ -206,7 +208,7 @@ describe("RuntimeStore - import data", () => {
     const store = new RuntimeStore(":memory:");
 
     // Create initial journal entry
-    const initial = store.recordJournalEntry("Original content");
+    const initial = store.recordJournalEntry(userId, "Original content");
 
     // Import with same ID but different content (simulates conflict)
     const importData: ImportData = {
@@ -223,13 +225,13 @@ describe("RuntimeStore - import data", () => {
       ]
     };
 
-    const result = store.importData(importData);
+    const result = store.importData(userId, importData);
 
     // Since we don't provide baseVersion, it should update the existing entry
     expect(result.imported.journals).toBe(1);
     expect(result.conflicts.journals).toHaveLength(0);
 
-    const journals = store.getJournalEntries();
+    const journals = store.getJournalEntries(userId);
     expect(journals).toHaveLength(1);
     expect(journals[0].content).toBe("Different content");
     expect(journals[0].version).toBe(2); // Version incremented
@@ -261,18 +263,18 @@ describe("RuntimeStore - import data", () => {
       ]
     };
 
-    const result = store.importData(importData);
+    const result = store.importData(userId, importData);
 
     expect(result.imported.habits).toBe(1);
     expect(result.imported.goals).toBe(1);
     expect(result.warnings).toHaveLength(0);
 
-    const habits = store.getHabitsWithStatus();
+    const habits = store.getHabitsWithStatus(userId);
     const habit = habits.find((h) => h.id === "habit-1");
     expect(habit).toBeDefined();
     expect(habit?.motivation).toBeUndefined();
 
-    const goals = store.getGoalsWithStatus();
+    const goals = store.getGoalsWithStatus(userId);
     const goal = goals.find((g) => g.id === "goal-1");
     expect(goal).toBeDefined();
     expect(goal?.dueDate).toBeNull();
@@ -283,7 +285,7 @@ describe("RuntimeStore - import data", () => {
 
     const importData: ImportData = {};
 
-    const result = store.importData(importData);
+    const result = store.importData(userId, importData);
 
     expect(result.imported.journals).toBe(0);
     expect(result.imported.schedule).toBe(0);
@@ -305,7 +307,7 @@ describe("RuntimeStore - import data", () => {
       goals: []
     };
 
-    const result = store.importData(importData);
+    const result = store.importData(userId, importData);
 
     expect(result.imported.journals).toBe(0);
     expect(result.imported.schedule).toBe(0);
@@ -323,7 +325,7 @@ describe("RuntimeStore - import data", () => {
       journals: []
     };
 
-    const result = store.importData(importData);
+    const result = store.importData(userId, importData);
 
     expect(result.warnings.length).toBeGreaterThan(0);
     expect(result.warnings[0]).toContain("version");
@@ -349,11 +351,11 @@ describe("RuntimeStore - import data", () => {
       ]
     };
 
-    const result = store.importData(importData);
+    const result = store.importData(userId, importData);
 
     expect(result.imported.journals).toBe(1);
 
-    const journals = store.getJournalEntries();
+    const journals = store.getJournalEntries(userId);
     expect(journals[0].id).toBe(specificId);
     expect(journals[0].timestamp).toBe(specificTimestamp);
   });
@@ -362,28 +364,28 @@ describe("RuntimeStore - import data", () => {
     const store1 = new RuntimeStore(":memory:");
 
     // Create data in store1
-    store1.recordJournalEntry("Test journal");
-    store1.createLectureEvent({
+    store1.recordJournalEntry(userId, "Test journal");
+    store1.createLectureEvent(userId, {
       title: "Test Lecture",
       startTime: "2026-02-16T10:00:00.000Z",
       durationMinutes: 60,
       workload: "medium"
     });
-    store1.createDeadline({
+    store1.createDeadline(userId, {
       course: "CS101",
       task: "Homework 1",
       dueDate: "2026-02-20T23:59:00.000Z",
       priority: "high",
       completed: false
     });
-    store1.setUserContext({ stressLevel: "low", energyLevel: "high", mode: "focus" });
+    store1.setUserContext(userId, { stressLevel: "low", energyLevel: "high", mode: "focus" });
 
     // Export from store1
-    const exportData = store1.getExportData();
+    const exportData = store1.getExportData(userId);
 
     // Create new store and import
     const store2 = new RuntimeStore(":memory:");
-    const result = store2.importData({
+    const result = store2.importData(userId, {
       journals: exportData.journals,
       schedule: exportData.schedule,
       deadlines: exportData.deadlines,
@@ -414,20 +416,20 @@ describe("RuntimeStore - import data", () => {
     expect(result.imported.deadlines).toBe(1);
 
     // Verify data matches
-    const journals2 = store2.getJournalEntries();
-    const journals1 = store1.getJournalEntries();
+    const journals2 = store2.getJournalEntries(userId);
+    const journals1 = store1.getJournalEntries(userId);
     expect(journals2[0].content).toBe(journals1[0].content);
 
-    const schedule2 = store2.getScheduleEvents();
-    const schedule1 = store1.getScheduleEvents();
+    const schedule2 = store2.getScheduleEvents(userId);
+    const schedule1 = store1.getScheduleEvents(userId);
     expect(schedule2[0].title).toBe(schedule1[0].title);
 
-    const deadlines2 = store2.getDeadlines();
-    const deadlines1 = store1.getDeadlines();
+    const deadlines2 = store2.getDeadlines(userId);
+    const deadlines1 = store1.getDeadlines(userId);
     expect(deadlines2[0].task).toBe(deadlines1[0].task);
 
-    const context2 = store2.getUserContext();
-    const context1 = store1.getUserContext();
+    const context2 = store2.getUserContext(userId);
+    const context1 = store1.getUserContext(userId);
     expect(context2.stressLevel).toBe(context1.stressLevel);
   });
 
@@ -435,8 +437,8 @@ describe("RuntimeStore - import data", () => {
     const store = new RuntimeStore(":memory:");
 
     // Set initial context and preferences
-    store.setUserContext({ stressLevel: "high", energyLevel: "low", mode: "recovery" });
-    store.setNotificationPreferences({
+    store.setUserContext(userId, { stressLevel: "high", energyLevel: "low", mode: "recovery" });
+    store.setNotificationPreferences(userId, {
       quietHours: { enabled: false, startHour: 0, endHour: 0 },
       minimumPriority: "low"
     });
@@ -451,14 +453,14 @@ describe("RuntimeStore - import data", () => {
       }
     };
 
-    store.importData(importData);
+    store.importData(userId, importData);
 
-    const context = store.getUserContext();
+    const context = store.getUserContext(userId);
     expect(context.stressLevel).toBe("medium"); // Updated
     expect(context.energyLevel).toBe("low"); // Preserved
     expect(context.mode).toBe("recovery"); // Preserved
 
-    const prefs = store.getNotificationPreferences();
+    const prefs = store.getNotificationPreferences(userId);
     expect(prefs.quietHours.enabled).toBe(true); // Updated
     expect(prefs.quietHours.startHour).toBe(22); // Updated
     expect(prefs.minimumPriority).toBe("low"); // Preserved

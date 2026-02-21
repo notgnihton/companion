@@ -203,6 +203,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS notifications (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         source TEXT NOT NULL,
         title TEXT NOT NULL,
         message TEXT NOT NULL,
@@ -213,6 +214,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS chat_messages (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         role TEXT NOT NULL,
         content TEXT NOT NULL,
         timestamp TEXT NOT NULL,
@@ -222,6 +224,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS chat_pending_actions (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         actionType TEXT NOT NULL,
         summary TEXT NOT NULL,
         payload TEXT NOT NULL,
@@ -234,7 +237,7 @@ export class RuntimeStore {
         ON chat_pending_actions(expiresAt);
 
       CREATE TABLE IF NOT EXISTS chat_long_term_memory (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
+        userId TEXT PRIMARY KEY,
         summary TEXT NOT NULL,
         sourceMessageCount INTEGER NOT NULL DEFAULT 0,
         totalMessagesAtCompression INTEGER NOT NULL DEFAULT 0,
@@ -248,6 +251,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS reflection_entries (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         entryType TEXT NOT NULL DEFAULT 'reflection',
         event TEXT NOT NULL,
         feelingStress TEXT NOT NULL,
@@ -314,6 +318,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS email_digests (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         type TEXT NOT NULL,
         reason TEXT NOT NULL,
         recipient TEXT NOT NULL,
@@ -327,6 +332,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS journal_entries (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         clientEntryId TEXT,
         content TEXT NOT NULL,
         timestamp TEXT NOT NULL,
@@ -338,20 +344,23 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS tags (
         id TEXT PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,
+        userId TEXT NOT NULL DEFAULT '',
+        name TEXT NOT NULL,
         insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
       );
 
       CREATE TABLE IF NOT EXISTS journal_entry_tags (
+        userId TEXT NOT NULL DEFAULT '',
         entryId TEXT NOT NULL,
         tagId TEXT NOT NULL,
-        PRIMARY KEY (entryId, tagId),
+        PRIMARY KEY (userId, entryId, tagId),
         FOREIGN KEY (entryId) REFERENCES journal_entries(id) ON DELETE CASCADE,
         FOREIGN KEY (tagId) REFERENCES tags(id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS schedule_events (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         title TEXT NOT NULL,
         location TEXT,
         startTime TEXT NOT NULL,
@@ -364,6 +373,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS schedule_suggestion_mutes (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         startTime TEXT NOT NULL,
         endTime TEXT NOT NULL,
         createdAt TEXT NOT NULL,
@@ -375,6 +385,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS routine_presets (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         title TEXT NOT NULL,
         preferredStartTime TEXT NOT NULL,
         durationMinutes INTEGER NOT NULL,
@@ -388,6 +399,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS deadlines (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         course TEXT NOT NULL,
         task TEXT NOT NULL,
         dueDate TEXT NOT NULL,
@@ -401,6 +413,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS habits (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         name TEXT NOT NULL,
         cadence TEXT NOT NULL,
         targetPerWeek INTEGER NOT NULL,
@@ -411,6 +424,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS habit_check_ins (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         habitId TEXT NOT NULL,
         checkInDate TEXT NOT NULL,
         completed INTEGER NOT NULL,
@@ -421,6 +435,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS goals (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         title TEXT NOT NULL,
         cadence TEXT NOT NULL,
         targetCount INTEGER NOT NULL,
@@ -432,6 +447,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS goal_check_ins (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         goalId TEXT NOT NULL,
         checkInDate TEXT NOT NULL,
         completed INTEGER NOT NULL,
@@ -441,6 +457,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS nutrition_meals (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         name TEXT NOT NULL,
         mealType TEXT NOT NULL,
         consumedAt TEXT NOT NULL,
@@ -459,6 +476,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS nutrition_custom_foods (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         name TEXT NOT NULL,
         unitLabel TEXT NOT NULL,
         caloriesPerUnit REAL NOT NULL,
@@ -474,7 +492,8 @@ export class RuntimeStore {
         ON nutrition_custom_foods(name COLLATE NOCASE);
 
       CREATE TABLE IF NOT EXISTS nutrition_target_profiles (
-        dateKey TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
+        dateKey TEXT NOT NULL,
         weightKg REAL,
         maintenanceCalories REAL,
         surplusCalories REAL,
@@ -486,7 +505,8 @@ export class RuntimeStore {
         fatGramsPerLb REAL,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
-        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000)
+        insertOrder INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000000),
+        PRIMARY KEY (userId, dateKey)
       );
 
       CREATE INDEX IF NOT EXISTS idx_nutrition_target_profiles_updatedAt
@@ -494,6 +514,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS nutrition_plan_snapshots (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         name TEXT NOT NULL,
         sourceDate TEXT NOT NULL,
         targetProfileJson TEXT NOT NULL DEFAULT '{}',
@@ -507,7 +528,7 @@ export class RuntimeStore {
         ON nutrition_plan_snapshots(updatedAt DESC);
 
       CREATE TABLE IF NOT EXISTS nutrition_plan_settings (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
+        userId TEXT PRIMARY KEY,
         defaultSnapshotId TEXT,
         updatedAt TEXT,
         FOREIGN KEY (defaultSnapshotId) REFERENCES nutrition_plan_snapshots(id) ON DELETE SET NULL
@@ -515,6 +536,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS study_plan_sessions (
         sessionId TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         deadlineId TEXT NOT NULL,
         course TEXT NOT NULL,
         task TEXT NOT NULL,
@@ -540,6 +562,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS deadline_reminder_state (
         deadlineId TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         reminderCount INTEGER NOT NULL,
         lastReminderAt TEXT,
         lastConfirmationAt TEXT,
@@ -548,6 +571,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS push_subscriptions (
         endpoint TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         expirationTime INTEGER,
         p256dh TEXT NOT NULL,
         auth TEXT NOT NULL
@@ -589,7 +613,7 @@ export class RuntimeStore {
       );
 
       CREATE TABLE IF NOT EXISTS user_context (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
+        userId TEXT PRIMARY KEY,
         stressLevel TEXT NOT NULL,
         energyLevel TEXT NOT NULL,
         mode TEXT NOT NULL
@@ -597,6 +621,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS context_history (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         timestamp TEXT NOT NULL,
         stressLevel TEXT NOT NULL,
         energyLevel TEXT NOT NULL,
@@ -605,7 +630,7 @@ export class RuntimeStore {
       );
 
       CREATE TABLE IF NOT EXISTS notification_preferences (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
+        userId TEXT PRIMARY KEY,
         quietHoursEnabled INTEGER NOT NULL,
         quietHoursStartHour INTEGER NOT NULL,
         quietHoursEndHour INTEGER NOT NULL,
@@ -619,6 +644,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS scheduled_notifications (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         source TEXT NOT NULL,
         title TEXT NOT NULL,
         message TEXT NOT NULL,
@@ -631,6 +657,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS notification_interactions (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         notificationId TEXT NOT NULL,
         notificationTitle TEXT NOT NULL,
         notificationSource TEXT NOT NULL,
@@ -651,6 +678,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS locations (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         accuracy REAL,
@@ -661,6 +689,7 @@ export class RuntimeStore {
 
       CREATE TABLE IF NOT EXISTS location_history (
         id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL DEFAULT '',
         locationId TEXT NOT NULL,
         timestamp TEXT NOT NULL,
         stressLevel TEXT,
@@ -710,7 +739,7 @@ export class RuntimeStore {
         ON integration_sync_attempts(attemptedAt DESC);
 
       CREATE TABLE IF NOT EXISTS canvas_data (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
+        userId TEXT PRIMARY KEY,
         courses TEXT NOT NULL DEFAULT '[]',
         assignments TEXT NOT NULL DEFAULT '[]',
         modules TEXT NOT NULL DEFAULT '[]',
@@ -719,7 +748,7 @@ export class RuntimeStore {
       );
 
       CREATE TABLE IF NOT EXISTS github_course_data (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
+        userId TEXT PRIMARY KEY,
         repositories TEXT NOT NULL DEFAULT '[]',
         documents TEXT NOT NULL DEFAULT '[]',
         deadlinesSynced INTEGER NOT NULL DEFAULT 0,
@@ -727,16 +756,17 @@ export class RuntimeStore {
       );
 
       CREATE TABLE IF NOT EXISTS github_tracked_repos (
+        userId TEXT NOT NULL DEFAULT '',
         owner TEXT NOT NULL,
         repo TEXT NOT NULL,
         courseCode TEXT,
         label TEXT,
         addedAt TEXT NOT NULL,
-        PRIMARY KEY (owner, repo)
+        PRIMARY KEY (userId, owner, repo)
       );
 
       CREATE TABLE IF NOT EXISTS gmail_data (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
+        userId TEXT PRIMARY KEY,
         refreshToken TEXT,
         accessToken TEXT,
         email TEXT,
@@ -747,11 +777,11 @@ export class RuntimeStore {
       );
 
       CREATE TABLE IF NOT EXISTS withings_data (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
+        userId TEXT PRIMARY KEY,
+        withingsUserId TEXT,
         refreshToken TEXT,
         accessToken TEXT,
         tokenExpiresAt TEXT,
-        userId TEXT,
         scope TEXT,
         connectedAt TEXT,
         tokenSource TEXT,
@@ -991,31 +1021,31 @@ export class RuntimeStore {
     }
 
     // Initialize user context
-    const userContextExists = this.db.prepare("SELECT id FROM user_context WHERE id = 1").get();
+    const userContextExists = this.db.prepare("SELECT userId FROM user_context WHERE userId = 'default'").get();
     if (!userContextExists) {
       this.db
-        .prepare("INSERT INTO user_context (id, stressLevel, energyLevel, mode) VALUES (1, ?, ?, ?)")
+        .prepare("INSERT INTO user_context (userId, stressLevel, energyLevel, mode) VALUES ('default', ?, ?, ?)")
         .run("medium", "medium", "balanced");
     }
 
     // Initialize notification preferences
-    const prefsExists = this.db.prepare("SELECT id FROM notification_preferences WHERE id = 1").get();
+    const prefsExists = this.db.prepare("SELECT userId FROM notification_preferences WHERE userId = 'default'").get();
     if (!prefsExists) {
       this.db
         .prepare(
           `INSERT INTO notification_preferences (
-            id, quietHoursEnabled, quietHoursStartHour, quietHoursEndHour,
+            userId, quietHoursEnabled, quietHoursStartHour, quietHoursEndHour,
             minimumPriority, allowCriticalInQuietHours,
             categoryNotesEnabled, categoryLecturePlanEnabled,
             categoryAssignmentTrackerEnabled, categoryOrchestratorEnabled
-          ) VALUES (1, 0, 22, 7, 'low', 1, 1, 1, 1, 1)`
+          ) VALUES ('default', 0, 22, 7, 'low', 1, 1, 1, 1, 1)`
         )
         .run();
     }
 
-    const nutritionPlanSettingsExists = this.db.prepare("SELECT id FROM nutrition_plan_settings WHERE id = 1").get();
+    const nutritionPlanSettingsExists = this.db.prepare("SELECT userId FROM nutrition_plan_settings WHERE userId = 'default'").get();
     if (!nutritionPlanSettingsExists) {
-      this.db.prepare("INSERT INTO nutrition_plan_settings (id, defaultSnapshotId, updatedAt) VALUES (1, NULL, NULL)").run();
+      this.db.prepare("INSERT INTO nutrition_plan_settings (userId, defaultSnapshotId, updatedAt) VALUES ('default', NULL, NULL)").run();
     }
 
     // Initialize push delivery metrics
@@ -1114,7 +1144,7 @@ export class RuntimeStore {
     });
   }
 
-  pushNotification(notification: Omit<Notification, "id" | "timestamp">): void {
+  pushNotification(userId: string, notification: Omit<Notification, "id" | "timestamp">): void {
     const full: Notification = {
       ...notification,
       id: makeId("notif"),
@@ -1122,9 +1152,9 @@ export class RuntimeStore {
     };
 
     const insertStmt = this.db.prepare(
-      "INSERT INTO notifications (id, source, title, message, priority, timestamp) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO notifications (id, userId, source, title, message, priority, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)"
     );
-    insertStmt.run(full.id, full.source, full.title, full.message, full.priority, full.timestamp);
+    insertStmt.run(full.id, userId, full.source, full.title, full.message, full.priority, full.timestamp);
 
     // Trim to maxNotifications
     const count = (this.db.prepare("SELECT COUNT(*) as count FROM notifications").get() as { count: number }).count;
@@ -1155,7 +1185,7 @@ export class RuntimeStore {
     }
   }
 
-  recordChatMessage(role: ChatMessage["role"], content: string, metadata?: ChatMessageMetadata): ChatMessage {
+  recordChatMessage(userId: string, role: ChatMessage["role"], content: string, metadata?: ChatMessageMetadata): ChatMessage {
     const message: ChatMessage = {
       id: makeId("chat"),
       role,
@@ -1166,32 +1196,32 @@ export class RuntimeStore {
 
     this.db
       .prepare(
-        "INSERT INTO chat_messages (id, role, content, timestamp, metadata, insertOrder) VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(insertOrder), 0) + 1 FROM chat_messages))"
+        "INSERT INTO chat_messages (id, userId, role, content, timestamp, metadata, insertOrder) VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(insertOrder), 0) + 1 FROM chat_messages))"
       )
-      .run(message.id, message.role, message.content, message.timestamp, metadata ? JSON.stringify(metadata) : null);
+      .run(message.id, userId, message.role, message.content, message.timestamp, metadata ? JSON.stringify(metadata) : null);
 
-    const count = (this.db.prepare("SELECT COUNT(*) as count FROM chat_messages").get() as { count: number }).count;
+    const count = (this.db.prepare("SELECT COUNT(*) as count FROM chat_messages WHERE userId = ?").get(userId) as { count: number }).count;
     if (count > this.maxChatMessages) {
       this.db
         .prepare(
           `DELETE FROM chat_messages WHERE id IN (
-            SELECT id FROM chat_messages ORDER BY insertOrder ASC LIMIT ?
+            SELECT id FROM chat_messages WHERE userId = ? ORDER BY insertOrder ASC LIMIT ?
           )`
         )
-        .run(count - this.maxChatMessages);
+        .run(userId, count - this.maxChatMessages);
     }
 
     return message;
   }
 
-  getRecentChatMessages(limit: number): ChatMessage[] {
+  getRecentChatMessages(userId: string, limit: number): ChatMessage[] {
     if (limit <= 0) {
       return [];
     }
 
     const rows = this.db
-      .prepare("SELECT id, role, content, timestamp, metadata FROM chat_messages ORDER BY insertOrder DESC LIMIT ?")
-      .all(limit) as Array<{
+      .prepare("SELECT id, role, content, timestamp, metadata FROM chat_messages WHERE userId = ? ORDER BY insertOrder DESC LIMIT ?")
+      .all(userId, limit) as Array<{
       id: string;
       role: string;
       content: string;
@@ -1210,15 +1240,15 @@ export class RuntimeStore {
       .reverse();
   }
 
-  getChatHistory(options: { page?: number; pageSize?: number } = {}): ChatHistoryPage {
+  getChatHistory(userId: string, options: { page?: number; pageSize?: number } = {}): ChatHistoryPage {
     const page = Math.max(1, options.page ?? 1);
     const pageSize = Math.max(1, Math.min(options.pageSize ?? 20, 50));
-    const total = (this.db.prepare("SELECT COUNT(*) as count FROM chat_messages").get() as { count: number }).count;
+    const total = (this.db.prepare("SELECT COUNT(*) as count FROM chat_messages WHERE userId = ?").get(userId) as { count: number }).count;
     const offset = (page - 1) * pageSize;
 
     const rows = this.db
-      .prepare("SELECT id, role, content, timestamp, metadata FROM chat_messages ORDER BY insertOrder DESC LIMIT ? OFFSET ?")
-      .all(pageSize, offset) as Array<{
+      .prepare("SELECT id, role, content, timestamp, metadata FROM chat_messages WHERE userId = ? ORDER BY insertOrder DESC LIMIT ? OFFSET ?")
+      .all(userId, pageSize, offset) as Array<{
       id: string;
       role: string;
       content: string;
@@ -1245,8 +1275,8 @@ export class RuntimeStore {
     };
   }
 
-  getChatMessageCount(): number {
-    return (this.db.prepare("SELECT COUNT(*) as count FROM chat_messages").get() as { count: number }).count;
+  getChatMessageCount(userId: string): number {
+    return (this.db.prepare("SELECT COUNT(*) as count FROM chat_messages WHERE userId = ?").get(userId) as { count: number }).count;
   }
 
   private normalizeJournalMemoryEntryType(value: unknown): JournalMemoryEntryType {
@@ -1289,7 +1319,7 @@ export class RuntimeStore {
     };
   }
 
-  upsertReflectionEntry(input: {
+  upsertReflectionEntry(userId: string, input: {
     entryType?: JournalMemoryEntryType;
     event: string;
     feelingStress: string;
@@ -1306,9 +1336,9 @@ export class RuntimeStore {
     const updatedAt = nowIso();
     const existing = this.db
       .prepare(
-        "SELECT id, entryType, event, feelingStress, intent, commitment, outcome, salience, captureReason, timestamp, evidenceSnippet, sourceMessageId, updatedAt FROM reflection_entries WHERE sourceMessageId = ?"
+        "SELECT id, entryType, event, feelingStress, intent, commitment, outcome, salience, captureReason, timestamp, evidenceSnippet, sourceMessageId, updatedAt FROM reflection_entries WHERE sourceMessageId = ? AND userId = ?"
       )
-      .get(input.sourceMessageId) as
+      .get(input.sourceMessageId, userId) as
       | {
           id: string;
           entryType: string;
@@ -1339,9 +1369,9 @@ export class RuntimeStore {
     this.db
       .prepare(
         `INSERT INTO reflection_entries (
-           id, entryType, event, feelingStress, intent, commitment, outcome, salience, captureReason, turnCount, timestamp, evidenceSnippet, sourceMessageId, updatedAt, insertOrder
+           id, userId, entryType, event, feelingStress, intent, commitment, outcome, salience, captureReason, turnCount, timestamp, evidenceSnippet, sourceMessageId, updatedAt, insertOrder
          ) VALUES (
-           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(insertOrder), 0) + 1 FROM reflection_entries)
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(insertOrder), 0) + 1 FROM reflection_entries)
          )
          ON CONFLICT(sourceMessageId) DO UPDATE SET
            entryType = EXCLUDED.entryType,
@@ -1359,6 +1389,7 @@ export class RuntimeStore {
       )
       .run(
         id,
+        userId,
         normalizedEntryType,
         input.event,
         input.feelingStress,
@@ -1387,9 +1418,9 @@ export class RuntimeStore {
 
     const row = this.db
       .prepare(
-        "SELECT id, entryType, event, feelingStress, intent, commitment, outcome, salience, captureReason, timestamp, evidenceSnippet, sourceMessageId, updatedAt FROM reflection_entries WHERE sourceMessageId = ?"
+        "SELECT id, entryType, event, feelingStress, intent, commitment, outcome, salience, captureReason, timestamp, evidenceSnippet, sourceMessageId, updatedAt FROM reflection_entries WHERE sourceMessageId = ? AND userId = ?"
       )
-      .get(input.sourceMessageId) as
+      .get(input.sourceMessageId, userId) as
       | {
           id: string;
           entryType: string;
@@ -1429,16 +1460,16 @@ export class RuntimeStore {
     return this.mapReflectionRow(row);
   }
 
-  getRecentReflectionEntries(limit: number): ReflectionEntry[] {
+  getRecentReflectionEntries(userId: string, limit: number): ReflectionEntry[] {
     if (limit <= 0) {
       return [];
     }
 
     const rows = this.db
       .prepare(
-        "SELECT id, entryType, event, feelingStress, intent, commitment, outcome, salience, captureReason, timestamp, evidenceSnippet, sourceMessageId, updatedAt FROM reflection_entries ORDER BY insertOrder DESC LIMIT ?"
+        "SELECT id, entryType, event, feelingStress, intent, commitment, outcome, salience, captureReason, timestamp, evidenceSnippet, sourceMessageId, updatedAt FROM reflection_entries WHERE userId = ? ORDER BY insertOrder DESC LIMIT ?"
       )
-      .all(limit) as Array<{
+      .all(userId, limit) as Array<{
       id: string;
       entryType: string;
       event: string;
@@ -1457,18 +1488,18 @@ export class RuntimeStore {
     return rows.map((row) => this.mapReflectionRow(row)).reverse();
   }
 
-  getReflectionEntriesInRange(windowStart: string, windowEnd: string, limit = 500): ReflectionEntry[] {
+  getReflectionEntriesInRange(userId: string, windowStart: string, windowEnd: string, limit = 500): ReflectionEntry[] {
     const normalizedLimit = Math.max(1, Math.min(limit, 2000));
     const rows = this.db
       .prepare(
         `SELECT id, event, feelingStress, intent, commitment, outcome, timestamp, evidenceSnippet, sourceMessageId, updatedAt
            , salience, captureReason, entryType
            FROM reflection_entries
-          WHERE timestamp >= ? AND timestamp <= ?
+          WHERE userId = ? AND timestamp >= ? AND timestamp <= ?
           ORDER BY timestamp DESC
           LIMIT ?`
       )
-      .all(windowStart, windowEnd, normalizedLimit) as Array<{
+      .all(userId, windowStart, windowEnd, normalizedLimit) as Array<{
       id: string;
       entryType: string;
       event: string;
@@ -1487,15 +1518,15 @@ export class RuntimeStore {
     return rows.map((row) => this.mapReflectionRow(row));
   }
 
-  getChatLongTermMemory(): ChatLongTermMemory | null {
+  getChatLongTermMemory(userId: string): ChatLongTermMemory | null {
     const row = this.db
       .prepare(
         `SELECT summary, sourceMessageCount, totalMessagesAtCompression, compressedMessageCount, preservedMessageCount,
                 fromTimestamp, toTimestamp, usedModelMode, updatedAt
            FROM chat_long_term_memory
-          WHERE id = 1`
+          WHERE userId = ?`
       )
-      .get() as
+      .get(userId) as
       | {
           summary: string;
           sourceMessageCount: number;
@@ -1531,16 +1562,16 @@ export class RuntimeStore {
     };
   }
 
-  upsertChatLongTermMemory(memory: Omit<ChatLongTermMemory, "updatedAt"> & { updatedAt?: string }): ChatLongTermMemory {
+  upsertChatLongTermMemory(userId: string, memory: Omit<ChatLongTermMemory, "updatedAt"> & { updatedAt?: string }): ChatLongTermMemory {
     const updatedAt = memory.updatedAt ?? nowIso();
     this.db
       .prepare(
         `INSERT INTO chat_long_term_memory
-           (id, summary, sourceMessageCount, totalMessagesAtCompression, compressedMessageCount, preservedMessageCount,
+           (userId, summary, sourceMessageCount, totalMessagesAtCompression, compressedMessageCount, preservedMessageCount,
             fromTimestamp, toTimestamp, usedModelMode, updatedAt)
          VALUES
-           (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
+           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(userId) DO UPDATE SET
            summary = EXCLUDED.summary,
            sourceMessageCount = EXCLUDED.sourceMessageCount,
            totalMessagesAtCompression = EXCLUDED.totalMessagesAtCompression,
@@ -1552,6 +1583,7 @@ export class RuntimeStore {
            updatedAt = EXCLUDED.updatedAt`
       )
       .run(
+        userId,
         memory.summary,
         memory.sourceMessageCount,
         memory.totalMessagesAtCompression,
@@ -1588,7 +1620,7 @@ export class RuntimeStore {
     this.db.prepare("DELETE FROM chat_pending_actions WHERE expiresAt <= ?").run(referenceDate.toISOString());
   }
 
-  createPendingChatAction(input: {
+  createPendingChatAction(userId: string, input: {
     actionType: ChatActionType;
     summary: string;
     payload: Record<string, unknown>;
@@ -1607,19 +1639,19 @@ export class RuntimeStore {
 
     this.db
       .prepare(
-        "INSERT INTO chat_pending_actions (id, actionType, summary, payload, createdAt, expiresAt, insertOrder) VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(insertOrder), 0) + 1 FROM chat_pending_actions))"
+        "INSERT INTO chat_pending_actions (id, userId, actionType, summary, payload, createdAt, expiresAt, insertOrder) VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(insertOrder), 0) + 1 FROM chat_pending_actions))"
       )
-      .run(action.id, action.actionType, action.summary, JSON.stringify(action.payload), action.createdAt, action.expiresAt);
+      .run(action.id, userId, action.actionType, action.summary, JSON.stringify(action.payload), action.createdAt, action.expiresAt);
 
     return action;
   }
 
-  getPendingChatActions(referenceDate: Date = new Date()): ChatPendingAction[] {
+  getPendingChatActions(userId: string, referenceDate: Date = new Date()): ChatPendingAction[] {
     this.pruneExpiredPendingChatActions(referenceDate);
 
     const rows = this.db
-      .prepare("SELECT id, actionType, summary, payload, createdAt, expiresAt FROM chat_pending_actions ORDER BY insertOrder ASC")
-      .all() as Array<{
+      .prepare("SELECT id, actionType, summary, payload, createdAt, expiresAt FROM chat_pending_actions WHERE userId = ? ORDER BY insertOrder ASC")
+      .all(userId) as Array<{
       id: string;
       actionType: string;
       summary: string;
@@ -1638,12 +1670,12 @@ export class RuntimeStore {
     }));
   }
 
-  getPendingChatActionById(id: string, referenceDate: Date = new Date()): ChatPendingAction | null {
+  getPendingChatActionById(userId: string, id: string, referenceDate: Date = new Date()): ChatPendingAction | null {
     this.pruneExpiredPendingChatActions(referenceDate);
 
     const row = this.db
-      .prepare("SELECT id, actionType, summary, payload, createdAt, expiresAt FROM chat_pending_actions WHERE id = ?")
-      .get(id) as
+      .prepare("SELECT id, actionType, summary, payload, createdAt, expiresAt FROM chat_pending_actions WHERE id = ? AND userId = ?")
+      .get(id, userId) as
       | {
           id: string;
           actionType: string;
@@ -1668,8 +1700,8 @@ export class RuntimeStore {
     };
   }
 
-  deletePendingChatAction(id: string): boolean {
-    const result = this.db.prepare("DELETE FROM chat_pending_actions WHERE id = ?").run(id);
+  deletePendingChatAction(userId: string, id: string): boolean {
+    const result = this.db.prepare("DELETE FROM chat_pending_actions WHERE id = ? AND userId = ?").run(id, userId);
     return result.changes > 0;
   }
 
@@ -2064,43 +2096,50 @@ export class RuntimeStore {
     return result.changes;
   }
 
-  private recordContextHistory(context: UserContext, timestamp: string): void {
+  private recordContextHistory(userId: string, context: UserContext, timestamp: string): void {
     this.db
-      .prepare("INSERT INTO context_history (id, timestamp, stressLevel, energyLevel, mode) VALUES (?, ?, ?, ?, ?)")
-      .run(makeId("ctx"), timestamp, context.stressLevel, context.energyLevel, context.mode);
+      .prepare("INSERT INTO context_history (id, userId, timestamp, stressLevel, energyLevel, mode) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(makeId("ctx"), userId, timestamp, context.stressLevel, context.energyLevel, context.mode);
 
-    const count = (this.db.prepare("SELECT COUNT(*) as count FROM context_history").get() as { count: number }).count;
+    const count = (this.db.prepare("SELECT COUNT(*) as count FROM context_history WHERE userId = ?").get(userId) as { count: number }).count;
     if (count > this.maxContextHistory) {
       this.db
         .prepare(
           `DELETE FROM context_history WHERE id IN (
-            SELECT id FROM context_history ORDER BY insertOrder ASC LIMIT ?
+            SELECT id FROM context_history WHERE userId = ? ORDER BY insertOrder ASC LIMIT ?
           )`
         )
-        .run(count - this.maxContextHistory);
+        .run(userId, count - this.maxContextHistory);
     }
   }
 
-  setUserContext(next: Partial<UserContext>): UserContext {
-    const current = this.getUserContext();
+  setUserContext(userId: string, next: Partial<UserContext>): UserContext {
+    const current = this.getUserContext(userId);
     const updated = { ...current, ...next };
     const timestamp = nowIso();
 
     this.db
-      .prepare("UPDATE user_context SET stressLevel = ?, energyLevel = ?, mode = ? WHERE id = 1")
-      .run(updated.stressLevel, updated.energyLevel, updated.mode);
+      .prepare(
+        `INSERT INTO user_context (userId, stressLevel, energyLevel, mode) VALUES (?, ?, ?, ?)
+         ON CONFLICT(userId) DO UPDATE SET stressLevel = excluded.stressLevel, energyLevel = excluded.energyLevel, mode = excluded.mode`
+      )
+      .run(userId, updated.stressLevel, updated.energyLevel, updated.mode);
 
-    this.recordContextHistory(updated, timestamp);
+    this.recordContextHistory(userId, updated, timestamp);
 
     return updated;
   }
 
-  getUserContext(): UserContext {
-    const row = this.db.prepare("SELECT stressLevel, energyLevel, mode FROM user_context WHERE id = 1").get() as {
+  getUserContext(userId: string): UserContext {
+    const row = this.db.prepare("SELECT stressLevel, energyLevel, mode FROM user_context WHERE userId = ?").get(userId) as {
       stressLevel: string;
       energyLevel: string;
       mode: string;
-    };
+    } | undefined;
+
+    if (!row) {
+      return { stressLevel: "medium", energyLevel: "medium", mode: "balanced" };
+    }
 
     return {
       stressLevel: row.stressLevel as UserContext["stressLevel"],
@@ -2109,17 +2148,17 @@ export class RuntimeStore {
     };
   }
 
-  getContextTrends(): ContextTrends {
+  getContextTrends(userId: string): ContextTrends {
     const history = this.db
-      .prepare("SELECT timestamp, stressLevel, energyLevel, mode FROM context_history ORDER BY insertOrder DESC")
-      .all() as Array<{
+      .prepare("SELECT timestamp, stressLevel, energyLevel, mode FROM context_history WHERE userId = ? ORDER BY insertOrder DESC")
+      .all(userId) as Array<{
       timestamp: string;
       stressLevel: UserContext["stressLevel"];
       energyLevel: UserContext["energyLevel"];
       mode: UserContext["mode"];
     }>;
 
-    const latestContext = this.getUserContext();
+    const latestContext = this.getUserContext(userId);
 
     if (history.length === 0) {
       return {
@@ -2253,16 +2292,16 @@ export class RuntimeStore {
     };
   }
 
-  getNotificationPreferences(): NotificationPreferences {
+  getNotificationPreferences(userId: string): NotificationPreferences {
     const row = this.db
       .prepare(
         `SELECT quietHoursEnabled, quietHoursStartHour, quietHoursEndHour,
                 minimumPriority, allowCriticalInQuietHours,
                 categoryNotesEnabled, categoryLecturePlanEnabled,
                 categoryAssignmentTrackerEnabled, categoryOrchestratorEnabled
-         FROM notification_preferences WHERE id = 1`
+         FROM notification_preferences WHERE userId = ?`
       )
-      .get() as {
+      .get(userId) as {
       quietHoursEnabled: number;
       quietHoursStartHour: number;
       quietHoursEndHour: number;
@@ -2272,7 +2311,21 @@ export class RuntimeStore {
       categoryLecturePlanEnabled: number;
       categoryAssignmentTrackerEnabled: number;
       categoryOrchestratorEnabled: number;
-    };
+    } | undefined;
+
+    if (!row) {
+      return {
+        quietHours: { enabled: false, startHour: 22, endHour: 7 },
+        minimumPriority: "low",
+        allowCriticalInQuietHours: true,
+        categoryToggles: {
+          notes: true,
+          "lecture-plan": true,
+          "assignment-tracker": true,
+          orchestrator: true
+        }
+      };
+    }
 
     return {
       quietHours: {
@@ -2291,8 +2344,8 @@ export class RuntimeStore {
     };
   }
 
-  setNotificationPreferences(next: NotificationPreferencesPatch): NotificationPreferences {
-    const current = this.getNotificationPreferences();
+  setNotificationPreferences(userId: string, next: NotificationPreferencesPatch): NotificationPreferences {
+    const current = this.getNotificationPreferences(userId);
 
     const updated: NotificationPreferences = {
       quietHours: {
@@ -2309,14 +2362,25 @@ export class RuntimeStore {
 
     this.db
       .prepare(
-        `UPDATE notification_preferences SET
-          quietHoursEnabled = ?, quietHoursStartHour = ?, quietHoursEndHour = ?,
-          minimumPriority = ?, allowCriticalInQuietHours = ?,
-          categoryNotesEnabled = ?, categoryLecturePlanEnabled = ?,
-          categoryAssignmentTrackerEnabled = ?, categoryOrchestratorEnabled = ?
-         WHERE id = 1`
+        `INSERT INTO notification_preferences (
+          userId, quietHoursEnabled, quietHoursStartHour, quietHoursEndHour,
+          minimumPriority, allowCriticalInQuietHours,
+          categoryNotesEnabled, categoryLecturePlanEnabled,
+          categoryAssignmentTrackerEnabled, categoryOrchestratorEnabled
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(userId) DO UPDATE SET
+          quietHoursEnabled = excluded.quietHoursEnabled,
+          quietHoursStartHour = excluded.quietHoursStartHour,
+          quietHoursEndHour = excluded.quietHoursEndHour,
+          minimumPriority = excluded.minimumPriority,
+          allowCriticalInQuietHours = excluded.allowCriticalInQuietHours,
+          categoryNotesEnabled = excluded.categoryNotesEnabled,
+          categoryLecturePlanEnabled = excluded.categoryLecturePlanEnabled,
+          categoryAssignmentTrackerEnabled = excluded.categoryAssignmentTrackerEnabled,
+          categoryOrchestratorEnabled = excluded.categoryOrchestratorEnabled`
       )
       .run(
+        userId,
         updated.quietHours.enabled ? 1 : 0,
         updated.quietHours.startHour,
         updated.quietHours.endHour,
@@ -2331,8 +2395,8 @@ export class RuntimeStore {
     return updated;
   }
 
-  shouldDispatchNotification(notification: Notification): boolean {
-    const prefs = this.getNotificationPreferences();
+  shouldDispatchNotification(userId: string, notification: Notification): boolean {
+    const prefs = this.getNotificationPreferences(userId);
 
     if (!prefs.categoryToggles[notification.source]) {
       return false;
@@ -2342,15 +2406,15 @@ export class RuntimeStore {
       return false;
     }
 
-    if (prefs.quietHours.enabled && this.isInQuietHours(notification.timestamp)) {
+    if (prefs.quietHours.enabled && this.isInQuietHours(userId, notification.timestamp)) {
       return prefs.allowCriticalInQuietHours && notification.priority === "critical";
     }
 
     return true;
   }
 
-  getTags(): Tag[] {
-    const rows = this.db.prepare("SELECT id, name FROM tags ORDER BY insertOrder DESC").all() as Array<{ id: string; name: string }>;
+  getTags(userId: string): Tag[] {
+    const rows = this.db.prepare("SELECT id, name FROM tags WHERE userId = ? ORDER BY insertOrder DESC").all(userId) as Array<{ id: string; name: string }>;
 
     return rows.map((row) => ({
       id: row.id,
@@ -2358,7 +2422,7 @@ export class RuntimeStore {
     }));
   }
 
-  createTag(name: string): Tag {
+  createTag(userId: string, name: string): Tag {
     const trimmed = name.trim();
 
     if (!trimmed) {
@@ -2370,29 +2434,29 @@ export class RuntimeStore {
       name: trimmed
     };
 
-    this.db.prepare("INSERT INTO tags (id, name) VALUES (?, ?)").run(tag.id, tag.name);
+    this.db.prepare("INSERT INTO tags (id, userId, name) VALUES (?, ?, ?)").run(tag.id, userId, tag.name);
 
     return tag;
   }
 
-  updateTag(id: string, name: string): Tag | null {
+  updateTag(userId: string, id: string, name: string): Tag | null {
     const trimmed = name.trim();
 
     if (!trimmed) {
       throw new Error("Tag name is required");
     }
 
-    const exists = this.db.prepare("SELECT id FROM tags WHERE id = ?").get(id) as { id: string } | undefined;
+    const exists = this.db.prepare("SELECT id FROM tags WHERE id = ? AND userId = ?").get(id, userId) as { id: string } | undefined;
     if (!exists) {
       return null;
     }
 
-    this.db.prepare("UPDATE tags SET name = ? WHERE id = ?").run(trimmed, id);
+    this.db.prepare("UPDATE tags SET name = ? WHERE id = ? AND userId = ?").run(trimmed, id, userId);
     return { id, name: trimmed };
   }
 
-  deleteTag(id: string): boolean {
-    const result = this.db.prepare("DELETE FROM tags WHERE id = ?").run(id);
+  deleteTag(userId: string, id: string): boolean {
+    const result = this.db.prepare("DELETE FROM tags WHERE id = ? AND userId = ?").run(id, userId);
     return result.changes > 0;
   }
 
@@ -2408,7 +2472,7 @@ export class RuntimeStore {
     return rows.length === uniqueIds.length;
   }
 
-  resolveTagIds(tagRefs: string[], options: { createMissing?: boolean } = {}): string[] {
+  resolveTagIds(userId: string, tagRefs: string[], options: { createMissing?: boolean } = {}): string[] {
     const uniqueRefs = Array.from(
       new Set(
         tagRefs
@@ -2421,7 +2485,7 @@ export class RuntimeStore {
       return [];
     }
 
-    const existingTags = this.getTags();
+    const existingTags = this.getTags(userId);
     const byId = new Map(existingTags.map((tag) => [tag.id, tag.id]));
     const byName = new Map(existingTags.map((tag) => [tag.name.toLowerCase(), tag.id]));
     const resolvedIds: string[] = [];
@@ -2470,14 +2534,14 @@ export class RuntimeStore {
       }
 
       try {
-        const created = this.createTag(name);
+        const created = this.createTag(userId, name);
         byName.set(created.name.toLowerCase(), created.id);
         if (!seenResolved.has(created.id)) {
           seenResolved.add(created.id);
           resolvedIds.push(created.id);
         }
       } catch {
-        const concurrentMatch = this.getTags().find((tag) => tag.name.toLowerCase() === name.toLowerCase());
+        const concurrentMatch = this.getTags(userId).find((tag) => tag.name.toLowerCase() === name.toLowerCase());
         if (concurrentMatch && !seenResolved.has(concurrentMatch.id)) {
           seenResolved.add(concurrentMatch.id);
           resolvedIds.push(concurrentMatch.id);
@@ -2603,7 +2667,7 @@ export class RuntimeStore {
     }
   }
 
-  recordJournalEntry(content: string, tagIds: string[] = [], photos?: JournalPhoto[]): JournalEntry {
+  recordJournalEntry(userId: string, content: string, tagIds: string[] = [], photos?: JournalPhoto[]): JournalEntry {
     const timestamp = nowIso();
     const entry: Omit<JournalEntry, "tags"> = {
       id: makeId("journal"),
@@ -2618,9 +2682,9 @@ export class RuntimeStore {
 
     this.db
       .prepare(
-        "INSERT INTO journal_entries (id, clientEntryId, content, timestamp, updatedAt, version, photos) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO journal_entries (id, userId, clientEntryId, content, timestamp, updatedAt, version, photos) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
       )
-      .run(entry.id, null, entry.content, entry.timestamp, entry.updatedAt, entry.version, JSON.stringify(normalizedPhotos));
+      .run(entry.id, userId, null, entry.content, entry.timestamp, entry.updatedAt, entry.version, JSON.stringify(normalizedPhotos));
 
     const tags = this.setEntryTags(entry.id, tagIds);
 
@@ -2633,20 +2697,20 @@ export class RuntimeStore {
     };
   }
 
-  deleteJournalEntry(entryId: string): boolean {
-    this.db.prepare("DELETE FROM journal_entry_tags WHERE entryId = ?").run(entryId);
-    const result = this.db.prepare("DELETE FROM journal_entries WHERE id = ?").run(entryId);
+  deleteJournalEntry(userId: string, entryId: string): boolean {
+    this.db.prepare("DELETE FROM journal_entry_tags WHERE entryId = ? AND userId = ?").run(entryId, userId);
+    const result = this.db.prepare("DELETE FROM journal_entries WHERE id = ? AND userId = ?").run(entryId, userId);
     return result.changes > 0;
   }
 
-  getWeeklySummary(referenceDate: string = nowIso()): WeeklySummary {
+  getWeeklySummary(userId: string, referenceDate: string = nowIso()): WeeklySummary {
     const windowEnd = new Date(referenceDate);
     const windowStart = new Date(windowEnd);
     windowStart.setDate(windowStart.getDate() - 7);
 
     const deadlinesInWindow = this.db
-      .prepare("SELECT * FROM deadlines WHERE dueDate >= ? AND dueDate <= ?")
-      .all(windowStart.toISOString(), windowEnd.toISOString()) as Array<{
+      .prepare("SELECT * FROM deadlines WHERE userId = ? AND dueDate >= ? AND dueDate <= ?")
+      .all(userId, windowStart.toISOString(), windowEnd.toISOString()) as Array<{
       id: string;
       course: string;
       task: string;
@@ -2659,7 +2723,7 @@ export class RuntimeStore {
     const deadlinesCompleted = deadlinesInWindow.filter((d) => d.completed).length;
     const completionRate = deadlinesInWindow.length === 0 ? 0 : Math.round((deadlinesCompleted / deadlinesInWindow.length) * 100);
 
-    const reflectionHighlights = this.getReflectionEntriesInRange(windowStart.toISOString(), windowEnd.toISOString(), 40)
+    const reflectionHighlights = this.getReflectionEntriesInRange(userId, windowStart.toISOString(), windowEnd.toISOString(), 40)
       .slice(0, 3)
       .map((entry) => entry.evidenceSnippet.trim())
       .filter((value) => value.length > 0);
@@ -2674,15 +2738,15 @@ export class RuntimeStore {
     };
   }
 
-  syncJournalEntries(payloads: JournalSyncPayload[]): { applied: JournalEntry[]; conflicts: JournalEntry[] } {
+  syncJournalEntries(userId: string, payloads: JournalSyncPayload[]): { applied: JournalEntry[]; conflicts: JournalEntry[] } {
     const applied: JournalEntry[] = [];
     const conflicts: JournalEntry[] = [];
 
     for (const payload of payloads) {
       const existingRow = payload.id
-        ? this.db.prepare("SELECT * FROM journal_entries WHERE id = ?").get(payload.id)
+        ? this.db.prepare("SELECT * FROM journal_entries WHERE id = ? AND userId = ?").get(payload.id, userId)
         : payload.clientEntryId
-          ? this.db.prepare("SELECT * FROM journal_entries WHERE clientEntryId = ?").get(payload.clientEntryId)
+          ? this.db.prepare("SELECT * FROM journal_entries WHERE clientEntryId = ? AND userId = ?").get(payload.clientEntryId, userId)
           : null;
 
       const existing = existingRow
@@ -2714,10 +2778,11 @@ export class RuntimeStore {
 
         this.db
           .prepare(
-            "INSERT INTO journal_entries (id, clientEntryId, content, timestamp, updatedAt, version, photos) VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO journal_entries (id, userId, clientEntryId, content, timestamp, updatedAt, version, photos) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
           )
           .run(
             createdBase.id,
+            userId,
             createdBase.clientEntryId ?? null,
             createdBase.content,
             createdBase.timestamp,
@@ -2756,7 +2821,7 @@ export class RuntimeStore {
       const nextTags = payload.tags !== undefined ? this.resolveTags(payload.tags).map(tag => tag.name) : existing.tags;
 
       this.db
-        .prepare("UPDATE journal_entries SET content = ?, timestamp = ?, updatedAt = ?, version = ?, clientEntryId = ?, photos = ? WHERE id = ?")
+        .prepare("UPDATE journal_entries SET content = ?, timestamp = ?, updatedAt = ?, version = ?, clientEntryId = ?, photos = ? WHERE id = ? AND userId = ?")
         .run(
           mergedBase.content,
           mergedBase.timestamp,
@@ -2764,7 +2829,8 @@ export class RuntimeStore {
           mergedBase.version,
           mergedBase.clientEntryId ?? null,
           JSON.stringify(mergedBase.photos ?? []),
-          mergedBase.id
+          mergedBase.id,
+          userId
         );
 
       if (payload.tags !== undefined) {
@@ -2780,14 +2846,14 @@ export class RuntimeStore {
     return { applied, conflicts };
   }
 
-  getJournalEntries(limit?: number): JournalEntry[] {
+  getJournalEntries(userId: string, limit?: number): JournalEntry[] {
     const query = limit !== undefined && limit > 0
-      ? "SELECT * FROM journal_entries ORDER BY timestamp DESC LIMIT ?"
-      : "SELECT * FROM journal_entries ORDER BY timestamp DESC";
+      ? "SELECT * FROM journal_entries WHERE userId = ? ORDER BY timestamp DESC LIMIT ?"
+      : "SELECT * FROM journal_entries WHERE userId = ? ORDER BY timestamp DESC";
 
     const rows = (limit !== undefined && limit > 0
-      ? this.db.prepare(query).all(limit)
-      : this.db.prepare(query).all()) as Array<{
+      ? this.db.prepare(query).all(userId, limit)
+      : this.db.prepare(query).all(userId)) as Array<{
       id: string;
       clientEntryId: string | null;
       content: string;
@@ -2808,15 +2874,15 @@ export class RuntimeStore {
     }));
   }
 
-  searchJournalEntries(options: {
+  searchJournalEntries(userId: string, options: {
     query?: string;
     startDate?: string;
     endDate?: string;
     tagIds?: string[];
     limit?: number;
   }): JournalEntry[] {
-    const conditions: string[] = [];
-    const params: (string | number)[] = [];
+    const conditions: string[] = ["userId = ?"];
+    const params: (string | number)[] = [userId];
 
     if (options.query && options.query.trim()) {
       conditions.push("content LIKE ?");
@@ -2878,7 +2944,7 @@ export class RuntimeStore {
     }));
   }
 
-  createLectureEvent(entry: Omit<LectureEvent, "id">): LectureEvent {
+  createLectureEvent(userId: string, entry: Omit<LectureEvent, "id">): LectureEvent {
     const location = typeof entry.location === "string" && entry.location.trim().length > 0
       ? entry.location.trim()
       : undefined;
@@ -2891,9 +2957,10 @@ export class RuntimeStore {
     const recurrenceJson = lectureEvent.recurrence ? JSON.stringify(lectureEvent.recurrence) : null;
 
     this.db
-      .prepare("INSERT INTO schedule_events (id, title, location, startTime, durationMinutes, workload, recurrence, recurrenceParentId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .prepare("INSERT INTO schedule_events (id, userId, title, location, startTime, durationMinutes, workload, recurrence, recurrenceParentId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .run(
         lectureEvent.id,
+        userId,
         lectureEvent.title,
         lectureEvent.location ?? null,
         lectureEvent.startTime,
@@ -2918,8 +2985,8 @@ export class RuntimeStore {
     return lectureEvent;
   }
 
-  getScheduleEvents(): LectureEvent[] {
-    const rows = this.db.prepare("SELECT * FROM schedule_events ORDER BY startTime DESC").all() as Array<{
+  getScheduleEvents(userId: string): LectureEvent[] {
+    const rows = this.db.prepare("SELECT * FROM schedule_events WHERE userId = ? ORDER BY startTime DESC").all(userId) as Array<{
       id: string;
       title: string;
       location: string | null;
@@ -2942,8 +3009,8 @@ export class RuntimeStore {
     }));
   }
 
-  getScheduleEventById(id: string): LectureEvent | null {
-    const row = this.db.prepare("SELECT * FROM schedule_events WHERE id = ?").get(id) as
+  getScheduleEventById(userId: string, id: string): LectureEvent | null {
+    const row = this.db.prepare("SELECT * FROM schedule_events WHERE id = ? AND userId = ?").get(id, userId) as
       | {
           id: string;
           title: string;
@@ -2972,8 +3039,8 @@ export class RuntimeStore {
     };
   }
 
-  updateScheduleEvent(id: string, patch: Partial<Omit<LectureEvent, "id">>): LectureEvent | null {
-    const existing = this.getScheduleEventById(id);
+  updateScheduleEvent(userId: string, id: string, patch: Partial<Omit<LectureEvent, "id">>): LectureEvent | null {
+    const existing = this.getScheduleEventById(userId, id);
 
     if (!existing) {
       return null;
@@ -2987,7 +3054,7 @@ export class RuntimeStore {
     const recurrenceJson = next.recurrence ? JSON.stringify(next.recurrence) : null;
 
     this.db
-      .prepare("UPDATE schedule_events SET title = ?, location = ?, startTime = ?, durationMinutes = ?, workload = ?, recurrence = ?, recurrenceParentId = ? WHERE id = ?")
+      .prepare("UPDATE schedule_events SET title = ?, location = ?, startTime = ?, durationMinutes = ?, workload = ?, recurrence = ?, recurrenceParentId = ? WHERE id = ? AND userId = ?")
       .run(
         next.title,
         typeof next.location === "string" && next.location.trim().length > 0 ? next.location.trim() : null,
@@ -2996,18 +3063,19 @@ export class RuntimeStore {
         next.workload,
         recurrenceJson,
         next.recurrenceParentId ?? null,
-        id
+        id,
+        userId
       );
 
     return next;
   }
 
-  deleteScheduleEvent(id: string): boolean {
-    const result = this.db.prepare("DELETE FROM schedule_events WHERE id = ?").run(id);
+  deleteScheduleEvent(userId: string, id: string): boolean {
+    const result = this.db.prepare("DELETE FROM schedule_events WHERE id = ? AND userId = ?").run(id, userId);
     return result.changes > 0;
   }
 
-  createScheduleSuggestionMute(entry: { startTime: string; endTime: string }): ScheduleSuggestionMute | null {
+  createScheduleSuggestionMute(userId: string, entry: { startTime: string; endTime: string }): ScheduleSuggestionMute | null {
     const start = new Date(entry.startTime);
     const end = new Date(entry.endTime);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
@@ -3023,21 +3091,21 @@ export class RuntimeStore {
 
     this.db
       .prepare(
-        "INSERT INTO schedule_suggestion_mutes (id, startTime, endTime, createdAt) VALUES (?, ?, ?, ?)"
+        "INSERT INTO schedule_suggestion_mutes (id, userId, startTime, endTime, createdAt) VALUES (?, ?, ?, ?, ?)"
       )
-      .run(mute.id, mute.startTime, mute.endTime, mute.createdAt);
+      .run(mute.id, userId, mute.startTime, mute.endTime, mute.createdAt);
 
     return mute;
   }
 
-  getScheduleSuggestionMutes(options: { day?: Date; now?: Date } = {}): ScheduleSuggestionMute[] {
+  getScheduleSuggestionMutes(userId: string, options: { day?: Date; now?: Date } = {}): ScheduleSuggestionMute[] {
     const referenceNow = options.now ?? new Date();
 
     // Opportunistic cleanup: keep mutes for 7 days after they end.
     const cleanupBefore = new Date(referenceNow.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
     this.db
-      .prepare("DELETE FROM schedule_suggestion_mutes WHERE endTime < ?")
-      .run(cleanupBefore);
+      .prepare("DELETE FROM schedule_suggestion_mutes WHERE endTime < ? AND userId = ?")
+      .run(cleanupBefore, userId);
 
     if (options.day) {
       const dayStart = new Date(options.day);
@@ -3049,10 +3117,10 @@ export class RuntimeStore {
         .prepare(
           `SELECT id, startTime, endTime, createdAt
              FROM schedule_suggestion_mutes
-            WHERE startTime <= ? AND endTime >= ?
+            WHERE userId = ? AND startTime <= ? AND endTime >= ?
             ORDER BY startTime ASC, insertOrder ASC`
         )
-        .all(dayEnd.toISOString(), dayStart.toISOString()) as Array<{
+        .all(userId, dayEnd.toISOString(), dayStart.toISOString()) as Array<{
           id: string;
           startTime: string;
           endTime: string;
@@ -3071,10 +3139,10 @@ export class RuntimeStore {
       .prepare(
         `SELECT id, startTime, endTime, createdAt
            FROM schedule_suggestion_mutes
-          WHERE endTime >= ?
+          WHERE userId = ? AND endTime >= ?
           ORDER BY startTime ASC, insertOrder ASC`
       )
-      .all(referenceNow.toISOString()) as Array<{
+      .all(userId, referenceNow.toISOString()) as Array<{
         id: string;
         startTime: string;
         endTime: string;
@@ -3090,6 +3158,7 @@ export class RuntimeStore {
   }
 
   createRoutinePreset(
+    userId: string,
     entry: Omit<RoutinePreset, "id" | "createdAt" | "updatedAt">
   ): RoutinePreset {
     const now = nowIso();
@@ -3108,11 +3177,12 @@ export class RuntimeStore {
     this.db
       .prepare(
         `INSERT INTO routine_presets
-          (id, title, preferredStartTime, durationMinutes, workload, weekdays, active, createdAt, updatedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          (id, userId, title, preferredStartTime, durationMinutes, workload, weekdays, active, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         preset.id,
+        userId,
         preset.title,
         preset.preferredStartTime,
         preset.durationMinutes,
@@ -3137,10 +3207,10 @@ export class RuntimeStore {
     return preset;
   }
 
-  getRoutinePresets(): RoutinePreset[] {
+  getRoutinePresets(userId: string): RoutinePreset[] {
     const rows = this.db
-      .prepare("SELECT * FROM routine_presets ORDER BY active DESC, title ASC, insertOrder ASC")
-      .all() as Array<{
+      .prepare("SELECT * FROM routine_presets WHERE userId = ? ORDER BY active DESC, title ASC, insertOrder ASC")
+      .all(userId) as Array<{
       id: string;
       title: string;
       preferredStartTime: string;
@@ -3165,8 +3235,8 @@ export class RuntimeStore {
     }));
   }
 
-  getRoutinePresetById(id: string): RoutinePreset | null {
-    const row = this.db.prepare("SELECT * FROM routine_presets WHERE id = ?").get(id) as
+  getRoutinePresetById(userId: string, id: string): RoutinePreset | null {
+    const row = this.db.prepare("SELECT * FROM routine_presets WHERE id = ? AND userId = ?").get(id, userId) as
       | {
           id: string;
           title: string;
@@ -3198,10 +3268,11 @@ export class RuntimeStore {
   }
 
   updateRoutinePreset(
+    userId: string,
     id: string,
     patch: Partial<Omit<RoutinePreset, "id" | "createdAt" | "updatedAt">>
   ): RoutinePreset | null {
-    const existing = this.getRoutinePresetById(id);
+    const existing = this.getRoutinePresetById(userId, id);
     if (!existing) {
       return null;
     }
@@ -3225,7 +3296,7 @@ export class RuntimeStore {
       .prepare(
         `UPDATE routine_presets
          SET title = ?, preferredStartTime = ?, durationMinutes = ?, workload = ?, weekdays = ?, active = ?, updatedAt = ?
-         WHERE id = ?`
+         WHERE id = ? AND userId = ?`
       )
       .run(
         next.title,
@@ -3235,7 +3306,8 @@ export class RuntimeStore {
         JSON.stringify(next.weekdays),
         next.active ? 1 : 0,
         next.updatedAt,
-        id
+        id,
+        userId
       );
 
     return next;
@@ -3256,6 +3328,7 @@ export class RuntimeStore {
   }
 
   upsertScheduleEvents(
+    userId: string,
     toCreate: Array<Omit<LectureEvent, "id">>,
     toUpdate: Array<{ id: string; event: Partial<Omit<LectureEvent, "id">> }>,
     toDelete: string[]
@@ -3266,21 +3339,21 @@ export class RuntimeStore {
 
     // Delete events
     for (const id of toDelete) {
-      if (this.deleteScheduleEvent(id)) {
+      if (this.deleteScheduleEvent(userId, id)) {
         deleted += 1;
       }
     }
 
     // Update events
     for (const { id, event } of toUpdate) {
-      if (this.updateScheduleEvent(id, event)) {
+      if (this.updateScheduleEvent(userId, id, event)) {
         updated += 1;
       }
     }
 
     // Create events
     for (const event of toCreate) {
-      this.createLectureEvent(event);
+      this.createLectureEvent(userId, event);
       created += 1;
     }
 
@@ -3307,7 +3380,7 @@ export class RuntimeStore {
     };
   }
 
-  createDeadline(entry: Omit<Deadline, "id">): Deadline {
+  createDeadline(userId: string, entry: Omit<Deadline, "id">): Deadline {
     const deadline = this.normalizeDeadlineEffort({
       id: makeId("deadline"),
       ...entry
@@ -3316,11 +3389,12 @@ export class RuntimeStore {
     this.db
       .prepare(
         `INSERT INTO deadlines (
-          id, course, task, dueDate, sourceDueDate, priority, completed, canvasAssignmentId, effortHoursRemaining, effortConfidence
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          id, userId, course, task, dueDate, sourceDueDate, priority, completed, canvasAssignmentId, effortHoursRemaining, effortConfidence
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         deadline.id,
+        userId,
         deadline.course,
         deadline.task,
         deadline.dueDate,
@@ -3390,8 +3464,8 @@ export class RuntimeStore {
     };
   }
 
-  getDeadlines(referenceDate: Date = new Date(), applyEscalation = true): Deadline[] {
-    const rows = this.db.prepare("SELECT * FROM deadlines ORDER BY dueDate DESC").all() as Array<{
+  getDeadlines(userId: string, referenceDate: Date = new Date(), applyEscalation = true): Deadline[] {
+    const rows = this.db.prepare("SELECT * FROM deadlines WHERE userId = ? ORDER BY dueDate DESC").all(userId) as Array<{
       id: string;
       course: string;
       task: string;
@@ -3418,16 +3492,16 @@ export class RuntimeStore {
     })).map((deadline) => (applyEscalation ? this.applyDeadlinePriorityEscalation(deadline, referenceDate) : deadline));
   }
 
-  getAcademicDeadlines(referenceDate: Date = new Date(), applyEscalation = true): Deadline[] {
-    return this.getDeadlines(referenceDate, applyEscalation).filter((deadline) => isAssignmentOrExamDeadline(deadline));
+  getAcademicDeadlines(userId: string, referenceDate: Date = new Date(), applyEscalation = true): Deadline[] {
+    return this.getDeadlines(userId, referenceDate, applyEscalation).filter((deadline) => isAssignmentOrExamDeadline(deadline));
   }
 
-  purgeNonAcademicDeadlines(): number {
-    const stale = this.getDeadlines(new Date(), false).filter((deadline) => !isAssignmentOrExamDeadline(deadline));
+  purgeNonAcademicDeadlines(userId: string): number {
+    const stale = this.getDeadlines(userId, new Date(), false).filter((deadline) => !isAssignmentOrExamDeadline(deadline));
     let removed = 0;
 
     stale.forEach((deadline) => {
-      if (this.deleteDeadline(deadline.id)) {
+      if (this.deleteDeadline(userId, deadline.id)) {
         removed += 1;
       }
     });
@@ -3435,8 +3509,8 @@ export class RuntimeStore {
     return removed;
   }
 
-  getDeadlineById(id: string, applyEscalation = true, referenceDate: Date = new Date()): Deadline | null {
-    const row = this.db.prepare("SELECT * FROM deadlines WHERE id = ?").get(id) as
+  getDeadlineById(userId: string, id: string, applyEscalation = true, referenceDate: Date = new Date()): Deadline | null {
+    const row = this.db.prepare("SELECT * FROM deadlines WHERE id = ? AND userId = ?").get(id, userId) as
       | {
           id: string;
           course: string;
@@ -3471,8 +3545,8 @@ export class RuntimeStore {
     return applyEscalation ? this.applyDeadlinePriorityEscalation(deadline, referenceDate) : deadline;
   }
 
-  updateDeadline(id: string, patch: Partial<Omit<Deadline, "id">>): Deadline | null {
-    const existing = this.getDeadlineById(id, false);
+  updateDeadline(userId: string, id: string, patch: Partial<Omit<Deadline, "id">>): Deadline | null {
+    const existing = this.getDeadlineById(userId, id, false);
 
     if (!existing) {
       return null;
@@ -3488,7 +3562,7 @@ export class RuntimeStore {
         `UPDATE deadlines SET
           course = ?, task = ?, dueDate = ?, sourceDueDate = ?, priority = ?, completed = ?,
           canvasAssignmentId = ?, effortHoursRemaining = ?, effortConfidence = ?
-         WHERE id = ?`
+         WHERE id = ? AND userId = ?`
       )
       .run(
         next.course,
@@ -3500,19 +3574,20 @@ export class RuntimeStore {
         next.canvasAssignmentId ?? null,
         next.effortHoursRemaining ?? null,
         next.effortConfidence ?? null,
-        id
+        id,
+        userId
       );
 
     return this.applyDeadlinePriorityEscalation(next, new Date());
   }
 
-  deleteDeadline(id: string): boolean {
-    const result = this.db.prepare("DELETE FROM deadlines WHERE id = ?").run(id);
-    this.db.prepare("DELETE FROM deadline_reminder_state WHERE deadlineId = ?").run(id);
+  deleteDeadline(userId: string, id: string): boolean {
+    const result = this.db.prepare("DELETE FROM deadlines WHERE id = ? AND userId = ?").run(id, userId);
+    this.db.prepare("DELETE FROM deadline_reminder_state WHERE deadlineId = ? AND userId = ?").run(id, userId);
     return result.changes > 0;
   }
 
-  createHabit(entry: Omit<Habit, "id" | "createdAt"> & { createdAt?: string }): HabitWithStatus {
+  createHabit(userId: string, entry: Omit<Habit, "id" | "createdAt"> & { createdAt?: string }): HabitWithStatus {
     const habit: Habit = {
       id: makeId("habit"),
       createdAt: entry.createdAt ?? nowIso(),
@@ -3520,8 +3595,8 @@ export class RuntimeStore {
     };
 
     this.db
-      .prepare("INSERT INTO habits (id, name, cadence, targetPerWeek, motivation, createdAt) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(habit.id, habit.name, habit.cadence, habit.targetPerWeek, habit.motivation ?? null, habit.createdAt);
+      .prepare("INSERT INTO habits (id, userId, name, cadence, targetPerWeek, motivation, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(habit.id, userId, habit.name, habit.cadence, habit.targetPerWeek, habit.motivation ?? null, habit.createdAt);
 
     const count = (this.db.prepare("SELECT COUNT(*) as count FROM habits").get() as { count: number }).count;
     if (count > this.maxHabits) {
@@ -3537,14 +3612,15 @@ export class RuntimeStore {
       });
     }
 
-    return this.getHabitWithStatus(habit.id)!;
+    return this.getHabitWithStatus(userId, habit.id)!;
   }
 
   updateHabit(
+    userId: string,
     id: string,
     patch: Partial<Pick<Habit, "name" | "cadence" | "targetPerWeek" | "motivation">>
   ): HabitWithStatus | null {
-    const existing = this.getHabitById(id);
+    const existing = this.getHabitById(userId, id);
     if (!existing) {
       return null;
     }
@@ -3558,21 +3634,21 @@ export class RuntimeStore {
       .prepare(
         `UPDATE habits SET
           name = ?, cadence = ?, targetPerWeek = ?, motivation = ?
-         WHERE id = ?`
+         WHERE id = ? AND userId = ?`
       )
-      .run(next.name, next.cadence, next.targetPerWeek, next.motivation ?? null, id);
+      .run(next.name, next.cadence, next.targetPerWeek, next.motivation ?? null, id, userId);
 
-    return this.getHabitWithStatus(id);
+    return this.getHabitWithStatus(userId, id);
   }
 
-  deleteHabit(id: string): boolean {
-    this.db.prepare("DELETE FROM habit_check_ins WHERE habitId = ?").run(id);
-    const result = this.db.prepare("DELETE FROM habits WHERE id = ?").run(id);
+  deleteHabit(userId: string, id: string): boolean {
+    this.db.prepare("DELETE FROM habit_check_ins WHERE habitId = ? AND userId = ?").run(id, userId);
+    const result = this.db.prepare("DELETE FROM habits WHERE id = ? AND userId = ?").run(id, userId);
     return result.changes > 0;
   }
 
-  getHabits(): Habit[] {
-    const rows = this.db.prepare("SELECT * FROM habits ORDER BY insertOrder DESC").all() as Array<{
+  getHabits(userId: string): Habit[] {
+    const rows = this.db.prepare("SELECT * FROM habits WHERE userId = ? ORDER BY insertOrder DESC").all(userId) as Array<{
       id: string;
       name: string;
       cadence: string;
@@ -3592,17 +3668,17 @@ export class RuntimeStore {
   }
 
   /** Find a habit named "Gym" (case-insensitive), or create one if it doesn't exist. */
-  ensureGymHabit(): Habit {
-    const habits = this.getHabits();
+  ensureGymHabit(userId: string): Habit {
+    const habits = this.getHabits(userId);
     const gym = habits.find((h) => h.name.toLowerCase() === "gym");
     if (gym) return gym;
-    const created = this.createHabit({ name: "Gym", cadence: "daily", targetPerWeek: 5 });
+    const created = this.createHabit(userId, { name: "Gym", cadence: "daily", targetPerWeek: 5 });
     return created;
   }
 
   /** Get set of date keys where the gym habit was checked-in within the range. */
-  getGymCheckInDates(from: string, to: string): Set<string> {
-    const habits = this.getHabits();
+  getGymCheckInDates(userId: string, from: string, to: string): Set<string> {
+    const habits = this.getHabits(userId);
     const gym = habits.find((h) => h.name.toLowerCase() === "gym");
     if (!gym) return new Set();
 
@@ -3615,8 +3691,8 @@ export class RuntimeStore {
     return new Set(rows.map((r) => r.checkInDate));
   }
 
-  getHabitById(id: string): Habit | null {
-    const row = this.db.prepare("SELECT * FROM habits WHERE id = ?").get(id) as
+  getHabitById(userId: string, id: string): Habit | null {
+    const row = this.db.prepare("SELECT * FROM habits WHERE id = ? AND userId = ?").get(id, userId) as
       | {
           id: string;
           name: string;
@@ -3641,13 +3717,14 @@ export class RuntimeStore {
     };
   }
 
-  getHabitsWithStatus(): HabitWithStatus[] {
-    return this.getHabits()
-      .map((habit) => this.getHabitWithStatus(habit.id))
+  getHabitsWithStatus(userId: string): HabitWithStatus[] {
+    return this.getHabits(userId)
+      .map((habit) => this.getHabitWithStatus(userId, habit.id))
       .filter((habit): habit is HabitWithStatus => Boolean(habit));
   }
 
   toggleHabitCheckIn(
+    userId: string,
     habitId: string,
     options: {
       completed?: boolean;
@@ -3655,35 +3732,35 @@ export class RuntimeStore {
       note?: string;
     } = {}
   ): HabitWithStatus | null {
-    const habit = this.getHabitById(habitId);
+    const habit = this.getHabitById(userId, habitId);
     if (!habit) {
       return null;
     }
 
     const dateKey = this.toDateKey(options.date ?? nowIso());
     const existing = this.db
-      .prepare("SELECT id, completed FROM habit_check_ins WHERE habitId = ? AND checkInDate = ?")
-      .get(habitId, dateKey) as { id: string; completed: number } | undefined;
+      .prepare("SELECT id, completed FROM habit_check_ins WHERE habitId = ? AND checkInDate = ? AND userId = ?")
+      .get(habitId, dateKey, userId) as { id: string; completed: number } | undefined;
 
     const desired = options.completed ?? (existing ? !Boolean(existing.completed) : true);
 
     if (existing) {
-      this.db.prepare("UPDATE habit_check_ins SET completed = ?, note = ? WHERE id = ?").run(desired ? 1 : 0, options.note ?? null, existing.id);
+      this.db.prepare("UPDATE habit_check_ins SET completed = ?, note = ? WHERE id = ? AND userId = ?").run(desired ? 1 : 0, options.note ?? null, existing.id, userId);
     } else {
       this.db
         .prepare(
-          "INSERT INTO habit_check_ins (id, habitId, checkInDate, completed, note) VALUES (?, ?, ?, ?, ?)"
+          "INSERT INTO habit_check_ins (id, userId, habitId, checkInDate, completed, note) VALUES (?, ?, ?, ?, ?, ?)"
         )
-        .run(makeId("habit-check"), habitId, dateKey, desired ? 1 : 0, options.note ?? null);
+        .run(makeId("habit-check"), userId, habitId, dateKey, desired ? 1 : 0, options.note ?? null);
     }
 
     this.trimCheckIns("habit_check_ins", "habitId", habitId);
 
-    return this.getHabitWithStatus(habitId);
+    return this.getHabitWithStatus(userId, habitId);
   }
 
-  private getHabitWithStatus(id: string): HabitWithStatus | null {
-    const habit = this.getHabitById(id);
+  private getHabitWithStatus(userId: string, id: string): HabitWithStatus | null {
+    const habit = this.getHabitById(userId, id);
     if (!habit) {
       return null;
     }
@@ -3725,7 +3802,7 @@ export class RuntimeStore {
     }));
   }
 
-  createGoal(entry: Omit<Goal, "id" | "createdAt"> & { createdAt?: string }): GoalWithStatus {
+  createGoal(userId: string, entry: Omit<Goal, "id" | "createdAt"> & { createdAt?: string }): GoalWithStatus {
     const goal: Goal = {
       id: makeId("goal"),
       createdAt: entry.createdAt ?? nowIso(),
@@ -3733,8 +3810,8 @@ export class RuntimeStore {
     };
 
     this.db
-      .prepare("INSERT INTO goals (id, title, cadence, targetCount, dueDate, motivation, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(goal.id, goal.title, goal.cadence, goal.targetCount, goal.dueDate ?? null, goal.motivation ?? null, goal.createdAt);
+      .prepare("INSERT INTO goals (id, userId, title, cadence, targetCount, dueDate, motivation, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(goal.id, userId, goal.title, goal.cadence, goal.targetCount, goal.dueDate ?? null, goal.motivation ?? null, goal.createdAt);
 
     const count = (this.db.prepare("SELECT COUNT(*) as count FROM goals").get() as { count: number }).count;
     if (count > this.maxGoals) {
@@ -3749,14 +3826,15 @@ export class RuntimeStore {
       });
     }
 
-    return this.getGoalWithStatus(goal.id)!;
+    return this.getGoalWithStatus(userId, goal.id)!;
   }
 
   updateGoal(
+    userId: string,
     id: string,
     patch: Partial<Pick<Goal, "title" | "cadence" | "targetCount" | "dueDate" | "motivation">>
   ): GoalWithStatus | null {
-    const existing = this.getGoalById(id);
+    const existing = this.getGoalById(userId, id);
     if (!existing) {
       return null;
     }
@@ -3770,21 +3848,21 @@ export class RuntimeStore {
       .prepare(
         `UPDATE goals SET
           title = ?, cadence = ?, targetCount = ?, dueDate = ?, motivation = ?
-         WHERE id = ?`
+         WHERE id = ? AND userId = ?`
       )
-      .run(next.title, next.cadence, next.targetCount, next.dueDate ?? null, next.motivation ?? null, id);
+      .run(next.title, next.cadence, next.targetCount, next.dueDate ?? null, next.motivation ?? null, id, userId);
 
-    return this.getGoalWithStatus(id);
+    return this.getGoalWithStatus(userId, id);
   }
 
-  deleteGoal(id: string): boolean {
-    this.db.prepare("DELETE FROM goal_check_ins WHERE goalId = ?").run(id);
-    const result = this.db.prepare("DELETE FROM goals WHERE id = ?").run(id);
+  deleteGoal(userId: string, id: string): boolean {
+    this.db.prepare("DELETE FROM goal_check_ins WHERE goalId = ? AND userId = ?").run(id, userId);
+    const result = this.db.prepare("DELETE FROM goals WHERE id = ? AND userId = ?").run(id, userId);
     return result.changes > 0;
   }
 
-  getGoals(): Goal[] {
-    const rows = this.db.prepare("SELECT * FROM goals ORDER BY insertOrder DESC").all() as Array<{
+  getGoals(userId: string): Goal[] {
+    const rows = this.db.prepare("SELECT * FROM goals WHERE userId = ? ORDER BY insertOrder DESC").all(userId) as Array<{
       id: string;
       title: string;
       cadence: string;
@@ -3805,8 +3883,8 @@ export class RuntimeStore {
     }));
   }
 
-  getGoalById(id: string): Goal | null {
-    const row = this.db.prepare("SELECT * FROM goals WHERE id = ?").get(id) as
+  getGoalById(userId: string, id: string): Goal | null {
+    const row = this.db.prepare("SELECT * FROM goals WHERE id = ? AND userId = ?").get(id, userId) as
       | {
           id: string;
           title: string;
@@ -3833,40 +3911,40 @@ export class RuntimeStore {
     };
   }
 
-  getGoalsWithStatus(): GoalWithStatus[] {
-    return this.getGoals()
-      .map((goal) => this.getGoalWithStatus(goal.id))
+  getGoalsWithStatus(userId: string): GoalWithStatus[] {
+    return this.getGoals(userId)
+      .map((goal) => this.getGoalWithStatus(userId, goal.id))
       .filter((goal): goal is GoalWithStatus => Boolean(goal));
   }
 
-  toggleGoalCheckIn(goalId: string, options: { completed?: boolean; date?: string } = {}): GoalWithStatus | null {
-    const goal = this.getGoalById(goalId);
+  toggleGoalCheckIn(userId: string, goalId: string, options: { completed?: boolean; date?: string } = {}): GoalWithStatus | null {
+    const goal = this.getGoalById(userId, goalId);
     if (!goal) {
       return null;
     }
 
     const dateKey = this.toDateKey(options.date ?? nowIso());
     const existing = this.db
-      .prepare("SELECT id, completed FROM goal_check_ins WHERE goalId = ? AND checkInDate = ?")
-      .get(goalId, dateKey) as { id: string; completed: number } | undefined;
+      .prepare("SELECT id, completed FROM goal_check_ins WHERE goalId = ? AND checkInDate = ? AND userId = ?")
+      .get(goalId, dateKey, userId) as { id: string; completed: number } | undefined;
 
     const desired = options.completed ?? (existing ? !Boolean(existing.completed) : true);
 
     if (existing) {
-      this.db.prepare("UPDATE goal_check_ins SET completed = ? WHERE id = ?").run(desired ? 1 : 0, existing.id);
+      this.db.prepare("UPDATE goal_check_ins SET completed = ? WHERE id = ? AND userId = ?").run(desired ? 1 : 0, existing.id, userId);
     } else {
       this.db
-        .prepare("INSERT INTO goal_check_ins (id, goalId, checkInDate, completed) VALUES (?, ?, ?, ?)")
-        .run(makeId("goal-check"), goalId, dateKey, desired ? 1 : 0);
+        .prepare("INSERT INTO goal_check_ins (id, userId, goalId, checkInDate, completed) VALUES (?, ?, ?, ?, ?)")
+        .run(makeId("goal-check"), userId, goalId, dateKey, desired ? 1 : 0);
     }
 
     this.trimCheckIns("goal_check_ins", "goalId", goalId);
 
-    return this.getGoalWithStatus(goalId);
+    return this.getGoalWithStatus(userId, goalId);
   }
 
-  private getGoalWithStatus(id: string): GoalWithStatus | null {
-    const goal = this.getGoalById(id);
+  private getGoalWithStatus(userId: string, id: string): GoalWithStatus | null {
+    const goal = this.getGoalById(userId, id);
     if (!goal) {
       return null;
     }
@@ -4277,6 +4355,7 @@ export class RuntimeStore {
   }
 
   createNutritionMeal(
+    userId: string,
     entry: Pick<NutritionMeal, "name" | "mealType" | "consumedAt"> &
       Partial<Pick<NutritionMeal, "items" | "calories" | "proteinGrams" | "carbsGrams" | "fatGrams" | "notes">> & {
         createdAt?: string;
@@ -4318,11 +4397,12 @@ export class RuntimeStore {
     this.db
       .prepare(
         `INSERT INTO nutrition_meals (
-          id, name, mealType, consumedAt, calories, proteinGrams, carbsGrams, fatGrams, itemsJson, notes, createdAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          id, userId, name, mealType, consumedAt, calories, proteinGrams, carbsGrams, fatGrams, itemsJson, notes, createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meal.id,
+        userId,
         meal.name,
         meal.mealType,
         meal.consumedAt,
@@ -4339,8 +4419,8 @@ export class RuntimeStore {
     return meal;
   }
 
-  getNutritionMealById(id: string): NutritionMeal | null {
-    const row = this.db.prepare("SELECT * FROM nutrition_meals WHERE id = ?").get(id) as
+  getNutritionMealById(userId: string, id: string): NutritionMeal | null {
+    const row = this.db.prepare("SELECT * FROM nutrition_meals WHERE id = ? AND userId = ?").get(id, userId) as
       | {
           id: string;
           name: string;
@@ -4375,7 +4455,7 @@ export class RuntimeStore {
     };
   }
 
-  getNutritionMeals(options: {
+  getNutritionMeals(userId: string, options: {
     date?: string;
     from?: string;
     to?: string;
@@ -4383,13 +4463,13 @@ export class RuntimeStore {
     skipBaselineHydration?: boolean;
     eatenOnly?: boolean;
   } = {}): NutritionMeal[] {
-    const clauses: string[] = [];
-    const params: unknown[] = [];
+    const clauses: string[] = ["userId = ?"];
+    const params: unknown[] = [userId];
 
     if (typeof options.date === "string" && options.date.trim().length > 0) {
       const requestedDate = options.date.trim();
       if (!options.skipBaselineHydration) {
-        this.ensureNutritionBaselineForDate(requestedDate);
+        this.ensureNutritionBaselineForDate(userId, requestedDate);
       }
       const start = new Date(`${requestedDate}T00:00:00.000Z`);
       if (!Number.isNaN(start.getTime())) {
@@ -4460,10 +4540,11 @@ export class RuntimeStore {
   }
 
   updateNutritionMeal(
+    userId: string,
     id: string,
     patch: Partial<Omit<NutritionMeal, "id" | "createdAt">>
   ): NutritionMeal | null {
-    const existing = this.getNutritionMealById(id);
+    const existing = this.getNutritionMealById(userId, id);
     if (!existing) {
       return null;
     }
@@ -4527,7 +4608,7 @@ export class RuntimeStore {
       .prepare(
         `UPDATE nutrition_meals SET
           name = ?, mealType = ?, consumedAt = ?, calories = ?, proteinGrams = ?, carbsGrams = ?, fatGrams = ?, itemsJson = ?, notes = ?
-         WHERE id = ?`
+         WHERE id = ? AND userId = ?`
       )
       .run(
         next.name,
@@ -4539,18 +4620,20 @@ export class RuntimeStore {
         next.fatGrams,
         JSON.stringify(next.items),
         next.notes ?? null,
-        id
+        id,
+        userId
       );
 
     return next;
   }
 
-  deleteNutritionMeal(id: string): boolean {
-    const result = this.db.prepare("DELETE FROM nutrition_meals WHERE id = ?").run(id);
+  deleteNutritionMeal(userId: string, id: string): boolean {
+    const result = this.db.prepare("DELETE FROM nutrition_meals WHERE id = ? AND userId = ?").run(id, userId);
     return result.changes > 0;
   }
 
   createNutritionCustomFood(
+    userId: string,
     entry: Omit<NutritionCustomFood, "id" | "createdAt" | "updatedAt"> &
       Partial<Pick<NutritionCustomFood, "createdAt" | "updatedAt">>
   ): NutritionCustomFood {
@@ -4570,11 +4653,12 @@ export class RuntimeStore {
     this.db
       .prepare(
         `INSERT INTO nutrition_custom_foods (
-          id, name, unitLabel, caloriesPerUnit, proteinGramsPerUnit, carbsGramsPerUnit, fatGramsPerUnit, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          id, userId, name, unitLabel, caloriesPerUnit, proteinGramsPerUnit, carbsGramsPerUnit, fatGramsPerUnit, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         food.id,
+        userId,
         food.name,
         food.unitLabel,
         food.caloriesPerUnit,
@@ -4589,8 +4673,8 @@ export class RuntimeStore {
     return food;
   }
 
-  getNutritionCustomFoodById(id: string): NutritionCustomFood | null {
-    const row = this.db.prepare("SELECT * FROM nutrition_custom_foods WHERE id = ?").get(id) as
+  getNutritionCustomFoodById(userId: string, id: string): NutritionCustomFood | null {
+    const row = this.db.prepare("SELECT * FROM nutrition_custom_foods WHERE id = ? AND userId = ?").get(id, userId) as
       | {
           id: string;
           name: string;
@@ -4621,9 +4705,9 @@ export class RuntimeStore {
     };
   }
 
-  getNutritionCustomFoods(options: { query?: string; limit?: number } = {}): NutritionCustomFood[] {
-    const clauses: string[] = [];
-    const params: unknown[] = [];
+  getNutritionCustomFoods(userId: string, options: { query?: string; limit?: number } = {}): NutritionCustomFood[] {
+    const clauses: string[] = ["userId = ?"];
+    const params: unknown[] = [userId];
 
     if (typeof options.query === "string" && options.query.trim().length > 0) {
       clauses.push("name LIKE ? COLLATE NOCASE");
@@ -4668,10 +4752,11 @@ export class RuntimeStore {
   }
 
   updateNutritionCustomFood(
+    userId: string,
     id: string,
     patch: Partial<Omit<NutritionCustomFood, "id" | "createdAt" | "updatedAt">>
   ): NutritionCustomFood | null {
-    const existing = this.getNutritionCustomFoodById(id);
+    const existing = this.getNutritionCustomFoodById(userId, id);
     if (!existing) {
       return null;
     }
@@ -4704,7 +4789,7 @@ export class RuntimeStore {
       .prepare(
         `UPDATE nutrition_custom_foods SET
           name = ?, unitLabel = ?, caloriesPerUnit = ?, proteinGramsPerUnit = ?, carbsGramsPerUnit = ?, fatGramsPerUnit = ?, updatedAt = ?
-         WHERE id = ?`
+         WHERE id = ? AND userId = ?`
       )
       .run(
         next.name,
@@ -4714,20 +4799,21 @@ export class RuntimeStore {
         next.carbsGramsPerUnit,
         next.fatGramsPerUnit,
         next.updatedAt,
-        id
+        id,
+        userId
       );
 
     return next;
   }
 
-  deleteNutritionCustomFood(id: string): boolean {
-    const result = this.db.prepare("DELETE FROM nutrition_custom_foods WHERE id = ?").run(id);
+  deleteNutritionCustomFood(userId: string, id: string): boolean {
+    const result = this.db.prepare("DELETE FROM nutrition_custom_foods WHERE id = ? AND userId = ?").run(id, userId);
     return result.changes > 0;
   }
 
-  getNutritionTargetProfile(date: string | Date = new Date()): NutritionTargetProfile | null {
+  getNutritionTargetProfile(userId: string, date: string | Date = new Date()): NutritionTargetProfile | null {
     const dateKey = this.toDateKey(date);
-    const row = this.db.prepare("SELECT * FROM nutrition_target_profiles WHERE dateKey = ?").get(dateKey) as
+    const row = this.db.prepare("SELECT * FROM nutrition_target_profiles WHERE userId = ? AND dateKey = ?").get(userId, dateKey) as
       | {
           dateKey: string;
           weightKg: number | null;
@@ -4780,7 +4866,7 @@ export class RuntimeStore {
     };
   }
 
-  upsertNutritionTargetProfile(entry: {
+  upsertNutritionTargetProfile(userId: string, entry: {
     date?: string | Date;
     weightKg?: number | null;
     maintenanceCalories?: number | null;
@@ -4793,7 +4879,7 @@ export class RuntimeStore {
     fatGramsPerLb?: number | null;
   }): NutritionTargetProfile {
     const dateKey = this.toDateKey(entry.date ?? new Date());
-    const existing = this.getNutritionTargetProfile(dateKey);
+    const existing = this.getNutritionTargetProfile(userId, dateKey);
     const now = nowIso();
 
     const has = (field: string): boolean => Object.prototype.hasOwnProperty.call(entry, field);
@@ -4865,7 +4951,7 @@ export class RuntimeStore {
             proteinGramsPerLb = ?,
             fatGramsPerLb = ?,
             updatedAt = ?
-           WHERE dateKey = ?`
+           WHERE userId = ? AND dateKey = ?`
         )
         .run(
           weightKg,
@@ -4878,12 +4964,14 @@ export class RuntimeStore {
           proteinGramsPerLb,
           fatGramsPerLb,
           now,
+          userId,
           dateKey
         );
     } else {
       this.db
         .prepare(
           `INSERT INTO nutrition_target_profiles (
+            userId,
             dateKey,
             weightKg,
             maintenanceCalories,
@@ -4896,9 +4984,10 @@ export class RuntimeStore {
             fatGramsPerLb,
             createdAt,
             updatedAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
+          userId,
           dateKey,
           weightKg,
           maintenanceCalories,
@@ -4915,7 +5004,7 @@ export class RuntimeStore {
       this.trimNutritionTargetProfiles();
     }
 
-    return this.getNutritionTargetProfile(dateKey) ?? {
+    return this.getNutritionTargetProfile(userId, dateKey) ?? {
       date: dateKey,
       ...(typeof weightKg === "number" ? { weightKg } : {}),
       ...(typeof maintenanceCalories === "number" ? { maintenanceCalories } : {}),
@@ -4931,8 +5020,8 @@ export class RuntimeStore {
     };
   }
 
-  getNutritionPlanSettings(): NutritionPlanSettings {
-    const row = this.db.prepare("SELECT defaultSnapshotId, updatedAt FROM nutrition_plan_settings WHERE id = 1").get() as
+  getNutritionPlanSettings(userId: string): NutritionPlanSettings {
+    const row = this.db.prepare("SELECT defaultSnapshotId, updatedAt FROM nutrition_plan_settings WHERE userId = ?").get(userId) as
       | {
           defaultSnapshotId: string | null;
           updatedAt: string | null;
@@ -4947,9 +5036,9 @@ export class RuntimeStore {
       };
     }
 
-    const snapshot = this.getNutritionPlanSnapshotById(row.defaultSnapshotId);
+    const snapshot = this.getNutritionPlanSnapshotById(userId, row.defaultSnapshotId);
     if (!snapshot) {
-      this.db.prepare("UPDATE nutrition_plan_settings SET defaultSnapshotId = NULL, updatedAt = ? WHERE id = 1").run(nowIso());
+      this.db.prepare("UPDATE nutrition_plan_settings SET defaultSnapshotId = NULL, updatedAt = ? WHERE userId = ?").run(nowIso(), userId);
       return {
         defaultSnapshotId: null,
         defaultSnapshotName: null,
@@ -4964,10 +5053,10 @@ export class RuntimeStore {
     };
   }
 
-  setNutritionDefaultPlanSnapshot(snapshotId: string | null): NutritionPlanSettings | null {
+  setNutritionDefaultPlanSnapshot(userId: string, snapshotId: string | null): NutritionPlanSettings | null {
     const nextId = typeof snapshotId === "string" && snapshotId.trim().length > 0 ? snapshotId.trim() : null;
     if (nextId) {
-      const snapshot = this.getNutritionPlanSnapshotById(nextId);
+      const snapshot = this.getNutritionPlanSnapshotById(userId, nextId);
       if (!snapshot) {
         return null;
       }
@@ -4975,13 +5064,13 @@ export class RuntimeStore {
 
     const updatedAt = nowIso();
     this.db
-      .prepare("UPDATE nutrition_plan_settings SET defaultSnapshotId = ?, updatedAt = ? WHERE id = 1")
-      .run(nextId, updatedAt);
+      .prepare("UPDATE nutrition_plan_settings SET defaultSnapshotId = ?, updatedAt = ? WHERE userId = ?")
+      .run(nextId, updatedAt, userId);
 
-    return this.getNutritionPlanSettings();
+    return this.getNutritionPlanSettings(userId);
   }
 
-  ensureNutritionBaselineForDate(date: string | Date = new Date()): {
+  ensureNutritionBaselineForDate(userId: string, date: string | Date = new Date()): {
     applied: boolean;
     date: string;
     snapshotId: string | null;
@@ -4992,17 +5081,17 @@ export class RuntimeStore {
       return { applied: false, date: dateKey, snapshotId: null };
     }
 
-    const settings = this.getNutritionPlanSettings();
+    const settings = this.getNutritionPlanSettings(userId);
     if (!settings.defaultSnapshotId) {
       return { applied: false, date: dateKey, snapshotId: null };
     }
 
-    const existingMeals = this.getNutritionMeals({ date: dateKey, limit: 1, skipBaselineHydration: true });
+    const existingMeals = this.getNutritionMeals(userId, { date: dateKey, limit: 1, skipBaselineHydration: true });
     if (existingMeals.length > 0) {
       return { applied: false, date: dateKey, snapshotId: settings.defaultSnapshotId };
     }
 
-    const applied = this.applyNutritionPlanSnapshot(settings.defaultSnapshotId, {
+    const applied = this.applyNutritionPlanSnapshot(userId, settings.defaultSnapshotId, {
       date: dateKey,
       replaceMeals: false,
       setAsDefault: false
@@ -5014,11 +5103,11 @@ export class RuntimeStore {
     };
   }
 
-  getNutritionDailySummary(date: string | Date = new Date()): NutritionDailySummary {
+  getNutritionDailySummary(userId: string, date: string | Date = new Date()): NutritionDailySummary {
     const dateKey = this.toDateKey(date);
-    this.ensureNutritionBaselineForDate(dateKey);
-    const meals = this.getNutritionMeals({ date: dateKey, limit: 1000, skipBaselineHydration: true });
-    const targetProfile = this.getNutritionTargetProfile(dateKey);
+    this.ensureNutritionBaselineForDate(userId, dateKey);
+    const meals = this.getNutritionMeals(userId, { date: dateKey, limit: 1000, skipBaselineHydration: true });
+    const targetProfile = this.getNutritionTargetProfile(userId, dateKey);
 
     const totals = meals.reduce(
       (acc, meal) => {
@@ -5072,12 +5161,12 @@ export class RuntimeStore {
     };
   }
 
-  getNutritionDailyHistory(from: string | Date, to: string | Date, options: { eatenOnly?: boolean } = {}): NutritionDayHistoryEntry[] {
+  getNutritionDailyHistory(userId: string, from: string | Date, to: string | Date, options: { eatenOnly?: boolean } = {}): NutritionDayHistoryEntry[] {
     const fromKey = this.toDateKey(from);
     const toKey = this.toDateKey(to);
 
     // Get all weight entries for the range (includes body comp)
-    const withingsData = this.getWithingsData();
+    const withingsData = this.getWithingsData(userId);
     const weightByDate = new Map<string, number>();
     const fatByDate = new Map<string, number>();
     const muscleByDate = new Map<string, number>();
@@ -5091,7 +5180,7 @@ export class RuntimeStore {
     }
 
     // Get gym habit check-in dates
-    const gymDates = this.getGymCheckInDates(fromKey, toKey);
+    const gymDates = this.getGymCheckInDates(userId, fromKey, toKey);
 
     const entries: NutritionDayHistoryEntry[] = [];
     const cursor = new Date(fromKey + "T00:00:00Z");
@@ -5099,8 +5188,8 @@ export class RuntimeStore {
 
     while (cursor <= end) {
       const dateKey = this.toDateKey(cursor);
-      const meals = this.getNutritionMeals({ date: dateKey, limit: 1000, skipBaselineHydration: true, eatenOnly: options.eatenOnly });
-      const targetProfile = this.getNutritionTargetProfile(dateKey);
+      const meals = this.getNutritionMeals(userId, { date: dateKey, limit: 1000, skipBaselineHydration: true, eatenOnly: options.eatenOnly });
+      const targetProfile = this.getNutritionTargetProfile(userId, dateKey);
 
       const totals = meals.reduce(
         (acc, meal) => {
@@ -5151,8 +5240,8 @@ export class RuntimeStore {
     return entries;
   }
 
-  getNutritionPlanSnapshotById(id: string): NutritionPlanSnapshot | null {
-    const row = this.db.prepare("SELECT * FROM nutrition_plan_snapshots WHERE id = ?").get(id) as
+  getNutritionPlanSnapshotById(userId: string, id: string): NutritionPlanSnapshot | null {
+    const row = this.db.prepare("SELECT * FROM nutrition_plan_snapshots WHERE id = ? AND userId = ?").get(id, userId) as
       | {
           id: string;
           name: string;
@@ -5179,12 +5268,12 @@ export class RuntimeStore {
     };
   }
 
-  getNutritionPlanSnapshots(options: {
+  getNutritionPlanSnapshots(userId: string, options: {
     query?: string;
     limit?: number;
   } = {}): NutritionPlanSnapshot[] {
-    const clauses: string[] = [];
-    const params: unknown[] = [];
+    const clauses: string[] = ["userId = ?"];
+    const params: unknown[] = [userId];
     if (typeof options.query === "string" && options.query.trim().length > 0) {
       clauses.push("name LIKE ? COLLATE NOCASE");
       params.push(`%${options.query.trim()}%`);
@@ -5223,7 +5312,7 @@ export class RuntimeStore {
     }));
   }
 
-  createNutritionPlanSnapshot(entry: {
+  createNutritionPlanSnapshot(userId: string, entry: {
     name: string;
     date?: string | Date;
     replaceId?: string;
@@ -5240,11 +5329,11 @@ export class RuntimeStore {
     const targetProfile =
       entry.targetProfile !== undefined
         ? this.normalizeNutritionPlanSnapshotTarget(entry.targetProfile)
-        : this.normalizeNutritionPlanSnapshotTarget(this.getNutritionTargetProfile(sourceDate));
+        : this.normalizeNutritionPlanSnapshotTarget(this.getNutritionTargetProfile(userId, sourceDate));
     const meals =
       entry.meals !== undefined
         ? this.normalizeNutritionPlanSnapshotMeals(entry.meals)
-        : this.getNutritionMeals({ date: sourceDate, limit: 1000 }).map((meal) => ({
+        : this.getNutritionMeals(userId, { date: sourceDate, limit: 1000 }).map((meal) => ({
             name: meal.name,
             mealType: this.normalizeNutritionMealType(meal.mealType),
             consumedTime: this.toNutritionConsumedTime(meal.consumedAt),
@@ -5276,13 +5365,13 @@ export class RuntimeStore {
     const now = nowIso();
     const replaceId = typeof entry.replaceId === "string" && entry.replaceId.trim().length > 0 ? entry.replaceId.trim() : null;
     if (replaceId) {
-      const existing = this.getNutritionPlanSnapshotById(replaceId);
+      const existing = this.getNutritionPlanSnapshotById(userId, replaceId);
       if (existing) {
         this.db
           .prepare(
             `UPDATE nutrition_plan_snapshots
              SET name = ?, sourceDate = ?, targetProfileJson = ?, mealsJson = ?, updatedAt = ?
-             WHERE id = ?`
+             WHERE id = ? AND userId = ?`
           )
           .run(
             name,
@@ -5290,9 +5379,10 @@ export class RuntimeStore {
             JSON.stringify(targetProfile ?? {}),
             JSON.stringify(meals),
             now,
-            replaceId
+            replaceId,
+            userId
           );
-        return this.getNutritionPlanSnapshotById(replaceId);
+        return this.getNutritionPlanSnapshotById(userId, replaceId);
       }
     }
 
@@ -5309,11 +5399,12 @@ export class RuntimeStore {
     this.db
       .prepare(
         `INSERT INTO nutrition_plan_snapshots (
-          id, name, sourceDate, targetProfileJson, mealsJson, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+          id, userId, name, sourceDate, targetProfileJson, mealsJson, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         snapshot.id,
+        userId,
         snapshot.name,
         snapshot.sourceDate,
         JSON.stringify(snapshot.targetProfile ?? {}),
@@ -5327,6 +5418,7 @@ export class RuntimeStore {
   }
 
   applyNutritionPlanSnapshot(
+    userId: string,
     snapshotId: string,
     options: {
       date?: string | Date;
@@ -5339,7 +5431,7 @@ export class RuntimeStore {
     mealsCreated: NutritionMeal[];
     targetProfile: NutritionTargetProfile | null;
   } | null {
-    const snapshot = this.getNutritionPlanSnapshotById(snapshotId);
+    const snapshot = this.getNutritionPlanSnapshotById(userId, snapshotId);
     if (!snapshot) {
       return null;
     }
@@ -5347,16 +5439,16 @@ export class RuntimeStore {
     const appliedDate = this.toDateKey(options.date ?? new Date());
     const replaceMeals = options.replaceMeals !== false;
     if (replaceMeals) {
-      const existingMeals = this.getNutritionMeals({ date: appliedDate, limit: 1000 });
+      const existingMeals = this.getNutritionMeals(userId, { date: appliedDate, limit: 1000 });
       existingMeals.forEach((meal) => {
-        this.deleteNutritionMeal(meal.id);
+        this.deleteNutritionMeal(userId, meal.id);
       });
     }
 
     const mealsCreated: NutritionMeal[] = [];
     snapshot.meals.forEach((meal, index) => {
       const sanitizedNotes = this.stripNutritionMealDoneToken(meal.notes);
-      const created = this.createNutritionMeal({
+      const created = this.createNutritionMeal(userId, {
         name: meal.name,
         mealType: meal.mealType,
         consumedAt: this.toNutritionConsumedAtForDate(appliedDate, meal.consumedTime, index),
@@ -5375,14 +5467,14 @@ export class RuntimeStore {
     });
 
     const targetProfile = snapshot.targetProfile
-      ? this.upsertNutritionTargetProfile({
+      ? this.upsertNutritionTargetProfile(userId, {
           date: appliedDate,
           ...snapshot.targetProfile
         })
-      : this.getNutritionTargetProfile(appliedDate);
+      : this.getNutritionTargetProfile(userId, appliedDate);
 
     if (options.setAsDefault !== false) {
-      this.setNutritionDefaultPlanSnapshot(snapshot.id);
+      this.setNutritionDefaultPlanSnapshot(userId, snapshot.id);
     }
 
     return {
@@ -5393,16 +5485,17 @@ export class RuntimeStore {
     };
   }
 
-  deleteNutritionPlanSnapshot(id: string): boolean {
-    const settings = this.getNutritionPlanSettings();
-    const result = this.db.prepare("DELETE FROM nutrition_plan_snapshots WHERE id = ?").run(id);
+  deleteNutritionPlanSnapshot(userId: string, id: string): boolean {
+    const settings = this.getNutritionPlanSettings(userId);
+    const result = this.db.prepare("DELETE FROM nutrition_plan_snapshots WHERE id = ? AND userId = ?").run(id, userId);
     if (result.changes > 0 && settings.defaultSnapshotId === id) {
-      this.setNutritionDefaultPlanSnapshot(null);
+      this.setNutritionDefaultPlanSnapshot(userId, null);
     }
     return result.changes > 0;
   }
 
   upsertStudyPlanSessions(
+    userId: string,
     sessions: StudyPlanSession[],
     generatedAt: string,
     options?: {
@@ -5415,15 +5508,17 @@ export class RuntimeStore {
         this.db
           .prepare(
             `DELETE FROM study_plan_sessions
-             WHERE status = 'pending'
+             WHERE userId = ?
+               AND status = 'pending'
                AND startTime >= ?
                AND startTime <= ?`
           )
-          .run(options.windowStart, options.windowEnd);
+          .run(userId, options.windowStart, options.windowEnd);
       }
 
       const upsert = this.db.prepare(
         `INSERT INTO study_plan_sessions (
+          userId,
           sessionId,
           deadlineId,
           course,
@@ -5440,7 +5535,7 @@ export class RuntimeStore {
           energyLevel,
           focusLevel,
           checkInNote
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL)
         ON CONFLICT(sessionId) DO UPDATE SET
           deadlineId = excluded.deadlineId,
           course = excluded.course,
@@ -5456,6 +5551,7 @@ export class RuntimeStore {
 
       for (const session of sessions) {
         upsert.run(
+          userId,
           session.id,
           session.deadlineId,
           session.course,
@@ -5475,10 +5571,10 @@ export class RuntimeStore {
     this.trimStudyPlanSessions();
   }
 
-  getStudyPlanSessionById(sessionId: string): StudyPlanSessionRecord | null {
+  getStudyPlanSessionById(userId: string, sessionId: string): StudyPlanSessionRecord | null {
     const row = this.db
-      .prepare("SELECT * FROM study_plan_sessions WHERE sessionId = ?")
-      .get(sessionId) as
+      .prepare("SELECT * FROM study_plan_sessions WHERE sessionId = ? AND userId = ?")
+      .get(sessionId, userId) as
       | {
           sessionId: string;
           deadlineId: string;
@@ -5523,14 +5619,14 @@ export class RuntimeStore {
     };
   }
 
-  getStudyPlanSessions(options?: {
+  getStudyPlanSessions(userId: string, options?: {
     windowStart?: string;
     windowEnd?: string;
     status?: StudyPlanSessionStatus;
     limit?: number;
   }): StudyPlanSessionRecord[] {
-    let query = "SELECT * FROM study_plan_sessions WHERE 1=1";
-    const params: unknown[] = [];
+    let query = "SELECT * FROM study_plan_sessions WHERE userId = ?";
+    const params: unknown[] = [userId];
 
     if (options?.windowStart) {
       query += " AND startTime >= ?";
@@ -5594,6 +5690,7 @@ export class RuntimeStore {
   }
 
   setStudyPlanSessionStatus(
+    userId: string,
     sessionId: string,
     status: Exclude<StudyPlanSessionStatus, "pending">,
     checkedAt: string = nowIso(),
@@ -5603,7 +5700,7 @@ export class RuntimeStore {
       checkInNote?: string;
     }
   ): StudyPlanSessionRecord | null {
-    const existing = this.getStudyPlanSessionById(sessionId);
+    const existing = this.getStudyPlanSessionById(userId, sessionId);
     if (!existing) {
       return null;
     }
@@ -5614,18 +5711,18 @@ export class RuntimeStore {
 
     const result = this.db
       .prepare(
-        "UPDATE study_plan_sessions SET status = ?, checkedAt = ?, energyLevel = ?, focusLevel = ?, checkInNote = ? WHERE sessionId = ?"
+        "UPDATE study_plan_sessions SET status = ?, checkedAt = ?, energyLevel = ?, focusLevel = ?, checkInNote = ? WHERE sessionId = ? AND userId = ?"
       )
-      .run(status, checkedAt, nextEnergyLevel, nextFocusLevel, nextCheckInNote, sessionId);
+      .run(status, checkedAt, nextEnergyLevel, nextFocusLevel, nextCheckInNote, sessionId, userId);
 
     if (result.changes === 0) {
       return null;
     }
 
-    return this.getStudyPlanSessionById(sessionId);
+    return this.getStudyPlanSessionById(userId, sessionId);
   }
 
-  getStudyPlanAdherenceMetrics(options?: {
+  getStudyPlanAdherenceMetrics(userId: string, options?: {
     windowStart?: string;
     windowEnd?: string;
   }): StudyPlanAdherenceMetrics {
@@ -5640,7 +5737,7 @@ export class RuntimeStore {
     const normalizedStart = start.getTime() <= end.getTime() ? start : end;
     const normalizedEnd = start.getTime() <= end.getTime() ? end : start;
 
-    const sessions = this.getStudyPlanSessions({
+    const sessions = this.getStudyPlanSessions(userId, {
       windowStart: normalizedStart.toISOString(),
       windowEnd: normalizedEnd.toISOString()
     });
@@ -5724,7 +5821,7 @@ export class RuntimeStore {
     };
   }
 
-  getOverdueDeadlinesRequiringReminder(referenceDate: string = nowIso(), cooldownMinutes = 180): Deadline[] {
+  getOverdueDeadlinesRequiringReminder(userId: string, referenceDate: string = nowIso(), cooldownMinutes = 180): Deadline[] {
     const reference = new Date(referenceDate);
     const nowMs = reference.getTime();
 
@@ -5734,7 +5831,7 @@ export class RuntimeStore {
 
     const cooldownMs = Math.max(0, cooldownMinutes) * 60_000;
 
-    const deadlines = this.getAcademicDeadlines(reference);
+    const deadlines = this.getAcademicDeadlines(userId, reference);
 
     return deadlines.filter((deadline) => {
       if (deadline.completed) {
@@ -5746,7 +5843,7 @@ export class RuntimeStore {
         return false;
       }
 
-      const reminderState = this.getDeadlineReminderState(deadline.id);
+      const reminderState = this.getDeadlineReminderState(userId, deadline.id);
       if (!reminderState?.lastReminderAt) {
         return true;
       }
@@ -5760,12 +5857,12 @@ export class RuntimeStore {
     });
   }
 
-  recordDeadlineReminder(deadlineId: string, reminderAt: string = nowIso()): DeadlineReminderState | null {
-    if (!this.getDeadlineById(deadlineId)) {
+  recordDeadlineReminder(userId: string, deadlineId: string, reminderAt: string = nowIso()): DeadlineReminderState | null {
+    if (!this.getDeadlineById(userId, deadlineId)) {
       return null;
     }
 
-    const existing = this.getDeadlineReminderState(deadlineId);
+    const existing = this.getDeadlineReminderState(userId, deadlineId);
     const next: DeadlineReminderState = {
       deadlineId,
       reminderCount: (existing?.reminderCount ?? 0) + 1,
@@ -5777,11 +5874,12 @@ export class RuntimeStore {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO deadline_reminder_state
-         (deadlineId, reminderCount, lastReminderAt, lastConfirmationAt, lastConfirmedCompleted)
-         VALUES (?, ?, ?, ?, ?)`
+         (deadlineId, userId, reminderCount, lastReminderAt, lastConfirmationAt, lastConfirmedCompleted)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
       .run(
         next.deadlineId,
+        userId,
         next.reminderCount,
         next.lastReminderAt,
         next.lastConfirmationAt,
@@ -5791,15 +5889,15 @@ export class RuntimeStore {
     return next;
   }
 
-  confirmDeadlineStatus(deadlineId: string, completed: boolean): DeadlineStatusConfirmation | null {
-    const deadline = this.updateDeadline(deadlineId, { completed });
+  confirmDeadlineStatus(userId: string, deadlineId: string, completed: boolean): DeadlineStatusConfirmation | null {
+    const deadline = this.updateDeadline(userId, deadlineId, { completed });
 
     if (!deadline) {
       return null;
     }
 
     const confirmationAt = nowIso();
-    const existing = this.getDeadlineReminderState(deadlineId);
+    const existing = this.getDeadlineReminderState(userId, deadlineId);
     const reminder: DeadlineReminderState = {
       deadlineId,
       reminderCount: existing?.reminderCount ?? 0,
@@ -5811,10 +5909,10 @@ export class RuntimeStore {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO deadline_reminder_state
-         (deadlineId, reminderCount, lastReminderAt, lastConfirmationAt, lastConfirmedCompleted)
-         VALUES (?, ?, ?, ?, ?)`
+         (deadlineId, userId, reminderCount, lastReminderAt, lastConfirmationAt, lastConfirmedCompleted)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(reminder.deadlineId, reminder.reminderCount, reminder.lastReminderAt, reminder.lastConfirmationAt, completed ? 1 : 0);
+      .run(reminder.deadlineId, userId, reminder.reminderCount, reminder.lastReminderAt, reminder.lastConfirmationAt, completed ? 1 : 0);
 
     return {
       deadline,
@@ -5822,8 +5920,8 @@ export class RuntimeStore {
     };
   }
 
-  getDeadlineReminderState(deadlineId: string): DeadlineReminderState | null {
-    const row = this.db.prepare("SELECT * FROM deadline_reminder_state WHERE deadlineId = ?").get(deadlineId) as
+  getDeadlineReminderState(userId: string, deadlineId: string): DeadlineReminderState | null {
+    const row = this.db.prepare("SELECT * FROM deadline_reminder_state WHERE deadlineId = ? AND userId = ?").get(deadlineId, userId) as
       | {
           deadlineId: string;
           reminderCount: number;
@@ -5846,12 +5944,12 @@ export class RuntimeStore {
     };
   }
 
-  addPushSubscription(subscription: PushSubscriptionRecord): PushSubscriptionRecord {
+  addPushSubscription(userId: string, subscription: PushSubscriptionRecord): PushSubscriptionRecord {
     this.db
       .prepare(
-        `INSERT OR REPLACE INTO push_subscriptions (endpoint, expirationTime, p256dh, auth) VALUES (?, ?, ?, ?)`
+        `INSERT OR REPLACE INTO push_subscriptions (userId, endpoint, expirationTime, p256dh, auth) VALUES (?, ?, ?, ?, ?)`
       )
-      .run(subscription.endpoint, subscription.expirationTime, subscription.keys.p256dh, subscription.keys.auth);
+      .run(userId, subscription.endpoint, subscription.expirationTime, subscription.keys.p256dh, subscription.keys.auth);
 
     // Trim to maxPushSubscriptions
     const count = (this.db.prepare("SELECT COUNT(*) as count FROM push_subscriptions").get() as { count: number }).count;
@@ -5868,8 +5966,8 @@ export class RuntimeStore {
     return subscription;
   }
 
-  getPushSubscriptions(): PushSubscriptionRecord[] {
-    const rows = this.db.prepare("SELECT * FROM push_subscriptions").all() as Array<{
+  getPushSubscriptions(userId: string): PushSubscriptionRecord[] {
+    const rows = this.db.prepare("SELECT * FROM push_subscriptions WHERE userId = ?").all(userId) as Array<{
       endpoint: string;
       expirationTime: number | null;
       p256dh: string;
@@ -5886,8 +5984,8 @@ export class RuntimeStore {
     }));
   }
 
-  removePushSubscription(endpoint: string): boolean {
-    const result = this.db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").run(endpoint);
+  removePushSubscription(userId: string, endpoint: string): boolean {
+    const result = this.db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ? AND userId = ?").run(endpoint, userId);
     return result.changes > 0;
   }
 
@@ -6011,7 +6109,7 @@ export class RuntimeStore {
     };
   }
 
-  recordEmailDigest(entry: Omit<EmailDigest, "id" | "generatedAt"> & { generatedAt?: string }): EmailDigest {
+  recordEmailDigest(userId: string, entry: Omit<EmailDigest, "id" | "generatedAt"> & { generatedAt?: string }): EmailDigest {
     const digest: EmailDigest = {
       ...entry,
       id: makeId("email-digest"),
@@ -6020,10 +6118,11 @@ export class RuntimeStore {
 
     this.db
       .prepare(
-        `INSERT INTO email_digests (id, type, reason, recipient, subject, body, timeframeStart, timeframeEnd, generatedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO email_digests (userId, id, type, reason, recipient, subject, body, timeframeStart, timeframeEnd, generatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
+        userId,
         digest.id,
         digest.type,
         digest.reason,
@@ -6035,24 +6134,24 @@ export class RuntimeStore {
         digest.generatedAt
       );
 
-    const count = (this.db.prepare("SELECT COUNT(*) as count FROM email_digests").get() as { count: number }).count;
+    const count = (this.db.prepare("SELECT COUNT(*) as count FROM email_digests WHERE userId = ?").get(userId) as { count: number }).count;
     if (count > this.maxEmailDigests) {
       this.db
         .prepare(
-          `DELETE FROM email_digests WHERE id IN (
-            SELECT id FROM email_digests ORDER BY insertOrder ASC LIMIT ?
+          `DELETE FROM email_digests WHERE userId = ? AND id IN (
+            SELECT id FROM email_digests WHERE userId = ? ORDER BY insertOrder ASC LIMIT ?
           )`
         )
-        .run(count - this.maxEmailDigests);
+        .run(userId, userId, count - this.maxEmailDigests);
     }
 
     return digest;
   }
 
-  getEmailDigests(limit: number = this.maxEmailDigests): EmailDigest[] {
+  getEmailDigests(userId: string, limit: number = this.maxEmailDigests): EmailDigest[] {
     const rows = this.db
-      .prepare("SELECT * FROM email_digests ORDER BY insertOrder DESC LIMIT ?")
-      .all(limit) as Array<{
+      .prepare("SELECT * FROM email_digests WHERE userId = ? ORDER BY insertOrder DESC LIMIT ?")
+      .all(userId, limit) as Array<{
       id: string;
       type: EmailDigest["type"];
       reason: EmailDigestReason;
@@ -6077,11 +6176,11 @@ export class RuntimeStore {
     }));
   }
 
-  getLastEmailDigest(type?: EmailDigest["type"]): EmailDigest | null {
+  getLastEmailDigest(userId: string, type?: EmailDigest["type"]): EmailDigest | null {
     const query = type
-      ? "SELECT * FROM email_digests WHERE type = ? ORDER BY insertOrder DESC LIMIT 1"
-      : "SELECT * FROM email_digests ORDER BY insertOrder DESC LIMIT 1";
-    const row = type ? this.db.prepare(query).get(type) : this.db.prepare(query).get();
+      ? "SELECT * FROM email_digests WHERE userId = ? AND type = ? ORDER BY insertOrder DESC LIMIT 1"
+      : "SELECT * FROM email_digests WHERE userId = ? ORDER BY insertOrder DESC LIMIT 1";
+    const row = type ? this.db.prepare(query).get(userId, type) : this.db.prepare(query).get(userId);
 
     if (!row) {
       return null;
@@ -6119,8 +6218,8 @@ export class RuntimeStore {
     };
   }
 
-  getSnapshot(): DashboardSnapshot {
-    const deadlines = this.getAcademicDeadlines();
+  getSnapshot(userId: string): DashboardSnapshot {
+    const deadlines = this.getAcademicDeadlines(userId);
     const trackedPendingDeadlines = deadlines.filter((deadline) => !deadline.completed).length;
 
     const events = this.db.prepare("SELECT * FROM agent_events ORDER BY insertOrder DESC").all() as Array<{
@@ -6150,7 +6249,7 @@ export class RuntimeStore {
     return {
       generatedAt: nowIso(),
       summary: {
-        todayFocus: this.computeFocus(),
+        todayFocus: this.computeFocus(userId),
         pendingDeadlines,
         activeAgents,
         growthStreak: 0
@@ -6175,22 +6274,22 @@ export class RuntimeStore {
     };
   }
 
-  getExportData(): ExportData {
+  getExportData(userId: string): ExportData {
     return {
       exportedAt: nowIso(),
       version: "1.0",
-      journals: this.getJournalEntries(),
-      tags: this.getTags(),
-      schedule: this.getScheduleEvents(),
-      deadlines: this.getDeadlines(),
-      habits: this.getHabitsWithStatus(),
-      goals: this.getGoalsWithStatus(),
-      userContext: this.getUserContext(),
-      notificationPreferences: this.getNotificationPreferences()
+      journals: this.getJournalEntries(userId),
+      tags: this.getTags(userId),
+      schedule: this.getScheduleEvents(userId),
+      deadlines: this.getDeadlines(userId),
+      habits: this.getHabitsWithStatus(userId),
+      goals: this.getGoalsWithStatus(userId),
+      userContext: this.getUserContext(userId),
+      notificationPreferences: this.getNotificationPreferences(userId)
     };
   }
 
-  importData(data: ImportData): ImportResult {
+  importData(userId: string, data: ImportData): ImportResult {
     const result: ImportResult = {
       imported: {
         journals: 0,
@@ -6221,7 +6320,7 @@ export class RuntimeStore {
         photos: journal.photos
       }));
 
-      const syncResult = this.syncJournalEntries(syncPayloads);
+      const syncResult = this.syncJournalEntries(userId, syncPayloads);
       result.imported.journals = syncResult.applied.length;
       result.conflicts.journals = syncResult.conflicts;
     }
@@ -6231,18 +6330,18 @@ export class RuntimeStore {
       for (const event of data.schedule) {
         try {
           // Check if event already exists
-          const existing = this.db.prepare("SELECT id FROM schedule_events WHERE id = ?").get(event.id);
+          const existing = this.db.prepare("SELECT id FROM schedule_events WHERE id = ? AND userId = ?").get(event.id, userId);
 
           if (existing) {
             // Update existing event
             this.db
-              .prepare("UPDATE schedule_events SET title = ?, startTime = ?, durationMinutes = ?, workload = ? WHERE id = ?")
-              .run(event.title, event.startTime, event.durationMinutes, event.workload, event.id);
+              .prepare("UPDATE schedule_events SET title = ?, startTime = ?, durationMinutes = ?, workload = ? WHERE id = ? AND userId = ?")
+              .run(event.title, event.startTime, event.durationMinutes, event.workload, event.id, userId);
           } else {
             // Insert new event
             this.db
-              .prepare("INSERT INTO schedule_events (id, title, startTime, durationMinutes, workload) VALUES (?, ?, ?, ?, ?)")
-              .run(event.id, event.title, event.startTime, event.durationMinutes, event.workload);
+              .prepare("INSERT INTO schedule_events (id, userId, title, startTime, durationMinutes, workload) VALUES (?, ?, ?, ?, ?, ?)")
+              .run(event.id, userId, event.title, event.startTime, event.durationMinutes, event.workload);
           }
 
           result.imported.schedule += 1;
@@ -6252,15 +6351,15 @@ export class RuntimeStore {
       }
 
       // Trim to maxScheduleEvents
-      const count = (this.db.prepare("SELECT COUNT(*) as count FROM schedule_events").get() as { count: number }).count;
+      const count = (this.db.prepare("SELECT COUNT(*) as count FROM schedule_events WHERE userId = ?").get(userId) as { count: number }).count;
       if (count > this.maxScheduleEvents) {
         this.db
           .prepare(
             `DELETE FROM schedule_events WHERE id IN (
-              SELECT id FROM schedule_events ORDER BY insertOrder ASC LIMIT ?
+              SELECT id FROM schedule_events WHERE userId = ? ORDER BY insertOrder ASC LIMIT ?
             )`
           )
-          .run(count - this.maxScheduleEvents);
+          .run(userId, count - this.maxScheduleEvents);
       }
     }
 
@@ -6269,7 +6368,7 @@ export class RuntimeStore {
       for (const deadline of data.deadlines) {
         try {
           const normalizedDeadline = this.normalizeDeadlineEffort(deadline);
-          const existing = this.db.prepare("SELECT id FROM deadlines WHERE id = ?").get(deadline.id);
+          const existing = this.db.prepare("SELECT id FROM deadlines WHERE id = ? AND userId = ?").get(deadline.id, userId);
 
           if (existing) {
             // Update existing deadline
@@ -6278,7 +6377,7 @@ export class RuntimeStore {
                 `UPDATE deadlines SET
                   course = ?, task = ?, dueDate = ?, sourceDueDate = ?, priority = ?, completed = ?,
                   canvasAssignmentId = ?, effortHoursRemaining = ?, effortConfidence = ?
-                 WHERE id = ?`
+                 WHERE id = ? AND userId = ?`
               )
               .run(
                 normalizedDeadline.course,
@@ -6290,18 +6389,20 @@ export class RuntimeStore {
                 normalizedDeadline.canvasAssignmentId ?? null,
                 normalizedDeadline.effortHoursRemaining ?? null,
                 normalizedDeadline.effortConfidence ?? null,
-                normalizedDeadline.id
+                normalizedDeadline.id,
+                userId
               );
           } else {
             // Insert new deadline
             this.db
               .prepare(
                 `INSERT INTO deadlines (
-                  id, course, task, dueDate, sourceDueDate, priority, completed, canvasAssignmentId, effortHoursRemaining, effortConfidence
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                  id, userId, course, task, dueDate, sourceDueDate, priority, completed, canvasAssignmentId, effortHoursRemaining, effortConfidence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
               )
               .run(
                 normalizedDeadline.id,
+                userId,
                 normalizedDeadline.course,
                 normalizedDeadline.task,
                 normalizedDeadline.dueDate,
@@ -6321,15 +6422,15 @@ export class RuntimeStore {
       }
 
       // Trim to maxDeadlines
-      const count = (this.db.prepare("SELECT COUNT(*) as count FROM deadlines").get() as { count: number }).count;
+      const count = (this.db.prepare("SELECT COUNT(*) as count FROM deadlines WHERE userId = ?").get(userId) as { count: number }).count;
       if (count > this.maxDeadlines) {
         this.db
           .prepare(
             `DELETE FROM deadlines WHERE id IN (
-              SELECT id FROM deadlines ORDER BY insertOrder ASC LIMIT ?
+              SELECT id FROM deadlines WHERE userId = ? ORDER BY insertOrder ASC LIMIT ?
             )`
           )
-          .run(count - this.maxDeadlines);
+          .run(userId, count - this.maxDeadlines);
       }
     }
 
@@ -6337,18 +6438,18 @@ export class RuntimeStore {
     if (data.habits && data.habits.length > 0) {
       for (const habit of data.habits) {
         try {
-          const existing = this.db.prepare("SELECT id FROM habits WHERE id = ?").get(habit.id);
+          const existing = this.db.prepare("SELECT id FROM habits WHERE id = ? AND userId = ?").get(habit.id, userId);
 
           if (existing) {
             // Update existing habit
             this.db
-              .prepare("UPDATE habits SET name = ?, cadence = ?, targetPerWeek = ?, motivation = ?, createdAt = ? WHERE id = ?")
-              .run(habit.name, habit.cadence, habit.targetPerWeek, habit.motivation ?? null, habit.createdAt, habit.id);
+              .prepare("UPDATE habits SET name = ?, cadence = ?, targetPerWeek = ?, motivation = ?, createdAt = ? WHERE id = ? AND userId = ?")
+              .run(habit.name, habit.cadence, habit.targetPerWeek, habit.motivation ?? null, habit.createdAt, habit.id, userId);
           } else {
             // Insert new habit
             this.db
-              .prepare("INSERT INTO habits (id, name, cadence, targetPerWeek, motivation, createdAt) VALUES (?, ?, ?, ?, ?, ?)")
-              .run(habit.id, habit.name, habit.cadence, habit.targetPerWeek, habit.motivation ?? null, habit.createdAt);
+              .prepare("INSERT INTO habits (id, userId, name, cadence, targetPerWeek, motivation, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)")
+              .run(habit.id, userId, habit.name, habit.cadence, habit.targetPerWeek, habit.motivation ?? null, habit.createdAt);
           }
 
           result.imported.habits += 1;
@@ -6358,15 +6459,15 @@ export class RuntimeStore {
       }
 
       // Trim to maxHabits
-      const count = (this.db.prepare("SELECT COUNT(*) as count FROM habits").get() as { count: number }).count;
+      const count = (this.db.prepare("SELECT COUNT(*) as count FROM habits WHERE userId = ?").get(userId) as { count: number }).count;
       if (count > this.maxHabits) {
         this.db
           .prepare(
             `DELETE FROM habits WHERE id IN (
-              SELECT id FROM habits ORDER BY insertOrder ASC LIMIT ?
+              SELECT id FROM habits WHERE userId = ? ORDER BY insertOrder ASC LIMIT ?
             )`
           )
-          .run(count - this.maxHabits);
+          .run(userId, count - this.maxHabits);
       }
     }
 
@@ -6374,18 +6475,18 @@ export class RuntimeStore {
     if (data.goals && data.goals.length > 0) {
       for (const goal of data.goals) {
         try {
-          const existing = this.db.prepare("SELECT id FROM goals WHERE id = ?").get(goal.id);
+          const existing = this.db.prepare("SELECT id FROM goals WHERE id = ? AND userId = ?").get(goal.id, userId);
 
           if (existing) {
             // Update existing goal
             this.db
-              .prepare("UPDATE goals SET title = ?, cadence = ?, targetCount = ?, dueDate = ?, motivation = ?, createdAt = ? WHERE id = ?")
-              .run(goal.title, goal.cadence, goal.targetCount, goal.dueDate, goal.motivation ?? null, goal.createdAt, goal.id);
+              .prepare("UPDATE goals SET title = ?, cadence = ?, targetCount = ?, dueDate = ?, motivation = ?, createdAt = ? WHERE id = ? AND userId = ?")
+              .run(goal.title, goal.cadence, goal.targetCount, goal.dueDate, goal.motivation ?? null, goal.createdAt, goal.id, userId);
           } else {
             // Insert new goal
             this.db
-              .prepare("INSERT INTO goals (id, title, cadence, targetCount, dueDate, motivation, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)")
-              .run(goal.id, goal.title, goal.cadence, goal.targetCount, goal.dueDate, goal.motivation ?? null, goal.createdAt);
+              .prepare("INSERT INTO goals (id, userId, title, cadence, targetCount, dueDate, motivation, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+              .run(goal.id, userId, goal.title, goal.cadence, goal.targetCount, goal.dueDate, goal.motivation ?? null, goal.createdAt);
           }
 
           result.imported.goals += 1;
@@ -6395,26 +6496,26 @@ export class RuntimeStore {
       }
 
       // Trim to maxGoals
-      const count = (this.db.prepare("SELECT COUNT(*) as count FROM goals").get() as { count: number }).count;
+      const count = (this.db.prepare("SELECT COUNT(*) as count FROM goals WHERE userId = ?").get(userId) as { count: number }).count;
       if (count > this.maxGoals) {
         this.db
           .prepare(
             `DELETE FROM goals WHERE id IN (
-              SELECT id FROM goals ORDER BY insertOrder ASC LIMIT ?
+              SELECT id FROM goals WHERE userId = ? ORDER BY insertOrder ASC LIMIT ?
             )`
           )
-          .run(count - this.maxGoals);
+          .run(userId, count - this.maxGoals);
       }
     }
 
     // Import user context (merge with existing)
     if (data.userContext) {
-      this.setUserContext(data.userContext);
+      this.setUserContext(userId, data.userContext);
     }
 
     // Import notification preferences (merge with existing)
     if (data.notificationPreferences) {
-      this.setNotificationPreferences(data.notificationPreferences);
+      this.setNotificationPreferences(userId, data.notificationPreferences);
     }
 
     return result;
@@ -6450,8 +6551,8 @@ export class RuntimeStore {
     }));
   }
 
-  private computeFocus(): string {
-    const context = this.getUserContext();
+  private computeFocus(userId: string): string {
+    const context = this.getUserContext(userId);
 
     if (context.mode === "focus") {
       return "Deep work + assignment completion";
@@ -6506,7 +6607,7 @@ export class RuntimeStore {
     }
   }
 
-  private isInQuietHours(timestamp: string): boolean {
+  private isInQuietHours(userId: string, timestamp: string): boolean {
     const date = new Date(timestamp);
 
     if (Number.isNaN(date.getTime())) {
@@ -6514,7 +6615,7 @@ export class RuntimeStore {
     }
 
     const hour = date.getHours();
-    const prefs = this.getNotificationPreferences();
+    const prefs = this.getNotificationPreferences(userId);
     const { startHour, endHour } = prefs.quietHours;
 
     if (startHour === endHour) {
@@ -6532,6 +6633,7 @@ export class RuntimeStore {
    * Schedule a notification for future delivery at optimal time
    */
   scheduleNotification(
+    userId: string,
     notification: Omit<Notification, "id" | "timestamp">,
     scheduledFor: Date,
     eventId?: string,
@@ -6550,11 +6652,12 @@ export class RuntimeStore {
 
     this.db
       .prepare(
-        `INSERT INTO scheduled_notifications (id, source, title, message, priority, scheduledFor, createdAt, eventId, icon, recurrence, category)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO scheduled_notifications (id, userId, source, title, message, priority, scheduledFor, createdAt, eventId, icon, recurrence, category)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         scheduled.id,
+        userId,
         notification.source,
         notification.title,
         notification.message,
@@ -6573,10 +6676,10 @@ export class RuntimeStore {
   /**
    * Get all scheduled notifications that are due for delivery
    */
-  getDueScheduledNotifications(currentTime: Date = new Date()): ScheduledNotification[] {
+  getDueScheduledNotifications(userId: string, currentTime: Date = new Date()): ScheduledNotification[] {
     const rows = this.db
-      .prepare("SELECT * FROM scheduled_notifications WHERE scheduledFor <= ? ORDER BY scheduledFor ASC")
-      .all(currentTime.toISOString()) as Array<ScheduledNotificationRow>;
+      .prepare("SELECT * FROM scheduled_notifications WHERE userId = ? AND scheduledFor <= ? ORDER BY scheduledFor ASC")
+      .all(userId, currentTime.toISOString()) as Array<ScheduledNotificationRow>;
 
     return rows.map(mapScheduledNotificationRow);
   }
@@ -6584,16 +6687,16 @@ export class RuntimeStore {
   /**
    * Get all upcoming (not yet due) scheduled notifications, ordered by scheduledFor
    */
-  getUpcomingScheduledNotifications(category?: string): ScheduledNotification[] {
+  getUpcomingScheduledNotifications(userId: string, category?: string): ScheduledNotification[] {
     if (category) {
       const rows = this.db
-        .prepare("SELECT * FROM scheduled_notifications WHERE category = ? ORDER BY scheduledFor ASC")
-        .all(category) as Array<ScheduledNotificationRow>;
+        .prepare("SELECT * FROM scheduled_notifications WHERE userId = ? AND category = ? ORDER BY scheduledFor ASC")
+        .all(userId, category) as Array<ScheduledNotificationRow>;
       return rows.map(mapScheduledNotificationRow);
     }
     const rows = this.db
-      .prepare("SELECT * FROM scheduled_notifications ORDER BY scheduledFor ASC")
-      .all() as Array<ScheduledNotificationRow>;
+      .prepare("SELECT * FROM scheduled_notifications WHERE userId = ? ORDER BY scheduledFor ASC")
+      .all(userId) as Array<ScheduledNotificationRow>;
 
     return rows.map(mapScheduledNotificationRow);
   }
@@ -6601,19 +6704,19 @@ export class RuntimeStore {
   /**
    * Remove a scheduled notification (e.g., after delivery)
    */
-  removeScheduledNotification(id: string): boolean {
-    const result = this.db.prepare("DELETE FROM scheduled_notifications WHERE id = ?").run(id);
+  removeScheduledNotification(userId: string, id: string): boolean {
+    const result = this.db.prepare("DELETE FROM scheduled_notifications WHERE id = ? AND userId = ?").run(id, userId);
     return result.changes > 0;
   }
 
   /**
    * Snooze a notification by rescheduling it for later
    */
-  snoozeNotification(notificationId: string, snoozeMinutes: number = 30): ScheduledNotification | null {
+  snoozeNotification(userId: string, notificationId: string, snoozeMinutes: number = 30): ScheduledNotification | null {
     // Find the original notification
     const notification = this.db
-      .prepare("SELECT * FROM notifications WHERE id = ?")
-      .get(notificationId) as {
+      .prepare("SELECT * FROM notifications WHERE id = ? AND userId = ?")
+      .get(notificationId, userId) as {
         id: string;
         source: string;
         title: string;
@@ -6629,6 +6732,7 @@ export class RuntimeStore {
     // Schedule it for later
     const scheduledFor = new Date(Date.now() + snoozeMinutes * 60 * 1000);
     return this.scheduleNotification(
+      userId,
       {
         source: notification.source as AgentName,
         title: notification.title,
@@ -6642,8 +6746,8 @@ export class RuntimeStore {
   /**
    * Get all deadline reminder states (for historical pattern analysis)
    */
-  getAllDeadlineReminderStates(): DeadlineReminderState[] {
-    const rows = this.db.prepare("SELECT * FROM deadline_reminder_state").all() as Array<{
+  getAllDeadlineReminderStates(userId: string): DeadlineReminderState[] {
+    const rows = this.db.prepare("SELECT * FROM deadline_reminder_state WHERE userId = ?").all(userId) as Array<{
       deadlineId: string;
       reminderCount: number;
       lastReminderAt: string | null;
@@ -6838,6 +6942,7 @@ export class RuntimeStore {
    * Record a notification interaction (tap, dismiss, or action)
    */
   recordNotificationInteraction(
+    userId: string,
     notificationId: string,
     notificationTitle: string,
     notificationSource: AgentName,
@@ -6861,12 +6966,13 @@ export class RuntimeStore {
     this.db
       .prepare(
         `INSERT INTO notification_interactions 
-         (id, notificationId, notificationTitle, notificationSource, notificationPriority, 
+         (id, userId, notificationId, notificationTitle, notificationSource, notificationPriority, 
           interactionType, timestamp, actionType, timeToInteractionMs)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         interaction.id,
+        userId,
         interaction.notificationId,
         interaction.notificationTitle,
         interaction.notificationSource,
@@ -6899,15 +7005,15 @@ export class RuntimeStore {
   /**
    * Get notification interactions, optionally filtered by time range
    */
-  getNotificationInteractions(options?: {
+  getNotificationInteractions(userId: string, options?: {
     since?: string;
     until?: string;
     interactionType?: NotificationInteractionType;
     source?: AgentName;
     limit?: number;
   }): NotificationInteraction[] {
-    let query = "SELECT * FROM notification_interactions WHERE 1=1";
-    const params: unknown[] = [];
+    let query = "SELECT * FROM notification_interactions WHERE userId = ?";
+    const params: unknown[] = [userId];
 
     if (options?.since) {
       query += " AND timestamp >= ?";
@@ -6964,8 +7070,8 @@ export class RuntimeStore {
   /**
    * Get aggregated metrics about notification interactions
    */
-  getNotificationInteractionMetrics(options?: { since?: string; until?: string }): NotificationInteractionMetrics {
-    const interactions = this.getNotificationInteractions({
+  getNotificationInteractionMetrics(userId: string, options?: { since?: string; until?: string }): NotificationInteractionMetrics {
+    const interactions = this.getNotificationInteractions(userId, {
       since: options?.since,
       until: options?.until
     });
@@ -7009,7 +7115,7 @@ export class RuntimeStore {
     };
   }
 
-  recordLocation(latitude: number, longitude: number, accuracy?: number, label?: string): Location {
+  recordLocation(userId: string, latitude: number, longitude: number, accuracy?: number, label?: string): Location {
     const location: Location = {
       id: makeId("location"),
       latitude,
@@ -7021,23 +7127,24 @@ export class RuntimeStore {
 
     this.db
       .prepare(
-        "INSERT INTO locations (id, latitude, longitude, accuracy, timestamp, label) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO locations (id, userId, latitude, longitude, accuracy, timestamp, label) VALUES (?, ?, ?, ?, ?, ?, ?)"
       )
-      .run(location.id, latitude, longitude, accuracy ?? null, location.timestamp, label ?? null);
+      .run(location.id, userId, latitude, longitude, accuracy ?? null, location.timestamp, label ?? null);
 
     this.trimLocationsIfNeeded();
     return location;
   }
 
-  getLocations(limit?: number): Location[] {
+  getLocations(userId: string, limit?: number): Location[] {
     const query = this.db.prepare(
       `SELECT id, latitude, longitude, accuracy, timestamp, label
        FROM locations
+       WHERE userId = ?
        ORDER BY insertOrder DESC
        LIMIT ?`
     );
 
-    return (query.all(limit ?? this.maxLocations) as Array<{
+    return (query.all(userId, limit ?? this.maxLocations) as Array<{
       id: string;
       latitude: number;
       longitude: number;
@@ -7054,10 +7161,10 @@ export class RuntimeStore {
     }));
   }
 
-  getLocationById(id: string): Location | null {
+  getLocationById(userId: string, id: string): Location | null {
     const row = this.db
-      .prepare("SELECT id, latitude, longitude, accuracy, timestamp, label FROM locations WHERE id = ?")
-      .get(id) as { id: string; latitude: number; longitude: number; accuracy: number | null; timestamp: string; label: string | null } | undefined;
+      .prepare("SELECT id, latitude, longitude, accuracy, timestamp, label FROM locations WHERE id = ? AND userId = ?")
+      .get(id, userId) as { id: string; latitude: number; longitude: number; accuracy: number | null; timestamp: string; label: string | null } | undefined;
 
     if (!row) {
       return null;
@@ -7073,8 +7180,8 @@ export class RuntimeStore {
     };
   }
 
-  updateLocation(id: string, data: Partial<Omit<Location, "id" | "timestamp">>): Location | null {
-    const existing = this.getLocationById(id);
+  updateLocation(userId: string, id: string, data: Partial<Omit<Location, "id" | "timestamp">>): Location | null {
+    const existing = this.getLocationById(userId, id);
     if (!existing) {
       return null;
     }
@@ -7101,24 +7208,27 @@ export class RuntimeStore {
 
     if (updates.length > 0) {
       values.push(id);
-      this.db.prepare(`UPDATE locations SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+      values.push(userId);
+      this.db.prepare(`UPDATE locations SET ${updates.join(", ")} WHERE id = ? AND userId = ?`).run(...values);
     }
 
-    return this.getLocationById(id);
+    return this.getLocationById(userId, id);
   }
 
-  deleteLocation(id: string): boolean {
-    const result = this.db.prepare("DELETE FROM locations WHERE id = ?").run(id);
+  deleteLocation(userId: string, id: string): boolean {
+    this.db.prepare("DELETE FROM location_history WHERE locationId = ? AND userId = ?").run(id, userId);
+    const result = this.db.prepare("DELETE FROM locations WHERE id = ? AND userId = ?").run(id, userId);
     return result.changes > 0;
   }
 
   recordLocationHistory(
+    userId: string,
     locationId: string,
     stressLevel?: "low" | "medium" | "high",
     energyLevel?: "low" | "medium" | "high",
     context?: string
   ): LocationHistory | null {
-    const location = this.getLocationById(locationId);
+    const location = this.getLocationById(userId, locationId);
     if (!location) {
       return null;
     }
@@ -7134,10 +7244,11 @@ export class RuntimeStore {
 
     this.db
       .prepare(
-        "INSERT INTO location_history (id, locationId, timestamp, stressLevel, energyLevel, context) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO location_history (id, userId, locationId, timestamp, stressLevel, energyLevel, context) VALUES (?, ?, ?, ?, ?, ?, ?)"
       )
       .run(
         history.id,
+        userId,
         locationId,
         history.timestamp,
         stressLevel ?? null,
@@ -7149,7 +7260,7 @@ export class RuntimeStore {
     return history;
   }
 
-  getLocationHistory(locationId?: string, limit?: number): LocationHistory[] {
+  getLocationHistory(userId: string, locationId?: string, limit?: number): LocationHistory[] {
     let query: Database.Statement;
     let params: Array<string | number>;
 
@@ -7157,19 +7268,20 @@ export class RuntimeStore {
       query = this.db.prepare(
         `SELECT id, locationId, timestamp, stressLevel, energyLevel, context
          FROM location_history
-         WHERE locationId = ?
+         WHERE userId = ? AND locationId = ?
          ORDER BY insertOrder DESC
          LIMIT ?`
       );
-      params = [locationId, limit ?? this.maxLocationHistory];
+      params = [userId, locationId, limit ?? this.maxLocationHistory];
     } else {
       query = this.db.prepare(
         `SELECT id, locationId, timestamp, stressLevel, energyLevel, context
          FROM location_history
+         WHERE userId = ?
          ORDER BY insertOrder DESC
          LIMIT ?`
       );
-      params = [limit ?? this.maxLocationHistory];
+      params = [userId, limit ?? this.maxLocationHistory];
     }
 
     return (query.all(...params) as Array<{
@@ -7189,8 +7301,8 @@ export class RuntimeStore {
     }));
   }
 
-  getCurrentLocation(): Location | null {
-    const locations = this.getLocations(1);
+  getCurrentLocation(userId: string): Location | null {
+    const locations = this.getLocations(userId, 1);
     return locations.length > 0 ? locations[0] : null;
   }
 
@@ -7579,14 +7691,15 @@ export class RuntimeStore {
   /**
    * Set Canvas data
    */
-  setCanvasData(data: import("./types.js").CanvasData): void {
+  setCanvasData(userId: string, data: import("./types.js").CanvasData): void {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO canvas_data (
-        id, courses, assignments, modules, announcements, lastSyncedAt
-      ) VALUES (1, ?, ?, ?, ?, ?)
+        userId, courses, assignments, modules, announcements, lastSyncedAt
+      ) VALUES (?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
+      userId,
       JSON.stringify(data.courses),
       JSON.stringify(data.assignments),
       JSON.stringify(data.modules),
@@ -7598,13 +7711,13 @@ export class RuntimeStore {
   /**
    * Get Canvas data
    */
-  getCanvasData(): import("./types.js").CanvasData | null {
+  getCanvasData(userId: string): import("./types.js").CanvasData | null {
     const stmt = this.db.prepare(`
       SELECT courses, assignments, modules, announcements, lastSyncedAt
-      FROM canvas_data WHERE id = 1
+      FROM canvas_data WHERE userId = ?
     `);
 
-    const row = stmt.get() as {
+    const row = stmt.get(userId) as {
       courses: string;
       assignments: string;
       modules: string;
@@ -7628,14 +7741,15 @@ export class RuntimeStore {
   /**
    * Set GitHub course data
    */
-  setGitHubCourseData(data: import("./types.js").GitHubCourseData): void {
+  setGitHubCourseData(userId: string, data: import("./types.js").GitHubCourseData): void {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO github_course_data (
-        id, repositories, documents, deadlinesSynced, lastSyncedAt, blobIndex
-      ) VALUES (1, ?, ?, ?, ?, ?)
+        userId, repositories, documents, deadlinesSynced, lastSyncedAt, blobIndex
+      ) VALUES (?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
+      userId,
       JSON.stringify(data.repositories),
       JSON.stringify(data.documents),
       data.deadlinesSynced,
@@ -7647,13 +7761,13 @@ export class RuntimeStore {
   /**
    * Get GitHub course data
    */
-  getGitHubCourseData(): import("./types.js").GitHubCourseData | null {
+  getGitHubCourseData(userId: string): import("./types.js").GitHubCourseData | null {
     const stmt = this.db.prepare(`
       SELECT repositories, documents, deadlinesSynced, lastSyncedAt, blobIndex
-      FROM github_course_data WHERE id = 1
+      FROM github_course_data WHERE userId = ?
     `);
 
-    const row = stmt.get() as {
+    const row = stmt.get(userId) as {
       repositories: string;
       documents: string;
       deadlinesSynced: number;
@@ -7677,10 +7791,10 @@ export class RuntimeStore {
   // ── GitHub Tracked Repos (user-configured) ─────────────────────
 
   /** Get all user-configured tracked repos */
-  getGitHubTrackedRepos(): import("./types.js").GitHubTrackedRepo[] {
+  getGitHubTrackedRepos(userId: string): import("./types.js").GitHubTrackedRepo[] {
     const rows = this.db.prepare(
-      "SELECT owner, repo, courseCode, label, addedAt FROM github_tracked_repos ORDER BY addedAt ASC"
-    ).all() as Array<{ owner: string; repo: string; courseCode: string | null; label: string | null; addedAt: string }>;
+      "SELECT owner, repo, courseCode, label, addedAt FROM github_tracked_repos WHERE userId = ? ORDER BY addedAt ASC"
+    ).all(userId) as Array<{ owner: string; repo: string; courseCode: string | null; label: string | null; addedAt: string }>;
     return rows.map((r) => ({
       owner: r.owner,
       repo: r.repo,
@@ -7691,31 +7805,31 @@ export class RuntimeStore {
   }
 
   /** Add a tracked repo. Returns true if inserted, false if already exists. */
-  addGitHubTrackedRepo(repo: { owner: string; repo: string; courseCode?: string; label?: string }): boolean {
+  addGitHubTrackedRepo(userId: string, repo: { owner: string; repo: string; courseCode?: string; label?: string }): boolean {
     const result = this.db.prepare(
-      "INSERT OR IGNORE INTO github_tracked_repos (owner, repo, courseCode, label, addedAt) VALUES (?, ?, ?, ?, ?)"
-    ).run(repo.owner, repo.repo, repo.courseCode ?? null, repo.label ?? null, new Date().toISOString());
+      "INSERT OR IGNORE INTO github_tracked_repos (userId, owner, repo, courseCode, label, addedAt) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(userId, repo.owner, repo.repo, repo.courseCode ?? null, repo.label ?? null, new Date().toISOString());
     return result.changes > 0;
   }
 
   /** Remove a tracked repo. Returns true if deleted. */
-  removeGitHubTrackedRepo(owner: string, repo: string): boolean {
+  removeGitHubTrackedRepo(userId: string, owner: string, repo: string): boolean {
     const result = this.db.prepare(
-      "DELETE FROM github_tracked_repos WHERE owner = ? AND repo = ?"
-    ).run(owner, repo);
+      "DELETE FROM github_tracked_repos WHERE owner = ? AND repo = ? AND userId = ?"
+    ).run(owner, repo, userId);
     return result.changes > 0;
   }
 
   /** Update a tracked repo's course code or label */
-  updateGitHubTrackedRepo(owner: string, repo: string, patch: { courseCode?: string; label?: string }): boolean {
+  updateGitHubTrackedRepo(userId: string, owner: string, repo: string, patch: { courseCode?: string; label?: string }): boolean {
     const fields: string[] = [];
     const values: unknown[] = [];
     if (patch.courseCode !== undefined) { fields.push("courseCode = ?"); values.push(patch.courseCode); }
     if (patch.label !== undefined) { fields.push("label = ?"); values.push(patch.label); }
     if (fields.length === 0) return false;
-    values.push(owner, repo);
+    values.push(owner, repo, userId);
     const result = this.db.prepare(
-      `UPDATE github_tracked_repos SET ${fields.join(", ")} WHERE owner = ? AND repo = ?`
+      `UPDATE github_tracked_repos SET ${fields.join(", ")} WHERE owner = ? AND repo = ? AND userId = ?`
     ).run(...values);
     return result.changes > 0;
   }
@@ -7723,7 +7837,7 @@ export class RuntimeStore {
   /**
    * Set Gmail OAuth tokens
    */
-  setGmailTokens(data: {
+  setGmailTokens(userId: string, data: {
     refreshToken?: string;
     accessToken?: string;
     email: string;
@@ -7732,9 +7846,9 @@ export class RuntimeStore {
   }): void {
     const stmt = this.db.prepare(`
       INSERT INTO gmail_data (
-        id, refreshToken, accessToken, email, connectedAt, tokenSource
-      ) VALUES (1, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
+        userId, refreshToken, accessToken, email, connectedAt, tokenSource
+      ) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(userId) DO UPDATE SET
         refreshToken = excluded.refreshToken,
         accessToken = excluded.accessToken,
         email = excluded.email,
@@ -7743,6 +7857,7 @@ export class RuntimeStore {
     `);
 
     stmt.run(
+      userId,
       data.refreshToken ?? null,
       data.accessToken ?? null,
       data.email,
@@ -7754,7 +7869,7 @@ export class RuntimeStore {
   /**
    * Get Gmail OAuth tokens
    */
-  getGmailTokens(): {
+  getGmailTokens(userId: string): {
     refreshToken?: string;
     accessToken?: string;
     email: string;
@@ -7763,10 +7878,10 @@ export class RuntimeStore {
   } | null {
     const stmt = this.db.prepare(`
       SELECT refreshToken, accessToken, email, connectedAt, tokenSource
-      FROM gmail_data WHERE id = 1
+      FROM gmail_data WHERE userId = ?
     `);
 
-    const row = stmt.get() as {
+    const row = stmt.get(userId) as {
       refreshToken: string | null;
       accessToken: string | null;
       email: string | null;
@@ -7798,27 +7913,27 @@ export class RuntimeStore {
   /**
    * Set Gmail messages
    */
-  setGmailMessages(messages: GmailMessage[], lastSyncedAt: string): void {
+  setGmailMessages(userId: string, messages: GmailMessage[], lastSyncedAt: string): void {
     const stmt = this.db.prepare(`
-      INSERT INTO gmail_data (id, messages, lastSyncedAt)
-      VALUES (1, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
+      INSERT INTO gmail_data (userId, messages, lastSyncedAt)
+      VALUES (?, ?, ?)
+      ON CONFLICT(userId) DO UPDATE SET
         messages = excluded.messages,
         lastSyncedAt = excluded.lastSyncedAt
     `);
 
-    stmt.run(JSON.stringify(messages), lastSyncedAt);
+    stmt.run(userId, JSON.stringify(messages), lastSyncedAt);
   }
 
   /**
    * Get Gmail messages
    */
-  getGmailMessages(): GmailMessage[] {
+  getGmailMessages(userId: string): GmailMessage[] {
     const stmt = this.db.prepare(`
-      SELECT messages FROM gmail_data WHERE id = 1
+      SELECT messages FROM gmail_data WHERE userId = ?
     `);
 
-    const row = stmt.get() as { messages: string | null } | undefined;
+    const row = stmt.get(userId) as { messages: string | null } | undefined;
 
     if (!row || !row.messages) {
       return [];
@@ -7834,12 +7949,12 @@ export class RuntimeStore {
   /**
    * Get Gmail data (messages + sync info)
    */
-  getGmailData(): { messages: GmailMessage[]; lastSyncedAt: string | null } {
+  getGmailData(userId: string): { messages: GmailMessage[]; lastSyncedAt: string | null } {
     const stmt = this.db.prepare(`
-      SELECT messages, lastSyncedAt FROM gmail_data WHERE id = 1
+      SELECT messages, lastSyncedAt FROM gmail_data WHERE userId = ?
     `);
 
-    const row = stmt.get() as { messages: string | null; lastSyncedAt: string | null } | undefined;
+    const row = stmt.get(userId) as { messages: string | null; lastSyncedAt: string | null } | undefined;
 
     if (!row) {
       return { messages: [], lastSyncedAt: null };
@@ -7857,7 +7972,7 @@ export class RuntimeStore {
     return { messages, lastSyncedAt: row.lastSyncedAt };
   }
 
-  setWithingsTokens(data: {
+  setWithingsTokens(userId: string, data: {
     refreshToken?: string;
     accessToken?: string;
     tokenExpiresAt?: string;
@@ -7866,33 +7981,34 @@ export class RuntimeStore {
     connectedAt: string;
     source?: "oauth" | "env" | "unknown";
   }): void {
-    const existing = this.getWithingsTokens();
+    const existing = this.getWithingsTokens(userId);
     const stmt = this.db.prepare(`
       INSERT INTO withings_data (
-        id, refreshToken, accessToken, tokenExpiresAt, userId, scope, connectedAt, tokenSource
-      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
+        userId, withingsUserId, refreshToken, accessToken, tokenExpiresAt, scope, connectedAt, tokenSource
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(userId) DO UPDATE SET
+        withingsUserId = excluded.withingsUserId,
         refreshToken = excluded.refreshToken,
         accessToken = excluded.accessToken,
         tokenExpiresAt = excluded.tokenExpiresAt,
-        userId = excluded.userId,
         scope = excluded.scope,
         connectedAt = excluded.connectedAt,
         tokenSource = excluded.tokenSource
     `);
 
     stmt.run(
+      userId,
+      data.userId ?? existing?.userId ?? null,
       data.refreshToken ?? existing?.refreshToken ?? null,
       data.accessToken ?? existing?.accessToken ?? null,
       data.tokenExpiresAt ?? existing?.tokenExpiresAt ?? null,
-      data.userId ?? existing?.userId ?? null,
       data.scope ?? existing?.scope ?? null,
       data.connectedAt,
       data.source ?? existing?.source ?? "oauth"
     );
   }
 
-  getWithingsTokens(): {
+  getWithingsTokens(userId: string): {
     refreshToken?: string;
     accessToken?: string;
     tokenExpiresAt?: string;
@@ -7902,15 +8018,15 @@ export class RuntimeStore {
     source: "oauth" | "env" | "unknown";
   } | null {
     const stmt = this.db.prepare(`
-      SELECT refreshToken, accessToken, tokenExpiresAt, userId, scope, connectedAt, tokenSource
-      FROM withings_data WHERE id = 1
+      SELECT refreshToken, accessToken, tokenExpiresAt, withingsUserId, scope, connectedAt, tokenSource
+      FROM withings_data WHERE userId = ?
     `);
 
-    const row = stmt.get() as {
+    const row = stmt.get(userId) as {
       refreshToken: string | null;
       accessToken: string | null;
       tokenExpiresAt: string | null;
-      userId: string | null;
+      withingsUserId: string | null;
       scope: string | null;
       connectedAt: string | null;
       tokenSource: string | null;
@@ -7924,7 +8040,7 @@ export class RuntimeStore {
       ...(row.refreshToken ? { refreshToken: row.refreshToken } : {}),
       ...(row.accessToken ? { accessToken: row.accessToken } : {}),
       ...(row.tokenExpiresAt ? { tokenExpiresAt: row.tokenExpiresAt } : {}),
-      ...(row.userId ? { userId: row.userId } : {}),
+      ...(row.withingsUserId ? { userId: row.withingsUserId } : {}),
       ...(row.scope ? { scope: row.scope } : {}),
       connectedAt: row.connectedAt ?? new Date().toISOString(),
       source:
@@ -7934,26 +8050,26 @@ export class RuntimeStore {
     };
   }
 
-  setWithingsData(weight: WithingsWeightEntry[], sleepSummary: WithingsSleepSummaryEntry[], lastSyncedAt: string): void {
+  setWithingsData(userId: string, weight: WithingsWeightEntry[], sleepSummary: WithingsSleepSummaryEntry[], lastSyncedAt: string): void {
     const stmt = this.db.prepare(`
-      INSERT INTO withings_data (id, weightJson, sleepJson, lastSyncedAt)
-      VALUES (1, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
+      INSERT INTO withings_data (userId, weightJson, sleepJson, lastSyncedAt)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(userId) DO UPDATE SET
         weightJson = excluded.weightJson,
         sleepJson = excluded.sleepJson,
         lastSyncedAt = excluded.lastSyncedAt
     `);
 
-    stmt.run(JSON.stringify(weight), JSON.stringify(sleepSummary), lastSyncedAt);
+    stmt.run(userId, JSON.stringify(weight), JSON.stringify(sleepSummary), lastSyncedAt);
   }
 
-  getWithingsData(): WithingsData {
+  getWithingsData(userId: string): WithingsData {
     const stmt = this.db.prepare(`
       SELECT weightJson, sleepJson, lastSyncedAt
-      FROM withings_data WHERE id = 1
+      FROM withings_data WHERE userId = ?
     `);
 
-    const row = stmt.get() as {
+    const row = stmt.get(userId) as {
       weightJson: string | null;
       sleepJson: string | null;
       lastSyncedAt: string | null;

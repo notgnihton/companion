@@ -269,6 +269,7 @@ export interface WithingsSyncOptions {
 
 export class WithingsSyncService {
   private readonly store: RuntimeStore;
+  private readonly userId: string;
   private readonly oauth: WithingsOAuthService;
   private readonly client: WithingsDataClient;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
@@ -283,9 +284,10 @@ export class WithingsSyncService {
     circuitOpenMs: 30 * 60 * 1000
   });
 
-  constructor(store: RuntimeStore, oauth?: WithingsOAuthService, client?: WithingsDataClient) {
+  constructor(store: RuntimeStore, userId: string, oauth?: WithingsOAuthService, client?: WithingsDataClient) {
     this.store = store;
-    this.oauth = oauth ?? new WithingsOAuthService(store);
+    this.userId = userId;
+    this.oauth = oauth ?? new WithingsOAuthService(store, userId);
     this.client = client ?? new WithingsClient();
   }
 
@@ -333,7 +335,7 @@ export class WithingsSyncService {
       ]);
 
       const lastSyncedAt = new Date().toISOString();
-      this.store.setWithingsData(weight.slice(0, 365), sleepSummary.slice(0, 365), lastSyncedAt);
+      this.store.setWithingsData(this.userId, weight.slice(0, 365), sleepSummary.slice(0, 365), lastSyncedAt);
 
       return {
         success: true,
@@ -356,7 +358,7 @@ export class WithingsSyncService {
   }
 
   getData() {
-    return this.store.getWithingsData();
+    return this.store.getWithingsData(this.userId);
   }
 
   getAutoHealingStatus(): SyncAutoHealingState {

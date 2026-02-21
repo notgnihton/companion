@@ -3,6 +3,7 @@ import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - nutrition", () => {
   let store: RuntimeStore;
+  const userId = "test-user";
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -15,7 +16,7 @@ describe("RuntimeStore - nutrition", () => {
   });
 
   it("creates meals and computes daily macro summary", () => {
-    store.createNutritionMeal({
+    store.createNutritionMeal(userId, {
       name: "Protein oats",
       mealType: "breakfast",
       consumedAt: "2026-02-17T07:15:00.000Z",
@@ -25,7 +26,7 @@ describe("RuntimeStore - nutrition", () => {
       fatGrams: 14
     });
 
-    store.createNutritionMeal({
+    store.createNutritionMeal(userId, {
       name: "Chicken bowl",
       mealType: "lunch",
       consumedAt: "2026-02-17T11:45:00.000Z",
@@ -35,7 +36,7 @@ describe("RuntimeStore - nutrition", () => {
       fatGrams: 18
     });
 
-    const summary = store.getNutritionDailySummary("2026-02-17");
+    const summary = store.getNutritionDailySummary(userId, "2026-02-17");
     expect(summary.date).toBe("2026-02-17");
     expect(summary.mealsLogged).toBe(2);
     expect(summary.totals.calories).toBe(1230);
@@ -47,7 +48,7 @@ describe("RuntimeStore - nutrition", () => {
   });
 
   it("filters meals by date and supports deletion", () => {
-    const keep = store.createNutritionMeal({
+    const keep = store.createNutritionMeal(userId, {
       name: "Greek yogurt",
       mealType: "snack",
       consumedAt: "2026-02-17T16:00:00.000Z",
@@ -57,7 +58,7 @@ describe("RuntimeStore - nutrition", () => {
       fatGrams: 6
     });
 
-    store.createNutritionMeal({
+    store.createNutritionMeal(userId, {
       name: "Dinner prep",
       mealType: "dinner",
       consumedAt: "2026-02-18T18:00:00.000Z",
@@ -67,16 +68,16 @@ describe("RuntimeStore - nutrition", () => {
       fatGrams: 16
     });
 
-    const dayMeals = store.getNutritionMeals({ date: "2026-02-17" });
+    const dayMeals = store.getNutritionMeals(userId, { date: "2026-02-17" });
     expect(dayMeals).toHaveLength(1);
     expect(dayMeals[0]?.id).toBe(keep.id);
 
-    expect(store.deleteNutritionMeal(keep.id)).toBe(true);
-    expect(store.getNutritionMealById(keep.id)).toBeNull();
+    expect(store.deleteNutritionMeal(userId, keep.id)).toBe(true);
+    expect(store.getNutritionMealById(userId, keep.id)).toBeNull();
   });
 
   it("updates a logged meal for quick portion adjustments", () => {
-    const meal = store.createNutritionMeal({
+    const meal = store.createNutritionMeal(userId, {
       name: "Protein shake",
       mealType: "snack",
       consumedAt: "2026-02-17T10:00:00.000Z",
@@ -86,7 +87,7 @@ describe("RuntimeStore - nutrition", () => {
       fatGrams: 3
     });
 
-    const updated = store.updateNutritionMeal(meal.id, {
+    const updated = store.updateNutritionMeal(userId, meal.id, {
       calories: 250,
       proteinGrams: 37.5,
       carbsGrams: 10,
@@ -101,7 +102,7 @@ describe("RuntimeStore - nutrition", () => {
   });
 
   it("stores daily nutrition target profile and derives macro targets from settings", () => {
-    const profile = store.upsertNutritionTargetProfile({
+    const profile = store.upsertNutritionTargetProfile(userId, {
       date: "2026-02-17",
       weightKg: 73,
       maintenanceCalories: 2621,
@@ -117,13 +118,13 @@ describe("RuntimeStore - nutrition", () => {
     expect(profile.targetFatGrams).toBeCloseTo(64.4, 1);
     expect(profile.targetCarbsGrams).toBeCloseTo(456.7, 1);
 
-    const fetched = store.getNutritionTargetProfile("2026-02-17");
+    const fetched = store.getNutritionTargetProfile(userId, "2026-02-17");
     expect(fetched).not.toBeNull();
     expect(fetched?.targetCalories).toBe(2921);
   });
 
   it("includes remaining-to-target deltas in daily summary and supports explicit target overrides", () => {
-    store.upsertNutritionTargetProfile({
+    store.upsertNutritionTargetProfile(userId, {
       date: "2026-02-17",
       weightKg: 73,
       maintenanceCalories: 2621,
@@ -131,7 +132,7 @@ describe("RuntimeStore - nutrition", () => {
       targetProteinGrams: 140
     });
 
-    store.createNutritionMeal({
+    store.createNutritionMeal(userId, {
       name: "Breakfast",
       mealType: "breakfast",
       consumedAt: "2026-02-17T08:00:00.000Z",
@@ -141,7 +142,7 @@ describe("RuntimeStore - nutrition", () => {
       fatGrams: 10
     });
 
-    const summary = store.getNutritionDailySummary("2026-02-17");
+    const summary = store.getNutritionDailySummary(userId, "2026-02-17");
     expect(summary.targetProfile).not.toBeNull();
     expect(summary.targetProfile?.targetProteinGrams).toBe(140);
     expect(summary.remainingToTarget).not.toBeNull();
@@ -152,7 +153,7 @@ describe("RuntimeStore - nutrition", () => {
   });
 
   it("supports custom foods CRUD and query filtering", () => {
-    const created = store.createNutritionCustomFood({
+    const created = store.createNutritionCustomFood(userId, {
       name: "Jasmine rice",
       unitLabel: "100g",
       caloriesPerUnit: 130,
@@ -164,24 +165,24 @@ describe("RuntimeStore - nutrition", () => {
     expect(created.id).toContain("custom-food");
     expect(created.name).toBe("Jasmine rice");
 
-    const fetched = store.getNutritionCustomFoodById(created.id);
+    const fetched = store.getNutritionCustomFoodById(userId, created.id);
     expect(fetched).not.toBeNull();
     expect(fetched?.unitLabel).toBe("100g");
     expect(fetched?.proteinGramsPerUnit).toBeCloseTo(0.027, 3);
     expect(fetched?.carbsGramsPerUnit).toBeCloseTo(0.286, 3);
     expect(fetched?.fatGramsPerUnit).toBeCloseTo(0.003, 3);
 
-    const filtered = store.getNutritionCustomFoods({ query: "rice", limit: 10 });
+    const filtered = store.getNutritionCustomFoods(userId, { query: "rice", limit: 10 });
     expect(filtered).toHaveLength(1);
     expect(filtered[0]?.id).toBe(created.id);
 
-    const updated = store.updateNutritionCustomFood(created.id, {
+    const updated = store.updateNutritionCustomFood(userId, created.id, {
       caloriesPerUnit: 132
     });
     expect(updated).not.toBeNull();
     expect(updated?.caloriesPerUnit).toBe(132);
 
-    expect(store.deleteNutritionCustomFood(created.id)).toBe(true);
-    expect(store.getNutritionCustomFoodById(created.id)).toBeNull();
+    expect(store.deleteNutritionCustomFood(userId, created.id)).toBe(true);
+    expect(store.getNutritionCustomFoodById(userId, created.id)).toBeNull();
   });
 });

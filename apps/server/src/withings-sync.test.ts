@@ -45,10 +45,13 @@ class FakeWithingsClient implements WithingsDataClient {
 }
 
 describe("WithingsSyncService", () => {
+  const userId = "test-user";
+
   it("returns not connected when OAuth is not configured", async () => {
     const store = new RuntimeStore(":memory:");
     const service = new WithingsSyncService(
       store,
+      userId,
       new FakeWithingsOAuth(false, "") as unknown as WithingsOAuthService,
       new FakeWithingsClient()
     );
@@ -57,13 +60,14 @@ describe("WithingsSyncService", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("not connected");
-    expect(store.getWithingsData().weight).toHaveLength(0);
+    expect(store.getWithingsData(userId).weight).toHaveLength(0);
   });
 
   it("stores fetched weight and sleep data", async () => {
     const store = new RuntimeStore(":memory:");
     const service = new WithingsSyncService(
       store,
+      userId,
       new FakeWithingsOAuth(true, "token") as unknown as WithingsOAuthService,
       new FakeWithingsClient(
         [
@@ -87,7 +91,7 @@ describe("WithingsSyncService", () => {
     expect(result.weightsCount).toBe(1);
     expect(result.sleepDaysCount).toBe(1);
 
-    const data = store.getWithingsData();
+    const data = store.getWithingsData(userId);
     expect(data.lastSyncedAt).not.toBeNull();
     expect(data.weight[0]?.weightKg).toBe(73.1);
     expect(data.sleepSummary[0]?.date).toBe("2026-02-17");
@@ -97,6 +101,7 @@ describe("WithingsSyncService", () => {
     const store = new RuntimeStore(":memory:");
     const service = new WithingsSyncService(
       store,
+      userId,
       new FakeWithingsOAuth(true, "token") as unknown as WithingsOAuthService,
       new FakeWithingsClient([], [], true)
     );

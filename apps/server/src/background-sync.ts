@@ -7,13 +7,15 @@ import { SyncQueueItem, SyncOperationType } from "./types.js";
  */
 export class BackgroundSyncService {
   private readonly store: RuntimeStore;
+  private readonly userId: string;
   private readonly maxRetries = 5;
   private readonly baseRetryDelayMs = 1000;
   private processingInterval: ReturnType<typeof setInterval> | null = null;
   private isProcessing = false;
 
-  constructor(store: RuntimeStore) {
+  constructor(store: RuntimeStore, userId: string) {
     this.store = store;
+    this.userId = userId;
   }
 
   /**
@@ -150,7 +152,7 @@ export class BackgroundSyncService {
         throw new Error("Invalid deadline creation payload");
       }
 
-      this.store.createDeadline({
+      this.store.createDeadline(this.userId, {
         course,
         task,
         dueDate,
@@ -159,14 +161,14 @@ export class BackgroundSyncService {
       });
     } else {
       // Update existing deadline
-      const deadline = this.store.getDeadlineById(deadlineId);
+      const deadline = this.store.getDeadlineById(this.userId, deadlineId);
       
       if (!deadline) {
         throw new Error(`Deadline not found: ${deadlineId}`);
       }
 
       if (updates && typeof updates === "object") {
-        this.store.updateDeadline(deadlineId, updates as Partial<{
+        this.store.updateDeadline(this.userId, deadlineId, updates as Partial<{
           course: string;
           task: string;
           dueDate: string;
@@ -201,7 +203,7 @@ export class BackgroundSyncService {
     }
 
     // Update the context
-    this.store.setUserContext({
+    this.store.setUserContext(this.userId, {
       stressLevel: stressLevel as "low" | "medium" | "high" | undefined,
       energyLevel: energyLevel as "low" | "medium" | "high" | undefined,
       mode: mode as "focus" | "balanced" | "recovery" | undefined
@@ -219,7 +221,7 @@ export class BackgroundSyncService {
       throw new Error("Invalid habit check-in payload - completed must be boolean");
     }
 
-    const updated = this.store.toggleHabitCheckIn(habitId, { completed });
+    const updated = this.store.toggleHabitCheckIn(this.userId, habitId, { completed });
     if (!updated) {
       throw new Error(`Habit not found: ${habitId}`);
     }
@@ -236,7 +238,7 @@ export class BackgroundSyncService {
       throw new Error("Invalid goal check-in payload - completed must be boolean");
     }
 
-    const updated = this.store.toggleGoalCheckIn(goalId, { completed });
+    const updated = this.store.toggleGoalCheckIn(this.userId, goalId, { completed });
     if (!updated) {
       throw new Error(`Goal not found: ${goalId}`);
     }
@@ -290,7 +292,7 @@ export class BackgroundSyncService {
       throw new Error("Invalid schedule update payload - no valid fields in patch");
     }
 
-    const updated = this.store.updateScheduleEvent(scheduleId, nextPatch);
+    const updated = this.store.updateScheduleEvent(this.userId, scheduleId, nextPatch);
     if (!updated) {
       throw new Error(`Schedule block not found: ${scheduleId}`);
     }

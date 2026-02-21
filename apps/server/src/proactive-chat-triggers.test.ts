@@ -12,6 +12,7 @@ import { Deadline, LectureEvent } from "./types.js";
 
 describe("Proactive Chat Triggers", () => {
   let store: RuntimeStore;
+  const userId = "test-user";
 
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
@@ -23,14 +24,14 @@ describe("Proactive Chat Triggers", () => {
       const morningTime = new Date("2026-02-17T08:00:00");
       
       // Add some schedule and deadlines
-      store.createLectureEvent({
+      store.createLectureEvent(userId, {
         title: "DAT520 Lecture",
         startTime: "2026-02-17T10:00:00",
         durationMinutes: 90,
         workload: "medium"
       });
 
-      const notifications = await checkProactiveTriggers(store, morningTime);
+      const notifications = await checkProactiveTriggers(store, userId, morningTime);
       
       const morningBriefing = notifications.find(n => n.metadata?.triggerType === "morning-briefing");
       expect(morningBriefing).toBeDefined();
@@ -42,7 +43,7 @@ describe("Proactive Chat Triggers", () => {
     it("should not fire at other hours", async () => {
       const afternoonTime = new Date("2026-02-17T14:00:00");
       
-      const notifications = await checkProactiveTriggers(store, afternoonTime);
+      const notifications = await checkProactiveTriggers(store, userId, afternoonTime);
       
       const morningBriefing = notifications.find(n => n.metadata?.triggerType === "morning-briefing");
       expect(morningBriefing).toBeUndefined();
@@ -54,21 +55,21 @@ describe("Proactive Chat Triggers", () => {
       const gapTime = new Date("2026-02-17T12:00:00");
       
       // Create a gap: lecture 10-11:30, then 14-15:30 (2.5 hour gap)
-      store.createLectureEvent({
+      store.createLectureEvent(userId, {
         title: "DAT520 Lecture",
         startTime: "2026-02-17T10:00:00",
         durationMinutes: 90,
         workload: "medium"
       });
       
-      store.createLectureEvent({
+      store.createLectureEvent(userId, {
         title: "DAT560 Lecture",
         startTime: "2026-02-17T14:00:00",
         durationMinutes: 90,
         workload: "medium"
       });
 
-      const notifications = await checkProactiveTriggers(store, gapTime);
+      const notifications = await checkProactiveTriggers(store, userId, gapTime);
       
       const scheduleGap = notifications.find(n => n.metadata?.triggerType === "schedule-gap");
       expect(scheduleGap).toBeDefined();
@@ -80,21 +81,21 @@ describe("Proactive Chat Triggers", () => {
       const time = new Date("2026-02-17T12:00:00");
       
       // Back-to-back lectures
-      store.createLectureEvent({
+      store.createLectureEvent(userId, {
         title: "DAT520 Lecture",
         startTime: "2026-02-17T10:00:00",
         durationMinutes: 90,
         workload: "medium"
       });
       
-      store.createLectureEvent({
+      store.createLectureEvent(userId, {
         title: "DAT560 Lecture",
         startTime: "2026-02-17T11:30:00",
         durationMinutes: 90,
         workload: "medium"
       });
 
-      const notifications = await checkProactiveTriggers(store, time);
+      const notifications = await checkProactiveTriggers(store, userId, time);
       
       const scheduleGap = notifications.find(n => n.metadata?.triggerType === "schedule-gap");
       expect(scheduleGap).toBeUndefined();
@@ -106,7 +107,7 @@ describe("Proactive Chat Triggers", () => {
       const now = new Date("2026-02-17T10:00:00");
       const deadlineTime = new Date("2026-02-18T18:00:00"); // 32 hours away
       
-      store.createDeadline({
+      store.createDeadline(userId, {
         task: "Lab 3 submission",
         course: "DAT520",
         dueDate: deadlineTime.toISOString(),
@@ -114,7 +115,7 @@ describe("Proactive Chat Triggers", () => {
         completed: false
       });
 
-      const notifications = await checkProactiveTriggers(store, now);
+      const notifications = await checkProactiveTriggers(store, userId, now);
       
       const deadlineReminder = notifications.find(n => n.metadata?.triggerType === "deadline-approaching");
       expect(deadlineReminder).toBeDefined();
@@ -126,7 +127,7 @@ describe("Proactive Chat Triggers", () => {
       const now = new Date("2026-02-17T10:00:00");
       const deadlineTime = new Date("2026-02-18T18:00:00");
       
-      const deadline = store.createDeadline({
+      const deadline = store.createDeadline(userId, {
         task: "Lab 3 submission",
         course: "DAT520",
         dueDate: deadlineTime.toISOString(),
@@ -134,9 +135,9 @@ describe("Proactive Chat Triggers", () => {
         completed: false
       });
       
-      store.updateDeadline(deadline.id, { completed: true });
+      store.updateDeadline(userId, deadline.id, { completed: true });
 
-      const notifications = await checkProactiveTriggers(store, now);
+      const notifications = await checkProactiveTriggers(store, userId, now);
       
       const deadlineReminder = notifications.find(n => n.metadata?.triggerType === "deadline-approaching");
       expect(deadlineReminder).toBeUndefined();
@@ -146,7 +147,7 @@ describe("Proactive Chat Triggers", () => {
       const now = new Date("2026-02-17T10:00:00");
       const deadlineTime = new Date("2026-02-20T18:00:00"); // 80+ hours away
       
-      store.createDeadline({
+      store.createDeadline(userId, {
         task: "Lab 4 submission",
         course: "DAT520",
         dueDate: deadlineTime.toISOString(),
@@ -154,7 +155,7 @@ describe("Proactive Chat Triggers", () => {
         completed: false
       });
 
-      const notifications = await checkProactiveTriggers(store, now);
+      const notifications = await checkProactiveTriggers(store, userId, now);
       
       const deadlineReminder = notifications.find(n => n.metadata?.triggerType === "deadline-approaching");
       expect(deadlineReminder).toBeUndefined();
@@ -166,14 +167,14 @@ describe("Proactive Chat Triggers", () => {
       const lectureEndTime = new Date("2026-02-17T11:30:00");
       const checkTime = new Date("2026-02-17T12:00:00"); // 30 min after
       
-      store.createLectureEvent({
+      store.createLectureEvent(userId, {
         title: "DAT520 Distributed Systems",
         startTime: "2026-02-17T10:00:00",
         durationMinutes: 90,
         workload: "medium"
       });
 
-      const notifications = await checkProactiveTriggers(store, checkTime);
+      const notifications = await checkProactiveTriggers(store, userId, checkTime);
       
       const postLecture = notifications.find(n => n.metadata?.triggerType === "post-lecture");
       expect(postLecture).toBeDefined();
@@ -184,14 +185,14 @@ describe("Proactive Chat Triggers", () => {
     it("should not fire if more than 1 hour has passed", async () => {
       const checkTime = new Date("2026-02-17T13:00:00"); // 1.5 hours after
       
-      store.createLectureEvent({
+      store.createLectureEvent(userId, {
         title: "DAT520 Lecture",
         startTime: "2026-02-17T10:00:00",
         durationMinutes: 90,
         workload: "medium"
       });
 
-      const notifications = await checkProactiveTriggers(store, checkTime);
+      const notifications = await checkProactiveTriggers(store, userId, checkTime);
       
       const postLecture = notifications.find(n => n.metadata?.triggerType === "post-lecture");
       expect(postLecture).toBeUndefined();
@@ -202,7 +203,7 @@ describe("Proactive Chat Triggers", () => {
     it("should fire between 8pm and 10pm", async () => {
       const eveningTime = new Date("2026-02-17T20:30:00");
       
-      const notifications = await checkProactiveTriggers(store, eveningTime);
+      const notifications = await checkProactiveTriggers(store, userId, eveningTime);
       
       const eveningReflection = notifications.find(n => n.metadata?.triggerType === "evening-reflection");
       expect(eveningReflection).toBeDefined();
@@ -213,7 +214,7 @@ describe("Proactive Chat Triggers", () => {
     it("should not fire outside evening hours", async () => {
       const morningTime = new Date("2026-02-17T08:00:00");
       
-      const notifications = await checkProactiveTriggers(store, morningTime);
+      const notifications = await checkProactiveTriggers(store, userId, morningTime);
       
       const eveningReflection = notifications.find(n => n.metadata?.triggerType === "evening-reflection");
       expect(eveningReflection).toBeUndefined();
@@ -224,7 +225,7 @@ describe("Proactive Chat Triggers", () => {
     it("fires when unread email state changes", async () => {
       const now = new Date("2026-02-17T12:00:00.000Z");
 
-      store.setGmailMessages(
+      store.setGmailMessages(userId,
         [
           {
             id: "gmail-1",
@@ -239,7 +240,7 @@ describe("Proactive Chat Triggers", () => {
         "2026-02-17T11:50:00.000Z"
       );
 
-      const notifications = await checkProactiveTriggers(store, now);
+      const notifications = await checkProactiveTriggers(store, userId, now);
       const emailNudge = notifications.find((n) => n.metadata?.triggerType === "new-email");
       expect(emailNudge).toBeDefined();
       expect(emailNudge?.title).toBe("New email");
@@ -250,7 +251,7 @@ describe("Proactive Chat Triggers", () => {
     it("does not repeatedly fire for the same unread snapshot", async () => {
       const now = new Date("2026-02-17T12:00:00.000Z");
 
-      store.setGmailMessages(
+      store.setGmailMessages(userId,
         [
           {
             id: "gmail-1",
@@ -265,10 +266,10 @@ describe("Proactive Chat Triggers", () => {
         "2026-02-17T11:50:00.000Z"
       );
 
-      const first = await checkProactiveTriggersWithCooldown(store, now);
+      const first = await checkProactiveTriggersWithCooldown(store, userId, now);
       expect(first.find((n) => n.metadata?.triggerType === "new-email")).toBeDefined();
 
-      const second = await checkProactiveTriggersWithCooldown(store, now);
+      const second = await checkProactiveTriggersWithCooldown(store, userId, now);
       expect(second.find((n) => n.metadata?.triggerType === "new-email")).toBeUndefined();
     });
   });
@@ -291,12 +292,12 @@ describe("Proactive Chat Triggers", () => {
       const morningTime = new Date("2026-02-17T08:00:00");
       
       // First check - should get notification
-      const notifications1 = await checkProactiveTriggersWithCooldown(store, morningTime);
+      const notifications1 = await checkProactiveTriggersWithCooldown(store, userId, morningTime);
       const morningBriefing1 = notifications1.find(n => n.metadata?.triggerType === "morning-briefing");
       expect(morningBriefing1).toBeDefined();
       
       // Second check immediately after - should be filtered out due to cooldown
-      const notifications2 = await checkProactiveTriggersWithCooldown(store, morningTime);
+      const notifications2 = await checkProactiveTriggersWithCooldown(store, userId, morningTime);
       const morningBriefing2 = notifications2.find(n => n.metadata?.triggerType === "morning-briefing");
       expect(morningBriefing2).toBeUndefined();
     });
@@ -306,7 +307,7 @@ describe("Proactive Chat Triggers", () => {
     it("should include all required notification fields", async () => {
       const morningTime = new Date("2026-02-17T08:00:00");
       
-      const notifications = await checkProactiveTriggers(store, morningTime);
+      const notifications = await checkProactiveTriggers(store, userId, morningTime);
       
       expect(notifications.length).toBeGreaterThan(0);
       

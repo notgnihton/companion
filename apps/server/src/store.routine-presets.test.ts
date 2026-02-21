@@ -3,13 +3,14 @@ import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - Routine Presets", () => {
   let store: RuntimeStore;
+  const userId = "test-user";
 
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
   });
 
   it("creates and retrieves routine presets", () => {
-    const preset = store.createRoutinePreset({
+    const preset = store.createRoutinePreset(userId, {
       title: "Morning gym",
       preferredStartTime: "07:00",
       durationMinutes: 60,
@@ -20,12 +21,12 @@ describe("RuntimeStore - Routine Presets", () => {
 
     expect(preset.id).toMatch(/^routine-/);
     expect(preset.weekdays).toEqual([1, 3, 5]);
-    expect(store.getRoutinePresetById(preset.id)?.title).toBe("Morning gym");
-    expect(store.getRoutinePresets()).toHaveLength(1);
+    expect(store.getRoutinePresetById(userId, preset.id)?.title).toBe("Morning gym");
+    expect(store.getRoutinePresets(userId)).toHaveLength(1);
   });
 
   it("updates routine preset fields and normalizes weekdays", () => {
-    const preset = store.createRoutinePreset({
+    const preset = store.createRoutinePreset(userId, {
       title: "Nightly review",
       preferredStartTime: "21:00",
       durationMinutes: 45,
@@ -34,7 +35,7 @@ describe("RuntimeStore - Routine Presets", () => {
       active: true
     });
 
-    const updated = store.updateRoutinePreset(preset.id, {
+    const updated = store.updateRoutinePreset(userId, preset.id, {
       title: "Evening review",
       durationMinutes: 50,
       weekdays: [5, 1, 1, 7, -1]
@@ -47,7 +48,7 @@ describe("RuntimeStore - Routine Presets", () => {
   });
 
   it("defaults invalid weekdays to all days", () => {
-    const preset = store.createRoutinePreset({
+    const preset = store.createRoutinePreset(userId, {
       title: "Daily planning",
       preferredStartTime: "08:30",
       durationMinutes: 30,

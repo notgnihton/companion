@@ -4,12 +4,13 @@ import { RuntimeStore } from "./store.js";
 import { Notification } from "./types.js";
 
 describe("OrchestratorRuntime - deadline reminder checks", () => {
+  const userId = "test-user";
   let store: RuntimeStore;
   let orchestrator: OrchestratorRuntime;
 
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
-    orchestrator = new OrchestratorRuntime(store);
+    orchestrator = new OrchestratorRuntime(store, userId);
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-10T12:00:00.000Z"));
   });
@@ -20,7 +21,7 @@ describe("OrchestratorRuntime - deadline reminder checks", () => {
   });
 
   it("emits a status-check notification for overdue incomplete deadlines", async () => {
-    const deadline = store.createDeadline({
+    const deadline = store.createDeadline(userId, {
       course: "Operating Systems",
       task: "Lab report",
       dueDate: "2026-03-10T09:00:00.000Z",
@@ -39,7 +40,7 @@ describe("OrchestratorRuntime - deadline reminder checks", () => {
     unsubscribe();
 
     const reminders = store
-      .getSnapshot()
+      .getSnapshot(userId)
       .notifications.filter((notification) => notification.title === "Deadline status check");
 
     expect(reminders.length).toBe(1);
@@ -51,7 +52,7 @@ describe("OrchestratorRuntime - deadline reminder checks", () => {
   });
 
   it("does not emit duplicate reminders during cooldown window", async () => {
-    store.createDeadline({
+    store.createDeadline(userId, {
       course: "Physics",
       task: "Problem set",
       dueDate: "2026-03-10T08:00:00.000Z",
@@ -65,7 +66,7 @@ describe("OrchestratorRuntime - deadline reminder checks", () => {
     await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
 
     const reminders = store
-      .getSnapshot()
+      .getSnapshot(userId)
       .notifications.filter((notification) => notification.title === "Deadline status check");
 
     expect(reminders.length).toBe(1);

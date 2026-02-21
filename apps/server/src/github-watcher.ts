@@ -21,14 +21,16 @@ export interface WatcherState {
 
 export class GitHubWatcher {
   private readonly store: RuntimeStore;
+  private readonly userId: string;
   private readonly client: GitHubCourseClient;
   private readonly gemini: GeminiClient;
   private interval: ReturnType<typeof setInterval> | null = null;
   private state: WatcherState;
   private running = false;
 
-  constructor(store: RuntimeStore, gemini: GeminiClient, client?: GitHubCourseClient) {
+  constructor(store: RuntimeStore, userId: string, gemini: GeminiClient, client?: GitHubCourseClient) {
     this.store = store;
+    this.userId = userId;
     this.client = client ?? new GitHubCourseClient();
     this.gemini = gemini;
     this.state = this.loadState();
@@ -77,7 +79,7 @@ export class GitHubWatcher {
     const changedRepos: TrackedRepo[] = [];
 
     try {
-      const repos = getTrackedRepos(this.store);
+      const repos = getTrackedRepos(this.store, this.userId);
       if (repos.length === 0) {
         return { changed: false, repos: [] };
       }
@@ -115,8 +117,8 @@ export class GitHubWatcher {
         const reposToScan = isFirstRun ? repos : changedRepos;
         // Pass previous/current SHAs for diff-based scanning (skip on first run — no base to diff from)
         const agentResult = isFirstRun
-          ? await runGitHubAgent(this.store, this.gemini, reposToScan)
-          : await runGitHubAgent(this.store, this.gemini, reposToScan, previousShasMap, currentShasMap);
+          ? await runGitHubAgent(this.store, this.gemini, this.userId, reposToScan)
+          : await runGitHubAgent(this.store, this.gemini, this.userId, reposToScan, previousShasMap, currentShasMap);
         this.state.lastAgentRunAt = new Date().toISOString();
         this.state.lastAgentResult = agentResult;
         this.saveState();
@@ -140,8 +142,8 @@ export class GitHubWatcher {
   async forceRescan(): Promise<GitHubAgentResult> {
     this.running = true;
     try {
-      const repos = getTrackedRepos(this.store);
-      const result = await runGitHubAgent(this.store, this.gemini, repos);
+      const repos = getTrackedRepos(this.store, this.userId);
+      const result = await runGitHubAgent(this.store, this.gemini, this.userId, repos);
       this.state.lastAgentRunAt = new Date().toISOString();
       this.state.lastAgentResult = result;
 
@@ -186,7 +188,7 @@ export class GitHubWatcher {
   }
 
   private loadState(): WatcherState {
-    const githubData = this.store.getGitHubCourseData();
+    const githubData = this.store.getGitHubCourseData(this.userId);
     return {
       headShas: githubData?.blobIndex ?? {},
       lastCheckedAt: githubData?.lastSyncedAt ?? null,
@@ -197,9 +199,9 @@ export class GitHubWatcher {
 
   private saveState(): void {
     // Persist HEAD SHAs in the blobIndex field (repurposed for watcher state)
-    const existing = this.store.getGitHubCourseData();
+    const existing = this.store.getGitHubCourseData(this.userId);
     if (existing) {
-      this.store.setGitHubCourseData({
+      this.store.setGitHubCourseData(this.userId, {
         ...existing,
         blobIndex: this.state.headShas,
         lastSyncedAt: this.state.lastCheckedAt ?? existing.lastSyncedAt,

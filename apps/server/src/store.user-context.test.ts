@@ -3,6 +3,7 @@ import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - User Context", () => {
   let store: RuntimeStore;
+  const userId = "test-user";
 
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
@@ -14,7 +15,7 @@ describe("RuntimeStore - User Context", () => {
   });
 
   it("should return default user context", () => {
-    const context = store.getUserContext();
+    const context = store.getUserContext(userId);
     expect(context).toEqual({
       stressLevel: "medium",
       energyLevel: "medium",
@@ -23,9 +24,9 @@ describe("RuntimeStore - User Context", () => {
   });
 
   it("should update user context partially", () => {
-    store.setUserContext({ stressLevel: "high" });
+    store.setUserContext(userId, { stressLevel: "high" });
 
-    const context = store.getUserContext();
+    const context = store.getUserContext(userId);
     expect(context).toEqual({
       stressLevel: "high",
       energyLevel: "medium",
@@ -34,13 +35,13 @@ describe("RuntimeStore - User Context", () => {
   });
 
   it("should update multiple fields", () => {
-    store.setUserContext({
+    store.setUserContext(userId, {
       stressLevel: "low",
       energyLevel: "high",
       mode: "focus",
     });
 
-    const context = store.getUserContext();
+    const context = store.getUserContext(userId);
     expect(context).toEqual({
       stressLevel: "low",
       energyLevel: "high",
@@ -49,18 +50,18 @@ describe("RuntimeStore - User Context", () => {
   });
 
   it("should return updated context from setUserContext", () => {
-    const updated = store.setUserContext({ mode: "recovery" });
+    const updated = store.setUserContext(userId, { mode: "recovery" });
     expect(updated.mode).toBe("recovery");
     expect(updated.stressLevel).toBe("medium");
     expect(updated.energyLevel).toBe("medium");
   });
 
   it("should preserve context across multiple updates", () => {
-    store.setUserContext({ stressLevel: "high" });
-    store.setUserContext({ energyLevel: "low" });
-    store.setUserContext({ mode: "recovery" });
+    store.setUserContext(userId, { stressLevel: "high" });
+    store.setUserContext(userId, { energyLevel: "low" });
+    store.setUserContext(userId, { mode: "recovery" });
 
-    const context = store.getUserContext();
+    const context = store.getUserContext(userId);
     expect(context).toEqual({
       stressLevel: "high",
       energyLevel: "low",

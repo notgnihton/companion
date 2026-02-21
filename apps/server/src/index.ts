@@ -156,7 +156,7 @@ const bootstrappedAdmin = authService.bootstrapAdminUser();
 if (config.AUTH_REQUIRED && bootstrappedAdmin) {
   console.info(`[auth] Admin user ready: ${bootstrappedAdmin.email}`);
 }
-const prunedNonAcademicDeadlines = store.purgeNonAcademicDeadlines();
+const prunedNonAcademicDeadlines = store.purgeNonAcademicDeadlines("");
 if (prunedNonAcademicDeadlines > 0) {
   if (persistenceContext.postgresSnapshotStore) {
     await persistenceContext.postgresSnapshotStore.persistSnapshot(store.serializeDatabase());
@@ -168,16 +168,16 @@ const storageDiagnostics = (): PostgresPersistenceDiagnostics =>
     ? persistenceContext.postgresSnapshotStore.getDiagnostics(persistenceContext.sqlitePath)
     : fallbackStorageDiagnostics(persistenceContext.sqlitePath);
 
-const runtime = new OrchestratorRuntime(store);
-const syncService = new BackgroundSyncService(store);
-const digestService = new EmailDigestService(store);
-const tpSyncService = new TPSyncService(store);
-const canvasSyncService = new CanvasSyncService(store);
-const githubWatcher = new GitHubWatcher(store, getGeminiClient());
-const gmailOAuthService = new GmailOAuthService(store);
-const gmailSyncService = new GmailSyncService(store, gmailOAuthService);
-const withingsOAuthService = new WithingsOAuthService(store);
-const withingsSyncService = new WithingsSyncService(store, withingsOAuthService);
+const runtime = new OrchestratorRuntime(store, "");
+const syncService = new BackgroundSyncService(store, "");
+const digestService = new EmailDigestService(store, "");
+const tpSyncService = new TPSyncService(store, "");
+const canvasSyncService = new CanvasSyncService(store, "");
+const githubWatcher = new GitHubWatcher(store, "", getGeminiClient());
+const gmailOAuthService = new GmailOAuthService(store, "");
+const gmailSyncService = new GmailSyncService(store, "", gmailOAuthService);
+const withingsOAuthService = new WithingsOAuthService(store, "");
+const withingsSyncService = new WithingsSyncService(store, "", withingsOAuthService);
 const syncFailureRecovery = new SyncFailureRecoveryTracker();
 const CANVAS_ON_DEMAND_SYNC_MIN_INTERVAL_MS = 5 * 60 * 1000;
 const CANVAS_ON_DEMAND_SYNC_STALE_MS = 25 * 60 * 1000;
@@ -246,6 +246,7 @@ function toAnalyticsPeriodDays(value: number | undefined): AnalyticsCoachInsight
 }
 
 function buildAnalyticsCoachSignature(
+  userId: string,
   periodDays: AnalyticsCoachInsight["periodDays"],
   now: Date
 ): { cacheKey: string; signature: string } {
@@ -256,14 +257,14 @@ function buildAnalyticsCoachSignature(
   const cacheKey = `${periodDays}:${toDateKey(now)}`;
 
   const deadlines = store
-    .getAcademicDeadlines(now, false)
+    .getAcademicDeadlines(userId, now, false)
     .filter((deadline) => isWithinWindow(deadline.dueDate, windowStartMs, nowMs))
     .map((deadline) => `${deadline.id}:${deadline.dueDate}:${deadline.completed ? 1 : 0}:${deadline.priority}`)
     .sort()
     .join(",");
 
   const habits = store
-    .getHabitsWithStatus()
+    .getHabitsWithStatus(userId)
     .map((habit) => {
       const recent = habit.recentCheckIns.map((day) => `${day.date}:${day.completed ? 1 : 0}`).join(";");
       return `${habit.id}:${habit.createdAt}:${habit.streak}:${habit.completionRate7d}:${habit.todayCompleted ? 1 : 0}:${recent}`;
@@ -272,7 +273,7 @@ function buildAnalyticsCoachSignature(
     .join(",");
 
   const goals = store
-    .getGoalsWithStatus()
+    .getGoalsWithStatus(userId)
     .map((goal) => {
       const recent = goal.recentCheckIns.map((day) => `${day.date}:${day.completed ? 1 : 0}`).join(";");
       return `${goal.id}:${goal.createdAt}:${goal.progressCount}:${goal.targetCount}:${goal.todayCompleted ? 1 : 0}:${goal.dueDate ?? ""}:${recent}`;
@@ -280,14 +281,14 @@ function buildAnalyticsCoachSignature(
     .sort()
     .join(",");
 
-  const reflections = store.getReflectionEntriesInRange(windowStartIso, windowEndIso, 420);
+  const reflections = store.getReflectionEntriesInRange(userId, windowStartIso, windowEndIso, 420);
   const reflectionSig = `${reflections.length}:${latestIso(reflections.map((entry) => entry.updatedAt || entry.timestamp))}`;
 
-  const adherence = store.getStudyPlanAdherenceMetrics({
+  const adherence = store.getStudyPlanAdherenceMetrics(userId, {
     windowStart: windowStartIso,
     windowEnd: windowEndIso
   });
-  const trends = store.getContextTrends().latestContext;
+  const trends = store.getContextTrends(userId).latestContext;
 
   const signature = [
     `p:${periodDays}`,
@@ -350,22 +351,22 @@ async function maybeAutoSyncCanvasData(): Promise<void> {
   }
 }
 
-function hasUpcomingScheduleEvents(reference: Date, lookAheadHours = 36): boolean {
+function hasUpcomingScheduleEvents(reference: Date, lookAheadHours = 36, userId = ""): boolean {
   const nowMs = reference.getTime();
   const lookAheadMs = nowMs + lookAheadHours * 60 * 60 * 1000;
-  return store.getScheduleEvents().some((event) => {
+  return store.getScheduleEvents(userId).some((event) => {
     const startMs = Date.parse(event.startTime);
     return Number.isFinite(startMs) && startMs >= nowMs && startMs <= lookAheadMs;
   });
 }
 
-function publishSyncRecoveryPrompt(prompt: SyncRecoveryPrompt | null): void {
+function publishSyncRecoveryPrompt(prompt: SyncRecoveryPrompt | null, userId = ""): void {
   if (!prompt) {
     return;
   }
 
   const details = [prompt.rootCauseHint, ...prompt.suggestedActions.slice(0, 2)].join(" ");
-  store.pushNotification({
+  store.pushNotification(userId, {
     source: "orchestrator",
     title: prompt.title,
     message: `${prompt.message} ${details}`.trim(),
@@ -1055,19 +1056,22 @@ app.post("/api/vipps/webhook", (req, res) => {
 });
 
 
-app.get("/api/dashboard", (_req, res) => {
-  res.json(store.getSnapshot());
+app.get("/api/dashboard", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  res.json(store.getSnapshot(userId));
 });
 
 app.get("/api/weekly-review", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const referenceDate = typeof req.query.referenceDate === "string" ? req.query.referenceDate : undefined;
-  const summary = store.getWeeklySummary(referenceDate);
+  const summary = store.getWeeklySummary(userId, referenceDate);
   return res.json({ summary });
 });
 
 app.get("/api/weekly-growth-review", async (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const now = new Date();
-  const review = await generateWeeklyGrowthReview(store, { now });
+  const review = await generateWeeklyGrowthReview(store, userId, { now });
 
   const notifySunday = parseBooleanQueryFlag(req.query.notifySunday);
   const forcePush = parseBooleanQueryFlag(req.query.forcePush);
@@ -1075,7 +1079,7 @@ app.get("/api/weekly-growth-review", async (req, res) => {
 
   if (notifySunday && (forcePush || isSundayInOslo(now))) {
     const message = buildWeeklyGrowthSundayPushSummary(review);
-    store.pushNotification({
+    store.pushNotification(userId, {
       source: "orchestrator",
       title: "Weekly growth review",
       message,
@@ -1097,14 +1101,16 @@ app.get("/api/weekly-growth-review", async (req, res) => {
   });
 });
 
-app.get("/api/trends", (_req, res) => {
-  const trends = store.getContextTrends();
+app.get("/api/trends", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const trends = store.getContextTrends(userId);
   return res.json({ trends });
 });
 
 app.get("/api/analytics/coach", async (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   // Flush any buffered journal entries before analytics generation
-  await flushJournalSessionBuffer(store);
+  await flushJournalSessionBuffer(store, userId);
 
   const parsed = analyticsCoachQuerySchema.safeParse(req.query ?? {});
 
@@ -1117,7 +1123,7 @@ app.get("/api/analytics/coach", async (req, res) => {
   const periodDays = toAnalyticsPeriodDays(parsed.data.periodDays);
   const now = new Date();
   const nowMs = now.getTime();
-  const { cacheKey, signature } = buildAnalyticsCoachSignature(periodDays, now);
+  const { cacheKey, signature } = buildAnalyticsCoachSignature(userId, periodDays, now);
   const cached = analyticsCoachCache.get(cacheKey);
 
   if (!forceRefresh && cached) {
@@ -1129,7 +1135,7 @@ app.get("/api/analytics/coach", async (req, res) => {
     }
   }
 
-  const insight = await generateAnalyticsCoachInsight(store, {
+  const insight = await generateAnalyticsCoachInsight(store, userId, {
     periodDays,
     now
   });
@@ -1142,6 +1148,7 @@ app.get("/api/analytics/coach", async (req, res) => {
 });
 
 app.get("/api/growth/daily-summary", async (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = growthDailySummaryQuerySchema.safeParse(req.query ?? {});
 
   if (!parsed.success) {
@@ -1169,11 +1176,11 @@ app.get("/api/growth/daily-summary", async (req, res) => {
   const dayEndIso = `${dateKey}T23:59:59.999Z`;
 
   // Flush any buffered journal entries before reading reflections
-  await flushJournalSessionBuffer(store);
+  await flushJournalSessionBuffer(store, userId);
 
-  const reflections = store.getReflectionEntriesInRange(dayStartIso, dayEndIso, 280);
+  const reflections = store.getReflectionEntriesInRange(userId, dayStartIso, dayEndIso, 280);
   const chats = store
-    .getRecentChatMessages(280)
+    .getRecentChatMessages(userId, 280)
     .filter(
       (message) =>
         message.role === "user" &&
@@ -1181,11 +1188,11 @@ app.get("/api/growth/daily-summary", async (req, res) => {
         startsWithDateKey(message.timestamp, dateKey)
     );
 
-  const habits = store.getHabitsWithStatus();
-  const goals = store.getGoalsWithStatus();
-  const nutritionSummary = store.getNutritionDailySummary(referenceDate);
+  const habits = store.getHabitsWithStatus(userId);
+  const goals = store.getGoalsWithStatus(userId);
+  const nutritionSummary = store.getNutritionDailySummary(userId, referenceDate);
   // For AI context, only count meals actually marked as eaten (not pre-planned templates)
-  const eatenMeals = store.getNutritionMeals({ date: dateKey, limit: 1000, skipBaselineHydration: true, eatenOnly: true });
+  const eatenMeals = store.getNutritionMeals(userId, { date: dateKey, limit: 1000, skipBaselineHydration: true, eatenOnly: true });
   const eatenTotals = eatenMeals.reduce(
     (acc, meal) => {
       if (meal.items.length > 0) {
@@ -1201,9 +1208,9 @@ app.get("/api/growth/daily-summary", async (req, res) => {
     },
     { calories: 0, proteinGrams: 0 }
   );
-  const withingsData = store.getWithingsData();
+  const withingsData = store.getWithingsData(userId);
   const todayWeight = withingsData.weight.find((w) => w.measuredAt.startsWith(dateKey));
-  const scheduleEvents = store.getScheduleEvents().filter((e) => e.startTime.startsWith(dateKey));
+  const scheduleEvents = store.getScheduleEvents(userId).filter((e) => e.startTime.startsWith(dateKey));
 
   // Build Gemini prompt for cross-domain reasoning
   const habitLines = habits
@@ -1421,7 +1428,8 @@ app.post("/api/chat", async (req, res) => {
 
   try {
     await Promise.all([maybeAutoSyncCanvasData()]);
-    const result = await sendChatMessage(store, parsed.data.message.trim(), {
+    const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+    const result = await sendChatMessage(store, userId, parsed.data.message.trim(), {
       attachments: parsed.data.attachments
     });
     return res.json({
@@ -1491,9 +1499,10 @@ app.post("/api/chat/stream", async (req, res) => {
 
   try {
     await Promise.all([maybeAutoSyncCanvasData()]);
-    const result = await sendChatMessage(store, parsed.data.message.trim(), {
+    const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+    const result = await sendChatMessage(store, userId, parsed.data.message.trim(), {
       attachments: parsed.data.attachments,
-      onTextChunk: (chunk) => sendSse("token", { delta: chunk })
+      onTextChunk: (chunk: string) => sendSse("token", { delta: chunk })
     });
 
     sendSse("done", {
@@ -1524,6 +1533,7 @@ app.post("/api/chat/stream", async (req, res) => {
 });
 
 app.post("/api/chat/context/compress", async (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = chatContextCompressionSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -1531,13 +1541,13 @@ app.post("/api/chat/context/compress", async (req, res) => {
   }
 
   try {
-    const result = await compressChatContext(store, {
+    const result = await compressChatContext(store, userId, {
       maxMessages: parsed.data.maxMessages,
       preserveRecentMessages: parsed.data.preserveRecentMessages,
       targetSummaryChars: parsed.data.targetSummaryChars
     });
 
-    store.upsertChatLongTermMemory({
+    store.upsertChatLongTermMemory(userId, {
       summary: result.summary,
       sourceMessageCount: result.sourceMessageCount,
       totalMessagesAtCompression: result.totalMessagesAtCompression,
@@ -1563,13 +1573,14 @@ app.post("/api/chat/context/compress", async (req, res) => {
 });
 
 app.get("/api/chat/history", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = chatHistoryQuerySchema.safeParse(req.query ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid history query", issues: parsed.error.issues });
   }
 
-  const history = store.getChatHistory({
+  const history = store.getChatHistory(userId, {
     page: parsed.data.page ?? 1,
     pageSize: parsed.data.pageSize ?? 20
   });
@@ -1577,44 +1588,49 @@ app.get("/api/chat/history", (req, res) => {
   return res.json({ history });
 });
 
-app.get("/api/chat/actions/pending", (_req, res) => {
-  return res.json({ actions: store.getPendingChatActions() });
+app.get("/api/chat/actions/pending", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  return res.json({ actions: store.getPendingChatActions(userId) });
 });
 
 app.post("/api/chat/actions/:id/confirm", (req, res) => {
-  const pendingAction = store.getPendingChatActionById(req.params.id);
+  const authReq = req as AuthenticatedRequest;
+  const userId = authReq.authUser?.id ?? "default";
+  const pendingAction = store.getPendingChatActionById(userId, req.params.id);
 
   if (!pendingAction) {
     return res.status(404).json({ error: "Pending chat action not found" });
   }
 
-  const result = executePendingChatAction(pendingAction, store);
-  store.deletePendingChatAction(pendingAction.id);
+  const result = executePendingChatAction(pendingAction, store, userId);
+  store.deletePendingChatAction(userId, pendingAction.id);
 
   return res.json({
     result,
-    pendingActions: store.getPendingChatActions()
+    pendingActions: store.getPendingChatActions(userId)
   });
 });
 
 app.post("/api/chat/actions/:id/cancel", (req, res) => {
-  const pendingAction = store.getPendingChatActionById(req.params.id);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const pendingAction = store.getPendingChatActionById(userId, req.params.id);
 
   if (!pendingAction) {
     return res.status(404).json({ error: "Pending chat action not found" });
   }
 
-  store.deletePendingChatAction(pendingAction.id);
+  store.deletePendingChatAction(userId, pendingAction.id);
 
   return res.json({
     actionId: pendingAction.id,
     cancelled: true,
-    pendingActions: store.getPendingChatActions()
+    pendingActions: store.getPendingChatActions(userId)
   });
 });
 
-app.get("/api/export", (_req, res) => {
-  const exportData = store.getExportData();
+app.get("/api/export", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const exportData = store.getExportData(userId);
   res.setHeader("Content-Type", "application/json");
   res.setHeader("Content-Disposition", 'attachment; filename="companion-export.json"');
   return res.json(exportData);
@@ -1707,13 +1723,14 @@ const importDataSchema = z.object({
 });
 
 app.post("/api/import", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = importDataSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid import data", issues: parsed.error.issues });
   }
 
-  const result = store.importData(parsed.data);
+  const result = store.importData(userId, parsed.data);
   return res.json(result);
 });
 
@@ -2150,16 +2167,17 @@ const locationHistorySchema = z.object({
   context: z.string().trim().max(500).optional()
 });
 
-store.onNotification((notification) => {
+store.onNotification((notification: Notification) => {
   void broadcastNotification(notification);
 });
 
 async function broadcastNotification(notification: Notification): Promise<void> {
-  if (!store.shouldDispatchNotification(notification)) {
+  if (!store.shouldDispatchNotification("", notification)) {
     return;
   }
 
-  const subscriptions = store.getPushSubscriptions();
+  const subscriptions = store.getPushSubscriptions("");
+
 
   if (subscriptions.length === 0) {
     return;
@@ -2176,23 +2194,25 @@ async function broadcastNotification(notification: Notification): Promise<void> 
     store.recordPushDeliveryResult(endpoint, notification, result);
 
     if (result.shouldDropSubscription) {
-      store.removePushSubscription(endpoint);
+      store.removePushSubscription("", endpoint);
     }
   }
 }
 
 app.post("/api/context", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = contextSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid context payload", issues: parsed.error.issues });
   }
 
-  const updated = store.setUserContext(parsed.data);
+  const updated = store.setUserContext(userId, parsed.data);
   return res.json({ context: updated });
 });
 
 app.post("/api/locations", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = locationCreateSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -2200,6 +2220,7 @@ app.post("/api/locations", (req, res) => {
   }
 
   const location = store.recordLocation(
+    userId,
     parsed.data.latitude,
     parsed.data.longitude,
     parsed.data.accuracy,
@@ -2210,13 +2231,15 @@ app.post("/api/locations", (req, res) => {
 });
 
 app.get("/api/locations", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const limit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
-  const locations = store.getLocations(limit);
+  const locations = store.getLocations(userId, limit);
   return res.json({ locations });
 });
 
-app.get("/api/locations/current", (_req, res) => {
-  const location = store.getCurrentLocation();
+app.get("/api/locations/current", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const location = store.getCurrentLocation(userId);
 
   if (!location) {
     return res.status(404).json({ error: "No location recorded" });
@@ -2226,7 +2249,8 @@ app.get("/api/locations/current", (_req, res) => {
 });
 
 app.get("/api/locations/:id", (req, res) => {
-  const location = store.getLocationById(req.params.id);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const location = store.getLocationById(userId, req.params.id);
 
   if (!location) {
     return res.status(404).json({ error: "Location not found" });
@@ -2236,13 +2260,14 @@ app.get("/api/locations/:id", (req, res) => {
 });
 
 app.patch("/api/locations/:id", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = locationUpdateSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid location payload", issues: parsed.error.issues });
   }
 
-  const location = store.updateLocation(req.params.id, parsed.data);
+  const location = store.updateLocation(userId, req.params.id, parsed.data);
 
   if (!location) {
     return res.status(404).json({ error: "Location not found" });
@@ -2252,7 +2277,8 @@ app.patch("/api/locations/:id", (req, res) => {
 });
 
 app.delete("/api/locations/:id", (req, res) => {
-  const deleted = store.deleteLocation(req.params.id);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const deleted = store.deleteLocation(userId, req.params.id);
 
   if (!deleted) {
     return res.status(404).json({ error: "Location not found" });
@@ -2262,6 +2288,7 @@ app.delete("/api/locations/:id", (req, res) => {
 });
 
 app.post("/api/locations/:id/history", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = locationHistorySchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -2269,6 +2296,7 @@ app.post("/api/locations/:id/history", (req, res) => {
   }
 
   const history = store.recordLocationHistory(
+    userId,
     req.params.id,
     parsed.data.stressLevel,
     parsed.data.energyLevel,
@@ -2283,23 +2311,27 @@ app.post("/api/locations/:id/history", (req, res) => {
 });
 
 app.get("/api/locations/:id/history", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const limit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
-  const history = store.getLocationHistory(req.params.id, limit);
+  const history = store.getLocationHistory(userId, req.params.id, limit);
   return res.json({ history });
 });
 
 app.get("/api/location-history", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const limit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
-  const history = store.getLocationHistory(undefined, limit);
+  const history = store.getLocationHistory(userId, undefined, limit);
   return res.json({ history });
 });
 
-app.get("/api/tags", (_req, res) => {
-  const tags = store.getTags();
+app.get("/api/tags", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const tags = store.getTags(userId);
   return res.json({ tags });
 });
 
 app.post("/api/tags", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = tagCreateSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -2307,7 +2339,7 @@ app.post("/api/tags", (req, res) => {
   }
 
   try {
-    const tag = store.createTag(parsed.data.name);
+    const tag = store.createTag(userId, parsed.data.name);
     return res.status(201).json({ tag });
   } catch (error) {
     if (error instanceof Error && /UNIQUE/i.test(error.message)) {
@@ -2319,6 +2351,7 @@ app.post("/api/tags", (req, res) => {
 });
 
 app.patch("/api/tags/:id", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = tagUpdateSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -2326,7 +2359,7 @@ app.patch("/api/tags/:id", (req, res) => {
   }
 
   try {
-    const tag = store.updateTag(req.params.id, parsed.data.name);
+    const tag = store.updateTag(userId, req.params.id, parsed.data.name);
 
     if (!tag) {
       return res.status(404).json({ error: "Tag not found" });
@@ -2343,7 +2376,8 @@ app.patch("/api/tags/:id", (req, res) => {
 });
 
 app.delete("/api/tags/:id", (req, res) => {
-  const deleted = store.deleteTag(req.params.id);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const deleted = store.deleteTag(userId, req.params.id);
 
   if (!deleted) {
     return res.status(404).json({ error: "Tag not found" });
@@ -2353,6 +2387,7 @@ app.delete("/api/tags/:id", (req, res) => {
 });
 
 app.post("/api/calendar/import", async (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = calendarImportSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -2366,8 +2401,8 @@ app.post("/api/calendar/import", async (req, res) => {
   }
 
   const preview = buildCalendarImportPreview(filterTPEventsByDateWindow(parseICS(icsContent)));
-  const lectures = preview.lectures.map((lecture) => store.createLectureEvent(lecture));
-  const deadlines = preview.deadlines.map((deadline) => store.createDeadline(deadline));
+  const lectures = preview.lectures.map((lecture) => store.createLectureEvent(userId, lecture));
+  const deadlines = preview.deadlines.map((deadline) => store.createDeadline(userId, deadline));
 
   return res.status(201).json({
     importedEvents: preview.importedEvents,
@@ -2397,22 +2432,25 @@ app.post("/api/calendar/import/preview", async (req, res) => {
 });
 
 app.post("/api/schedule", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = scheduleCreateSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid schedule payload", issues: parsed.error.issues });
   }
 
-  const lecture = store.createLectureEvent(parsed.data);
+  const lecture = store.createLectureEvent(userId, parsed.data);
   return res.status(201).json({ lecture });
 });
 
-app.get("/api/schedule", async (_req, res) => {
+app.get("/api/schedule", async (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   await maybeAutoSyncCanvasData();
-  return res.json({ schedule: store.getScheduleEvents() });
+  return res.json({ schedule: store.getScheduleEvents(userId) });
 });
 
 app.get("/api/schedule/suggestion-mutes", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const dayParam = typeof req.query.day === "string" ? req.query.day.trim() : "";
   let day: Date | undefined;
   if (dayParam.length > 0) {
@@ -2423,12 +2461,13 @@ app.get("/api/schedule/suggestion-mutes", (req, res) => {
     day = parsedDay;
   }
 
-  const mutes = store.getScheduleSuggestionMutes({ day });
+  const mutes = store.getScheduleSuggestionMutes(userId, { day });
   return res.json({ mutes });
 });
 
 app.get("/api/schedule/:id", (req, res) => {
-  const lecture = store.getScheduleEventById(req.params.id);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const lecture = store.getScheduleEventById(userId, req.params.id);
 
   if (!lecture) {
     return res.status(404).json({ error: "Schedule entry not found" });
@@ -2438,13 +2477,14 @@ app.get("/api/schedule/:id", (req, res) => {
 });
 
 app.patch("/api/schedule/:id", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = scheduleUpdateSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid schedule payload", issues: parsed.error.issues });
   }
 
-  const lecture = store.updateScheduleEvent(req.params.id, parsed.data);
+  const lecture = store.updateScheduleEvent(userId, req.params.id, parsed.data);
 
   if (!lecture) {
     return res.status(404).json({ error: "Schedule entry not found" });
@@ -2454,7 +2494,8 @@ app.patch("/api/schedule/:id", (req, res) => {
 });
 
 app.delete("/api/schedule/:id", (req, res) => {
-  const deleted = store.deleteScheduleEvent(req.params.id);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const deleted = store.deleteScheduleEvent(userId, req.params.id);
 
   if (!deleted) {
     return res.status(404).json({ error: "Schedule entry not found" });
@@ -2464,30 +2505,34 @@ app.delete("/api/schedule/:id", (req, res) => {
 });
 
 app.post("/api/deadlines", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = deadlineCreateSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid deadline payload", issues: parsed.error.issues });
   }
 
-  const deadline = store.createDeadline(parsed.data);
+  const deadline = store.createDeadline(userId, parsed.data);
   return res.status(201).json({ deadline });
 });
 
-app.get("/api/deadlines", async (_req, res) => {
+app.get("/api/deadlines", async (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   await maybeAutoSyncCanvasData();
-  return res.json({ deadlines: store.getAcademicDeadlines() });
+  return res.json({ deadlines: store.getAcademicDeadlines(userId) });
 });
 
-app.get("/api/deadlines/duplicates", (_req, res) => {
-  return res.json(buildDeadlineDedupResult(store.getAcademicDeadlines()));
+app.get("/api/deadlines/duplicates", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  return res.json(buildDeadlineDedupResult(store.getAcademicDeadlines(userId)));
 });
 
-app.get("/api/deadlines/suggestions", async (_req, res) => {
+app.get("/api/deadlines/suggestions", async (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   await maybeAutoSyncCanvasData();
-  const deadlines = store.getAcademicDeadlines();
-  const scheduleEvents = store.getScheduleEvents();
-  const userContext = store.getUserContext();
+  const deadlines = store.getAcademicDeadlines(userId);
+  const scheduleEvents = store.getScheduleEvents(userId);
+  const userContext = store.getUserContext(userId);
 
   const suggestions = generateDeadlineSuggestions(
     deadlines,
@@ -2500,24 +2545,25 @@ app.get("/api/deadlines/suggestions", async (_req, res) => {
 });
 
 app.post("/api/study-plan/generate", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = studyPlanGenerateSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid study plan payload", issues: parsed.error.issues });
   }
 
-  const plan = generateWeeklyStudyPlan(store.getAcademicDeadlines(), store.getScheduleEvents(), {
+  const plan = generateWeeklyStudyPlan(store.getAcademicDeadlines(userId), store.getScheduleEvents(userId), {
     horizonDays: parsed.data.horizonDays,
     minSessionMinutes: parsed.data.minSessionMinutes,
     maxSessionMinutes: parsed.data.maxSessionMinutes,
     now: new Date()
   });
 
-  store.upsertStudyPlanSessions(plan.sessions, plan.generatedAt, {
+  store.upsertStudyPlanSessions(userId, plan.sessions, plan.generatedAt, {
     windowStart: plan.windowStart,
     windowEnd: plan.windowEnd
   });
-  const adherence = store.getStudyPlanAdherenceMetrics({
+  const adherence = store.getStudyPlanAdherenceMetrics(userId, {
     windowStart: plan.windowStart,
     windowEnd: plan.windowEnd
   });
@@ -2526,13 +2572,14 @@ app.post("/api/study-plan/generate", (req, res) => {
 });
 
 app.get("/api/study-plan/sessions", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = studyPlanSessionsQuerySchema.safeParse(req.query ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid study plan sessions query", issues: parsed.error.issues });
   }
 
-  const sessions = store.getStudyPlanSessions({
+  const sessions = store.getStudyPlanSessions(userId, {
     windowStart: parsed.data.windowStart,
     windowEnd: parsed.data.windowEnd,
     status: parsed.data.status,
@@ -2543,13 +2590,14 @@ app.get("/api/study-plan/sessions", (req, res) => {
 });
 
 app.post("/api/study-plan/sessions/:id/check-in", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = studyPlanSessionCheckInSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid study plan session check-in payload", issues: parsed.error.issues });
   }
 
-  const session = store.setStudyPlanSessionStatus(req.params.id, parsed.data.status, parsed.data.checkedAt ?? nowIso(), {
+  const session = store.setStudyPlanSessionStatus(userId, req.params.id, parsed.data.status, parsed.data.checkedAt ?? nowIso(), {
     energyLevel: parsed.data.energyLevel,
     focusLevel: parsed.data.focusLevel,
     checkInNote: parsed.data.checkInNote
@@ -2563,13 +2611,14 @@ app.post("/api/study-plan/sessions/:id/check-in", (req, res) => {
 });
 
 app.get("/api/study-plan/adherence", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = studyPlanAdherenceQuerySchema.safeParse(req.query ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid study plan adherence query", issues: parsed.error.issues });
   }
 
-  const metrics = store.getStudyPlanAdherenceMetrics({
+  const metrics = store.getStudyPlanAdherenceMetrics(userId, {
     windowStart: parsed.data.windowStart,
     windowEnd: parsed.data.windowEnd
   });
@@ -2578,13 +2627,14 @@ app.get("/api/study-plan/adherence", (req, res) => {
 });
 
 app.get("/api/study-plan/export", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = studyPlanExportQuerySchema.safeParse(req.query ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid study plan export query", issues: parsed.error.issues });
   }
 
-  const plan = generateWeeklyStudyPlan(store.getAcademicDeadlines(), store.getScheduleEvents(), {
+  const plan = generateWeeklyStudyPlan(store.getAcademicDeadlines(userId), store.getScheduleEvents(userId), {
     horizonDays: parsed.data.horizonDays,
     minSessionMinutes: parsed.data.minSessionMinutes,
     maxSessionMinutes: parsed.data.maxSessionMinutes,
@@ -2600,7 +2650,8 @@ app.get("/api/study-plan/export", (req, res) => {
 });
 
 app.get("/api/deadlines/:id", (req, res) => {
-  const deadline = store.getDeadlineById(req.params.id);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const deadline = store.getDeadlineById(userId, req.params.id);
 
   if (!deadline || !isAssignmentOrExamDeadline(deadline)) {
     return res.status(404).json({ error: "Deadline not found" });
@@ -2610,13 +2661,14 @@ app.get("/api/deadlines/:id", (req, res) => {
 });
 
 app.patch("/api/deadlines/:id", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = deadlineUpdateSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid deadline payload", issues: parsed.error.issues });
   }
 
-  const existing = store.getDeadlineById(req.params.id, false);
+  const existing = store.getDeadlineById(userId, req.params.id, false);
   if (!existing || !isAssignmentOrExamDeadline(existing)) {
     return res.status(404).json({ error: "Deadline not found" });
   }
@@ -2630,7 +2682,7 @@ app.patch("/api/deadlines/:id", (req, res) => {
     return res.status(400).json({ error: "Deadlines must stay assignment or exam work." });
   }
 
-  const deadline = store.updateDeadline(req.params.id, parsed.data);
+  const deadline = store.updateDeadline(userId, req.params.id, parsed.data);
 
   if (!deadline) {
     return res.status(404).json({ error: "Deadline not found" });
@@ -2640,18 +2692,19 @@ app.patch("/api/deadlines/:id", (req, res) => {
 });
 
 app.post("/api/deadlines/:id/confirm-status", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = deadlineStatusConfirmSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid deadline status payload", issues: parsed.error.issues });
   }
 
-  const existing = store.getDeadlineById(req.params.id, false);
+  const existing = store.getDeadlineById(userId, req.params.id, false);
   if (!existing || !isAssignmentOrExamDeadline(existing)) {
     return res.status(404).json({ error: "Deadline not found" });
   }
 
-  const confirmation = store.confirmDeadlineStatus(req.params.id, parsed.data.completed);
+  const confirmation = store.confirmDeadlineStatus(userId, req.params.id, parsed.data.completed);
 
   if (!confirmation) {
     return res.status(404).json({ error: "Deadline not found" });
@@ -2661,12 +2714,13 @@ app.post("/api/deadlines/:id/confirm-status", (req, res) => {
 });
 
 app.delete("/api/deadlines/:id", (req, res) => {
-  const existing = store.getDeadlineById(req.params.id, false);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const existing = store.getDeadlineById(userId, req.params.id, false);
   if (!existing || !isAssignmentOrExamDeadline(existing)) {
     return res.status(404).json({ error: "Deadline not found" });
   }
 
-  const deleted = store.deleteDeadline(req.params.id);
+  const deleted = store.deleteDeadline(userId, req.params.id);
 
   if (!deleted) {
     return res.status(404).json({ error: "Deadline not found" });
@@ -2675,29 +2729,32 @@ app.delete("/api/deadlines/:id", (req, res) => {
   return res.status(204).send();
 });
 
-app.get("/api/habits", (_req, res) => {
-  return res.json({ habits: store.getHabitsWithStatus() });
+app.get("/api/habits", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  return res.json({ habits: store.getHabitsWithStatus(userId) });
 });
 
 app.post("/api/habits", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = habitCreateSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid habit payload", issues: parsed.error.issues });
   }
 
-  const habit = store.createHabit(parsed.data);
+  const habit = store.createHabit(userId, parsed.data);
   return res.status(201).json({ habit });
 });
 
 app.post("/api/habits/:id/check-ins", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = habitCheckInSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid habit check-in payload", issues: parsed.error.issues });
   }
 
-  const habit = store.toggleHabitCheckIn(req.params.id, parsed.data);
+  const habit = store.toggleHabitCheckIn(userId, req.params.id, parsed.data);
 
   if (!habit) {
     return res.status(404).json({ error: "Habit not found" });
@@ -2707,6 +2764,7 @@ app.post("/api/habits/:id/check-ins", (req, res) => {
 });
 
 app.patch("/api/habits/:id", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = habitUpdateSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -2730,7 +2788,7 @@ app.patch("/api/habits/:id", (req, res) => {
     patch.motivation = motivation && motivation.trim().length > 0 ? motivation : undefined;
   }
 
-  const habit = store.updateHabit(req.params.id, patch);
+  const habit = store.updateHabit(userId, req.params.id, patch);
   if (!habit) {
     return res.status(404).json({ error: "Habit not found" });
   }
@@ -2739,7 +2797,8 @@ app.patch("/api/habits/:id", (req, res) => {
 });
 
 app.delete("/api/habits/:id", (req, res) => {
-  const deleted = store.deleteHabit(req.params.id);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const deleted = store.deleteHabit(userId, req.params.id);
   if (!deleted) {
     return res.status(404).json({ error: "Habit not found" });
   }
@@ -2747,18 +2806,20 @@ app.delete("/api/habits/:id", (req, res) => {
   return res.status(204).send();
 });
 
-app.get("/api/goals", (_req, res) => {
-  return res.json({ goals: store.getGoalsWithStatus() });
+app.get("/api/goals", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  return res.json({ goals: store.getGoalsWithStatus(userId) });
 });
 
 app.post("/api/goals", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = goalCreateSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid goal payload", issues: parsed.error.issues });
   }
 
-  const goal = store.createGoal({
+  const goal = store.createGoal(userId, {
     ...parsed.data,
     dueDate: parsed.data.dueDate ?? null
   });
@@ -2767,13 +2828,14 @@ app.post("/api/goals", (req, res) => {
 });
 
 app.post("/api/goals/:id/check-ins", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = goalCheckInSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid goal check-in payload", issues: parsed.error.issues });
   }
 
-  const goal = store.toggleGoalCheckIn(req.params.id, parsed.data);
+  const goal = store.toggleGoalCheckIn(userId, req.params.id, parsed.data);
 
   if (!goal) {
     return res.status(404).json({ error: "Goal not found" });
@@ -2783,6 +2845,7 @@ app.post("/api/goals/:id/check-ins", (req, res) => {
 });
 
 app.patch("/api/goals/:id", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = goalUpdateSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -2810,7 +2873,7 @@ app.patch("/api/goals/:id", (req, res) => {
     patch.dueDate = parsed.data.dueDate ?? null;
   }
 
-  const goal = store.updateGoal(req.params.id, patch);
+  const goal = store.updateGoal(userId, req.params.id, patch);
   if (!goal) {
     return res.status(404).json({ error: "Goal not found" });
   }
@@ -2819,7 +2882,8 @@ app.patch("/api/goals/:id", (req, res) => {
 });
 
 app.delete("/api/goals/:id", (req, res) => {
-  const deleted = store.deleteGoal(req.params.id);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const deleted = store.deleteGoal(userId, req.params.id);
   if (!deleted) {
     return res.status(404).json({ error: "Goal not found" });
   }
@@ -2828,21 +2892,23 @@ app.delete("/api/goals/:id", (req, res) => {
 });
 
 app.get("/api/nutrition/summary", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = nutritionSummaryQuerySchema.safeParse(req.query ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid nutrition summary query", issues: parsed.error.issues });
   }
 
   if (parsed.data.date) {
-    store.ensureNutritionBaselineForDate(parsed.data.date);
+    store.ensureNutritionBaselineForDate(userId, parsed.data.date);
   } else {
-    store.ensureNutritionBaselineForDate(new Date());
+    store.ensureNutritionBaselineForDate(userId, new Date());
   }
-  const summary = store.getNutritionDailySummary(parsed.data.date ?? new Date());
+  const summary = store.getNutritionDailySummary(userId, parsed.data.date ?? new Date());
   return res.json({ summary });
 });
 
 app.get("/api/nutrition/history", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const schema = z.object({
     from: nutritionDateSchema.optional(),
     to: nutritionDateSchema.optional(),
@@ -2868,17 +2934,18 @@ app.get("/api/nutrition/history", (req, res) => {
     toDate = end.toISOString().slice(0, 10);
   }
 
-  const entries = store.getNutritionDailyHistory(fromDate, toDate, { eatenOnly: true });
+  const entries = store.getNutritionDailyHistory(userId, fromDate, toDate, { eatenOnly: true });
   return res.json({ entries, from: fromDate, to: toDate });
 });
 
 app.get("/api/nutrition/custom-foods", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = nutritionCustomFoodsQuerySchema.safeParse(req.query ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid custom foods query", issues: parsed.error.issues });
   }
 
-  const foods = store.getNutritionCustomFoods({
+  const foods = store.getNutritionCustomFoods(userId, {
     query: parsed.data.query,
     limit: parsed.data.limit
   });
@@ -2886,22 +2953,24 @@ app.get("/api/nutrition/custom-foods", (req, res) => {
 });
 
 app.post("/api/nutrition/custom-foods", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = nutritionCustomFoodCreateSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid custom food payload", issues: parsed.error.issues });
   }
 
-  const food: NutritionCustomFood = store.createNutritionCustomFood(parsed.data);
+  const food: NutritionCustomFood = store.createNutritionCustomFood(userId, parsed.data);
   return res.status(201).json({ food });
 });
 
 app.patch("/api/nutrition/custom-foods/:id", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = nutritionCustomFoodUpdateSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid custom food payload", issues: parsed.error.issues });
   }
 
-  const food: NutritionCustomFood | null = store.updateNutritionCustomFood(req.params.id, parsed.data);
+  const food: NutritionCustomFood | null = store.updateNutritionCustomFood(userId, req.params.id, parsed.data);
   if (!food) {
     return res.status(404).json({ error: "Custom food not found" });
   }
@@ -2909,7 +2978,8 @@ app.patch("/api/nutrition/custom-foods/:id", (req, res) => {
 });
 
 app.delete("/api/nutrition/custom-foods/:id", (req, res) => {
-  const deleted = store.deleteNutritionCustomFood(req.params.id);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const deleted = store.deleteNutritionCustomFood(userId, req.params.id);
   if (!deleted) {
     return res.status(404).json({ error: "Custom food not found" });
   }
@@ -2917,45 +2987,49 @@ app.delete("/api/nutrition/custom-foods/:id", (req, res) => {
 });
 
 app.get("/api/nutrition/targets", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = nutritionSummaryQuerySchema.safeParse(req.query ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid nutrition target-profile query", issues: parsed.error.issues });
   }
 
-  const profile = store.getNutritionTargetProfile(parsed.data.date ?? new Date());
+  const profile = store.getNutritionTargetProfile(userId, parsed.data.date ?? new Date());
   return res.json({ profile });
 });
 
 app.put("/api/nutrition/targets", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = nutritionTargetProfileUpsertSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid nutrition target-profile payload", issues: parsed.error.issues });
   }
 
-  const profile = store.upsertNutritionTargetProfile(parsed.data);
+  const profile = store.upsertNutritionTargetProfile(userId, parsed.data);
   return res.json({ profile });
 });
 
 app.get("/api/nutrition/meals", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = nutritionMealsQuerySchema.safeParse(req.query ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid nutrition meals query", issues: parsed.error.issues });
   }
 
   if (parsed.data.date) {
-    store.ensureNutritionBaselineForDate(parsed.data.date);
+    store.ensureNutritionBaselineForDate(userId, parsed.data.date);
   }
-  const meals = store.getNutritionMeals(parsed.data);
+  const meals = store.getNutritionMeals(userId, parsed.data);
   return res.json({ meals });
 });
 
 app.post("/api/nutrition/meals", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = nutritionMealCreateSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid nutrition meal payload", issues: parsed.error.issues });
   }
 
-  const meal: NutritionMeal = store.createNutritionMeal({
+  const meal: NutritionMeal = store.createNutritionMeal(userId, {
     ...parsed.data,
     consumedAt: parsed.data.consumedAt ?? nowIso()
   });
@@ -2964,12 +3038,13 @@ app.post("/api/nutrition/meals", (req, res) => {
 });
 
 app.patch("/api/nutrition/meals/:id", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = nutritionMealUpdateSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid nutrition meal payload", issues: parsed.error.issues });
   }
 
-  const meal: NutritionMeal | null = store.updateNutritionMeal(req.params.id, parsed.data);
+  const meal: NutritionMeal | null = store.updateNutritionMeal(userId, req.params.id, parsed.data);
   if (!meal) {
     return res.status(404).json({ error: "Meal not found" });
   }
@@ -2978,25 +3053,28 @@ app.patch("/api/nutrition/meals/:id", (req, res) => {
 });
 
 app.delete("/api/nutrition/meals/:id", (req, res) => {
-  const deleted = store.deleteNutritionMeal(req.params.id);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const deleted = store.deleteNutritionMeal(userId, req.params.id);
   if (!deleted) {
     return res.status(404).json({ error: "Meal not found" });
   }
   return res.status(204).send();
 });
 
-app.get("/api/nutrition/plan-settings", (_req, res) => {
-  const settings = store.getNutritionPlanSettings();
+app.get("/api/nutrition/plan-settings", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const settings = store.getNutritionPlanSettings(userId);
   return res.json({ settings });
 });
 
 app.put("/api/nutrition/plan-settings", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = nutritionPlanSettingsUpdateSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid nutrition plan settings payload", issues: parsed.error.issues });
   }
 
-  const settings = store.setNutritionDefaultPlanSnapshot(parsed.data.defaultSnapshotId ?? null);
+  const settings = store.setNutritionDefaultPlanSnapshot(userId, parsed.data.defaultSnapshotId ?? null);
   if (!settings) {
     return res.status(404).json({ error: "Nutrition plan snapshot not found" });
   }
@@ -3004,12 +3082,13 @@ app.put("/api/nutrition/plan-settings", (req, res) => {
 });
 
 app.get("/api/nutrition/plan-snapshots", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = nutritionPlanSnapshotsQuerySchema.safeParse(req.query ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid nutrition plan snapshot query", issues: parsed.error.issues });
   }
 
-  const snapshots = store.getNutritionPlanSnapshots({
+  const snapshots = store.getNutritionPlanSnapshots(userId, {
     query: parsed.data.query,
     limit: parsed.data.limit
   });
@@ -3017,12 +3096,13 @@ app.get("/api/nutrition/plan-snapshots", (req, res) => {
 });
 
 app.post("/api/nutrition/plan-snapshots", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = nutritionPlanSnapshotCreateSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid nutrition plan snapshot payload", issues: parsed.error.issues });
   }
 
-  const snapshot = store.createNutritionPlanSnapshot({
+  const snapshot = store.createNutritionPlanSnapshot(userId, {
     name: parsed.data.name,
     date: parsed.data.date,
     replaceId: parsed.data.replaceId
@@ -3035,17 +3115,18 @@ app.post("/api/nutrition/plan-snapshots", (req, res) => {
 });
 
 app.post("/api/nutrition/plan-snapshots/:id/apply", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = nutritionPlanSnapshotApplySchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid nutrition plan snapshot apply payload", issues: parsed.error.issues });
   }
 
-  const applied = store.applyNutritionPlanSnapshot(req.params.id, parsed.data);
+  const applied = store.applyNutritionPlanSnapshot(userId, req.params.id, parsed.data);
   if (!applied) {
     return res.status(404).json({ error: "Nutrition plan snapshot not found" });
   }
 
-  const settings = store.getNutritionPlanSettings();
+  const settings = store.getNutritionPlanSettings(userId);
 
   return res.json({
     snapshot: applied.snapshot,
@@ -3057,7 +3138,8 @@ app.post("/api/nutrition/plan-snapshots/:id/apply", (req, res) => {
 });
 
 app.delete("/api/nutrition/plan-snapshots/:id", (req, res) => {
-  const deleted = store.deleteNutritionPlanSnapshot(req.params.id);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const deleted = store.deleteNutritionPlanSnapshot(userId, req.params.id);
   if (!deleted) {
     return res.status(404).json({ error: "Nutrition plan snapshot not found" });
   }
@@ -3072,15 +3154,18 @@ app.get("/api/push/vapid-public-key", (_req, res) => {
   });
 });
 
-app.get("/api/push/delivery-metrics", (_req, res) => {
+app.get("/api/push/delivery-metrics", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   return res.json({ metrics: store.getPushDeliveryMetrics() });
 });
 
-app.get("/api/notification-preferences", (_req, res) => {
-  return res.json({ preferences: store.getNotificationPreferences() });
+app.get("/api/notification-preferences", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  return res.json({ preferences: store.getNotificationPreferences(userId) });
 });
 
 app.put("/api/notification-preferences", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = notificationPreferencesSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -3088,7 +3173,7 @@ app.put("/api/notification-preferences", (req, res) => {
   }
 
   const next = parsed.data as NotificationPreferencesPatch;
-  const preferences = store.setNotificationPreferences(next);
+  const preferences = store.setNotificationPreferences(userId, next);
   return res.json({ preferences });
 });
 
@@ -3108,6 +3193,7 @@ const notificationSnoozeSchema = z.object({
 });
 
 app.post("/api/notification-interactions", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = notificationInteractionSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -3115,6 +3201,7 @@ app.post("/api/notification-interactions", (req, res) => {
   }
 
   const interaction = store.recordNotificationInteraction(
+    userId,
     parsed.data.notificationId,
     parsed.data.notificationTitle,
     parsed.data.notificationSource,
@@ -3128,30 +3215,33 @@ app.post("/api/notification-interactions", (req, res) => {
 });
 
 app.get("/api/notification-interactions", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const since = typeof req.query.since === "string" ? req.query.since : undefined;
   const until = typeof req.query.until === "string" ? req.query.until : undefined;
   const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : undefined;
 
-  const interactions = store.getNotificationInteractions({ since, until, limit });
+  const interactions = store.getNotificationInteractions(userId, { since, until, limit });
   return res.json({ interactions });
 });
 
 app.get("/api/notification-interactions/metrics", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const since = typeof req.query.since === "string" ? req.query.since : undefined;
   const until = typeof req.query.until === "string" ? req.query.until : undefined;
 
-  const metrics = store.getNotificationInteractionMetrics({ since, until });
+  const metrics = store.getNotificationInteractionMetrics(userId, { since, until });
   return res.json({ metrics });
 });
 
 app.post("/api/notifications/snooze", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = notificationSnoozeSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid snooze payload", issues: parsed.error.issues });
   }
 
-  const scheduled = store.snoozeNotification(parsed.data.notificationId, parsed.data.snoozeMinutes);
+  const scheduled = store.snoozeNotification(userId, parsed.data.notificationId, parsed.data.snoozeMinutes);
 
   if (!scheduled) {
     return res.status(404).json({ error: "Notification not found" });
@@ -3160,8 +3250,9 @@ app.post("/api/notifications/snooze", (req, res) => {
   return res.json({ scheduled });
 });
 
-app.get("/api/scheduled-notifications", (_req, res) => {
-  const upcoming = store.getUpcomingScheduledNotifications("user-reminder");
+app.get("/api/scheduled-notifications", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const upcoming = store.getUpcomingScheduledNotifications(userId, "user-reminder");
   return res.json({
     reminders: upcoming.map((s) => ({
       id: s.id,
@@ -3177,7 +3268,8 @@ app.get("/api/scheduled-notifications", (_req, res) => {
 });
 
 app.delete("/api/scheduled-notifications/:id", (req, res) => {
-  const removed = store.removeScheduledNotification(req.params.id);
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const removed = store.removeScheduledNotification(userId, req.params.id);
   if (!removed) {
     return res.status(404).json({ error: "Scheduled notification not found" });
   }
@@ -3185,24 +3277,26 @@ app.delete("/api/scheduled-notifications/:id", (req, res) => {
 });
 
 app.post("/api/push/subscribe", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = pushSubscriptionSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid push subscription payload", issues: parsed.error.issues });
   }
 
-  const subscription = store.addPushSubscription(parsed.data);
+  const subscription = store.addPushSubscription(userId, parsed.data);
   return res.status(201).json({ subscription });
 });
 
 app.post("/api/push/unsubscribe", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = pushUnsubscribeSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid unsubscribe payload", issues: parsed.error.issues });
   }
 
-  const removed = store.removePushSubscription(parsed.data.endpoint);
+  const removed = store.removePushSubscription(userId, parsed.data.endpoint);
 
   if (!removed) {
     return res.status(404).json({ error: "Push subscription not found" });
@@ -3212,20 +3306,21 @@ app.post("/api/push/unsubscribe", (req, res) => {
 });
 
 app.post("/api/push/test", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = pushTestSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid push test payload", issues: parsed.error.issues });
   }
 
-  store.pushNotification({
+  store.pushNotification(userId, {
     source: "orchestrator",
     title: parsed.data.title ?? "Companion test push",
     message: parsed.data.message ?? "Push notifications are connected and ready.",
     priority: parsed.data.priority ?? "medium"
   });
 
-  return res.status(202).json({ queued: true, subscribers: store.getPushSubscriptions().length });
+  return res.status(202).json({ queued: true, subscribers: store.getPushSubscriptions(userId).length });
 });
 
 // Background Sync API endpoints
@@ -3241,6 +3336,7 @@ const syncOperationSchema = z.object({
 });
 
 app.post("/api/sync/queue", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = syncOperationSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -3263,20 +3359,22 @@ app.post("/api/sync/process", async (_req, res) => {
   }
 });
 
-app.get("/api/sync/queue-status", (_req, res) => {
+app.get("/api/sync/queue-status", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   return res.json({
     status: store.getSyncQueueStatus(),
     isProcessing: syncService.isCurrentlyProcessing()
   });
 });
 
-app.get("/api/sync/status", (_req, res) => {
+app.get("/api/sync/status", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   // Get data from various integrations
   const storage = storageDiagnostics();
-  const canvasData = store.getCanvasData();
-  const githubData = store.getGitHubCourseData();
-  const gmailData = store.getGmailData();
-  const withingsData = store.getWithingsData();
+  const canvasData = store.getCanvasData(userId);
+  const githubData = store.getGitHubCourseData(userId);
+  const gmailData = store.getGmailData(userId);
+  const withingsData = store.getWithingsData(userId);
   const geminiClient = getGeminiClient();
   const githubConfigured = githubWatcher.isConfigured();
   const gmailConnection = gmailOAuthService.getConnectionInfo();
@@ -3298,7 +3396,7 @@ app.get("/api/sync/status", (_req, res) => {
       lastSyncAt: null, // Will be implemented when TP sync stores last sync time
       status: "ok",
       source: "ical",
-      eventsCount: store.getScheduleEvents().length
+      eventsCount: store.getScheduleEvents(userId).length
     },
     github: {
       lastSyncAt: githubData?.lastSyncedAt ?? null,
@@ -3350,6 +3448,7 @@ app.delete("/api/sync/cleanup", (_req, res) => {
 });
 
 app.post("/api/integrations/scope/preview", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = integrationScopePreviewSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -3361,7 +3460,7 @@ app.post("/api/integrations/scope/preview", (req, res) => {
     futureDays: parsed.data.futureDays
   });
 
-  const canvasData = store.getCanvasData();
+  const canvasData = store.getCanvasData(userId);
   const canvasCourses = canvasData?.courses ?? [];
   const canvasAssignments = canvasData?.assignments ?? [];
   const selectedCanvasCourseIds =
@@ -3386,7 +3485,7 @@ app.post("/api/integrations/scope/preview", (req, res) => {
     .map((value) => value.split(",")[0]?.trim().toUpperCase())
     .filter((value): value is string => Boolean(value));
 
-  const scheduleEventsInWindow = store.getScheduleEvents().filter((event) => {
+  const scheduleEventsInWindow = store.getScheduleEvents(userId).filter((event) => {
     const start = new Date(event.startTime);
     if (Number.isNaN(start.getTime())) {
       return false;
@@ -3425,6 +3524,7 @@ app.post("/api/integrations/scope/preview", (req, res) => {
 });
 
 app.post("/api/sync/tp", async (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = tpSyncSchema.safeParse(req.body ?? {});
   const syncStartedAt = Date.now();
 
@@ -3444,9 +3544,9 @@ app.post("/api/sync/tp", async (req, res) => {
       pastDays: parsed.data.pastDays,
       futureDays: parsed.data.futureDays
     });
-    const existingEvents = store.getScheduleEvents();
+    const existingEvents = store.getScheduleEvents(userId);
     const diff = diffScheduleEvents(existingEvents, tpEvents);
-    const result = store.upsertScheduleEvents(diff.toCreate, diff.toUpdate, diff.toDelete);
+    const result = store.upsertScheduleEvents(userId, diff.toCreate, diff.toUpdate, diff.toDelete);
     syncFailureRecovery.recordSuccess("tp");
     recordIntegrationAttempt("tp", syncStartedAt, true);
 
@@ -3493,12 +3593,14 @@ app.post("/api/sync/github", async (_req, res) => {
 
 // ── GitHub Tracked Repos CRUD ─────────────────────────────────────
 
-app.get("/api/github/repos", (_req, res) => {
-  const repos = store.getGitHubTrackedRepos();
+app.get("/api/github/repos", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const repos = store.getGitHubTrackedRepos(userId);
   return res.json({ repos });
 });
 
 app.post("/api/github/repos", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const body = req.body as { url?: string; owner?: string; repo?: string; courseCode?: string; label?: string } | undefined;
   if (!body) return res.status(400).json({ error: "Missing body" });
 
@@ -3518,30 +3620,33 @@ app.post("/api/github/repos", (req, res) => {
     return res.status(400).json({ error: "Provide either 'url' or 'owner' + 'repo'" });
   }
 
-  const inserted = store.addGitHubTrackedRepo({ owner, repo, courseCode: body.courseCode, label: body.label });
+  const inserted = store.addGitHubTrackedRepo(userId, { owner, repo, courseCode: body.courseCode, label: body.label });
   if (!inserted) return res.status(409).json({ error: "Repository already tracked", owner, repo });
 
   return res.json({ success: true, owner, repo, courseCode: body.courseCode ?? null, label: body.label ?? null });
 });
 
 app.delete("/api/github/repos/:owner/:repo", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const { owner, repo } = req.params;
-  const deleted = store.removeGitHubTrackedRepo(owner, repo);
+  const deleted = store.removeGitHubTrackedRepo(userId, owner, repo);
   if (!deleted) return res.status(404).json({ error: "Repository not tracked" });
   return res.json({ success: true });
 });
 
 app.patch("/api/github/repos/:owner/:repo", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const { owner, repo } = req.params;
   const body = req.body as { courseCode?: string; label?: string } | undefined;
   if (!body) return res.status(400).json({ error: "Missing body" });
-  const updated = store.updateGitHubTrackedRepo(owner, repo, body);
+  const updated = store.updateGitHubTrackedRepo(userId, owner, repo, body);
   if (!updated) return res.status(404).json({ error: "Repository not found" });
   return res.json({ success: true });
 });
 
-app.get("/api/tp/status", (_req, res) => {
-  const events = store.getScheduleEvents();
+app.get("/api/tp/status", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const events = store.getScheduleEvents(userId);
   return res.json({
     lastSyncedAt: events.length > 0 ? new Date().toISOString() : null,
     eventsCount: events.length,
@@ -3549,8 +3654,9 @@ app.get("/api/tp/status", (_req, res) => {
   });
 });
 
-app.get("/api/canvas/status", (_req, res) => {
-  const canvasData = store.getCanvasData();
+app.get("/api/canvas/status", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const canvasData = store.getCanvasData(userId);
   return res.json({
     baseUrl: config.CANVAS_BASE_URL,
     lastSyncedAt: canvasData?.lastSyncedAt ?? null,
@@ -3558,10 +3664,11 @@ app.get("/api/canvas/status", (_req, res) => {
   });
 });
 
-app.get("/api/github/status", (_req, res) => {
-  const githubData = store.getGitHubCourseData();
+app.get("/api/github/status", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
+  const githubData = store.getGitHubCourseData(userId);
   const watcherState = githubWatcher.getState();
-  const trackedRepos = store.getGitHubTrackedRepos();
+  const trackedRepos = store.getGitHubTrackedRepos(userId);
   return res.json({
     configured: githubWatcher.isConfigured(),
     lastSyncedAt: githubData?.lastSyncedAt ?? null,
@@ -3576,12 +3683,13 @@ app.get("/api/github/status", (_req, res) => {
 });
 
 app.get("/api/github/course-content", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = githubCourseContentQuerySchema.safeParse(req.query ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid GitHub course-content query", issues: parsed.error.issues });
   }
 
-  const githubData = store.getGitHubCourseData();
+  const githubData = store.getGitHubCourseData(userId);
   const requestedCourseCode = parsed.data.courseCode?.toUpperCase();
   const matchingDocuments = (githubData?.documents ?? [])
     .filter((doc) => !requestedCourseCode || doc.courseCode.toUpperCase() === requestedCourseCode);
@@ -3597,9 +3705,10 @@ app.get("/api/github/course-content", (req, res) => {
 });
 
 app.post("/api/canvas/sync", async (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const parsed = canvasSyncSchema.safeParse(req.body ?? {});
   const syncStartedAt = Date.now();
-  const hadUpcomingScheduleBeforeSync = hasUpcomingScheduleEvents(new Date());
+  const hadUpcomingScheduleBeforeSync = hasUpcomingScheduleEvents(new Date(), 36, userId);
 
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid Canvas sync payload", issues: parsed.error.issues });
@@ -3620,10 +3729,10 @@ app.post("/api/canvas/sync", async (req, res) => {
     let scheduleRecoveryAttempted = false;
     let scheduleRecovered = false;
 
-    if (!hadUpcomingScheduleBeforeSync && !hasUpcomingScheduleEvents(new Date())) {
+    if (!hadUpcomingScheduleBeforeSync && !hasUpcomingScheduleEvents(new Date(), 36, userId)) {
       scheduleRecoveryAttempted = true;
       const tpResult = await tpSyncService.sync();
-      scheduleRecovered = tpResult.success && hasUpcomingScheduleEvents(new Date());
+      scheduleRecovered = tpResult.success && hasUpcomingScheduleEvents(new Date(), 36, userId);
     }
 
     return res.json({
@@ -3644,11 +3753,12 @@ app.post("/api/canvas/sync", async (req, res) => {
   });
 });
 
-app.get("/api/gemini/status", (_req, res) => {
+app.get("/api/gemini/status", (req, res) => {
+  const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const geminiClient = getGeminiClient();
   const isConfigured = geminiClient.isConfigured();
   const growthImageModel = geminiClient.getGrowthImageModel();
-  const chatHistory = store.getChatHistory({ page: 1, pageSize: 1 });
+  const chatHistory = store.getChatHistory(userId, { page: 1, pageSize: 1 });
   const lastRequestAt = chatHistory.messages.length > 0 
     ? chatHistory.messages[0]?.timestamp ?? null
     : null;
@@ -3971,7 +4081,7 @@ const shutdown = (): void => {
   const finalize = async (): Promise<void> => {
     // Flush any remaining buffered journal entries before shutdown
     try {
-      await flushJournalSessionBuffer(store);
+      await flushJournalSessionBuffer(store, "");
     } catch {
       // best-effort — don't block shutdown
     }

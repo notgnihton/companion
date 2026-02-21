@@ -7,6 +7,7 @@ import type { Notification } from "./types.js";
 describe("orchestrator digest batching", () => {
   let store: RuntimeStore;
   let runtime: OrchestratorRuntime;
+  const userId = "test-user";
   const testDbPath = "test-orchestrator-digest.db";
 
   beforeEach(() => {
@@ -14,7 +15,7 @@ describe("orchestrator digest batching", () => {
       fs.unlinkSync(testDbPath);
     }
     store = new RuntimeStore(testDbPath);
-    runtime = new OrchestratorRuntime(store);
+    runtime = new OrchestratorRuntime(store, userId);
   });
 
   afterEach(() => {
@@ -30,6 +31,7 @@ describe("orchestrator digest batching", () => {
 
     const now = new Date(Date.now() - 1000);
     store.scheduleNotification(
+      userId,
       {
         source: "assignment-tracker",
         title: "Deadline alert",
@@ -39,6 +41,7 @@ describe("orchestrator digest batching", () => {
       now
     );
     store.scheduleNotification(
+      userId,
       {
         source: "notes",
         title: "Journal prompt",
@@ -54,7 +57,7 @@ describe("orchestrator digest batching", () => {
     expect(digest).toBeDefined();
     expect(digest?.source).toBe("orchestrator");
     expect(digest?.message).toContain("2 non-urgent updates");
-    expect(store.getDueScheduledNotifications()).toHaveLength(0);
+    expect(store.getDueScheduledNotifications(userId)).toHaveLength(0);
 
     unsubscribe();
   });
@@ -64,6 +67,7 @@ describe("orchestrator digest batching", () => {
     const unsubscribe = store.onNotification((notification) => received.push(notification));
 
     store.scheduleNotification(
+      userId,
       {
         source: "assignment-tracker",
         title: "Urgent deadline",
@@ -77,7 +81,7 @@ describe("orchestrator digest batching", () => {
 
     expect(received.some((notification) => notification.title === "Urgent deadline")).toBe(true);
     expect(received.some((notification) => notification.title.toLowerCase().includes("digest"))).toBe(false);
-    expect(store.getDueScheduledNotifications()).toHaveLength(0);
+    expect(store.getDueScheduledNotifications(userId)).toHaveLength(0);
 
     unsubscribe();
   });

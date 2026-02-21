@@ -1414,13 +1414,13 @@ function suggestGapActivity(
 }
 
 function buildTodayTimelineSuggestions(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   todaySchedule: LectureEvent[],
   now: Date
 ): LectureEvent[] {
   const sorted = [...todaySchedule].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
   const pendingDeadlines = store
-    .getAcademicDeadlines(now)
+    .getAcademicDeadlines(userId, now)
     .filter((deadline) => !deadline.completed)
     .filter((deadline) => {
       const due = new Date(deadline.dueDate);
@@ -1445,7 +1445,7 @@ function buildTodayTimelineSuggestions(
   const timelineEnd = new Date(now);
   timelineEnd.setHours(Math.max(20, lastEnd.getHours() + 1), 0, 0, 0);
 
-  const muteWindows = store.getScheduleSuggestionMutes({ day: now });
+  const muteWindows = store.getScheduleSuggestionMutes(userId, { day: now });
   const suggestions: LectureEvent[] = [];
   let cursor = timelineStart;
   let suggestionIndex = 0;
@@ -1509,7 +1509,7 @@ function buildTodayTimelineSuggestions(
   return suggestions;
 }
 
-export function handleGetSchedule(store: RuntimeStore, _args: Record<string, unknown> = {}): LectureEvent[] {
+export function handleGetSchedule(store: RuntimeStore, userId: string, _args: Record<string, unknown> = {}): LectureEvent[] {
   const now = new Date();
   const args = _args;
   const requestedDate = asTrimmedString(args.date);
@@ -1544,7 +1544,7 @@ export function handleGetSchedule(store: RuntimeStore, _args: Record<string, unk
   windowEnd.setUTCDate(windowEnd.getUTCDate() + daysAhead);
 
   const scheduleInWindow = store
-    .getScheduleEvents()
+    .getScheduleEvents(userId)
     .filter((event) => {
       const eventStart = new Date(event.startTime).getTime();
       if (Number.isNaN(eventStart)) {
@@ -1560,19 +1560,19 @@ export function handleGetSchedule(store: RuntimeStore, _args: Record<string, unk
     return scheduleInWindow;
   }
 
-  const timelineSuggestions = buildTodayTimelineSuggestions(store, scheduleInWindow, now);
+  const timelineSuggestions = buildTodayTimelineSuggestions(store, userId, scheduleInWindow, now);
   return [...scheduleInWindow, ...timelineSuggestions];
 }
 
 export function handleGetRoutinePresets(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   _args: Record<string, unknown> = {}
 ): RoutinePreset[] {
-  return store.getRoutinePresets();
+  return store.getRoutinePresets(userId);
 }
 
 export function handleGetDeadlines(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): Deadline[] {
   const daysAhead = clampNumber(args.daysAhead, 30, 1, 365);
@@ -1594,7 +1594,7 @@ export function handleGetDeadlines(
   };
 
   const deadlines = store
-    .getAcademicDeadlines(now)
+    .getAcademicDeadlines(userId, now)
     .filter((deadline) => (includeCompleted ? true : !deadline.completed))
     .filter((deadline) => {
       const due = parseDueDate(deadline.dueDate);
@@ -1644,13 +1644,13 @@ export function handleGetDeadlines(
 }
 
 export function handleGetEmails(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): GmailMessage[] {
   const limit = clampNumber(args.limit, 5, 1, 20);
   const unreadOnly = args.unreadOnly === true;
   const messages = store
-    .getGmailMessages()
+    .getGmailMessages(userId)
     .filter((message) => (unreadOnly ? !message.isRead : true))
     .sort((left, right) => {
       const leftMs = new Date(left.receivedAt).getTime();
@@ -1664,7 +1664,7 @@ export function handleGetEmails(
 }
 
 export function handleGetWithingsHealthSummary(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): {
   connected: boolean;
@@ -1675,8 +1675,8 @@ export function handleGetWithingsHealthSummary(
   sleepSummary: WithingsSleepSummaryEntry[];
 } {
   const daysBack = clampNumber(args.daysBack, 14, 1, 90);
-  const data = store.getWithingsData();
-  const connected = store.getWithingsTokens() !== null;
+  const data = store.getWithingsData(userId);
+  const connected = store.getWithingsTokens(userId) !== null;
   const cutoffMs = Date.now() - daysBack * 24 * 60 * 60 * 1000;
 
   const weight = data.weight
@@ -1706,7 +1706,8 @@ export function handleGetWithingsHealthSummary(
 }
 
 export function handleGetHabitsGoalsStatus(
-  store: RuntimeStore
+  store: RuntimeStore,
+  userId: string
 ): {
   habits: HabitWithStatus[];
   goals: GoalWithStatus[];
@@ -1717,8 +1718,8 @@ export function handleGetHabitsGoalsStatus(
     goalsTotal: number;
   };
 } {
-  const habits = store.getHabitsWithStatus();
-  const goals = store.getGoalsWithStatus();
+  const habits = store.getHabitsWithStatus(userId);
+  const goals = store.getGoalsWithStatus(userId);
 
   return {
     habits,
@@ -1737,12 +1738,12 @@ function normalizeSearchText(value: string): string {
 }
 
 function resolveHabitTarget(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown>
 ): HabitWithStatus | { error: string } {
   const habitId = asTrimmedString(args.habitId);
   if (habitId) {
-    const byId = store.getHabitsWithStatus().find((habit) => habit.id === habitId);
+    const byId = store.getHabitsWithStatus(userId).find((habit) => habit.id === habitId);
     if (!byId) {
       return { error: `Habit not found: ${habitId}` };
     }
@@ -1750,7 +1751,7 @@ function resolveHabitTarget(
   }
 
   const habitName = asTrimmedString(args.habitName);
-  const habits = store.getHabitsWithStatus();
+  const habits = store.getHabitsWithStatus(userId);
   if (habits.length === 0) {
     return { error: "No habits are configured yet." };
   }
@@ -1783,12 +1784,12 @@ function resolveHabitTarget(
 }
 
 function resolveGoalTarget(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown>
 ): GoalWithStatus | { error: string } {
   const goalId = asTrimmedString(args.goalId);
   if (goalId) {
-    const byId = store.getGoalsWithStatus().find((goal) => goal.id === goalId);
+    const byId = store.getGoalsWithStatus(userId).find((goal) => goal.id === goalId);
     if (!byId) {
       return { error: `Goal not found: ${goalId}` };
     }
@@ -1796,7 +1797,7 @@ function resolveGoalTarget(
   }
 
   const goalTitle = asTrimmedString(args.goalTitle);
-  const goals = store.getGoalsWithStatus();
+  const goals = store.getGoalsWithStatus(userId);
   if (goals.length === 0) {
     return { error: "No goals are configured yet." };
   }
@@ -1829,12 +1830,12 @@ function resolveGoalTarget(
 }
 
 function resolveScheduleTarget(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown>
 ): LectureEvent | { error: string } {
   const scheduleId = asTrimmedString(args.scheduleId);
   if (scheduleId) {
-    const byId = store.getScheduleEventById(scheduleId);
+    const byId = store.getScheduleEventById(userId, scheduleId);
     if (!byId) {
       return { error: `Schedule block not found: ${scheduleId}` };
     }
@@ -1842,7 +1843,7 @@ function resolveScheduleTarget(
   }
 
   const scheduleTitle = asTrimmedString(args.scheduleTitle);
-  const schedule = store.getScheduleEvents();
+  const schedule = store.getScheduleEvents(userId);
   if (schedule.length === 0) {
     return { error: "No schedule blocks are available yet." };
   }
@@ -1928,12 +1929,12 @@ function parseRoutineWeekdays(value: unknown): number[] | null {
 }
 
 function resolveRoutinePresetTarget(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown>
 ): RoutinePreset | { error: string } {
   const presetId = asTrimmedString(args.presetId);
   if (presetId) {
-    const byId = store.getRoutinePresetById(presetId);
+    const byId = store.getRoutinePresetById(userId, presetId);
     if (!byId) {
       return { error: `Routine preset not found: ${presetId}` };
     }
@@ -1941,7 +1942,7 @@ function resolveRoutinePresetTarget(
   }
 
   const presetTitle = asTrimmedString(args.presetTitle);
-  const presets = store.getRoutinePresets();
+  const presets = store.getRoutinePresets(userId);
   if (presets.length === 0) {
     return { error: "No routine presets are configured yet." };
   }
@@ -1974,15 +1975,15 @@ function resolveRoutinePresetTarget(
 }
 
 export function handleUpdateHabitCheckIn(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; habit: HabitWithStatus; message: string } | { error: string } {
-  const resolved = resolveHabitTarget(store, args);
+  const resolved = resolveHabitTarget(store, userId, args);
   if ("error" in resolved) {
     return resolved;
   }
 
-  const next = store.toggleHabitCheckIn(resolved.id, {
+  const next = store.toggleHabitCheckIn(userId, resolved.id, {
     completed: typeof args.completed === "boolean" ? args.completed : undefined
   });
 
@@ -2000,13 +2001,13 @@ export function handleUpdateHabitCheckIn(
 }
 
 export function handleCheckInGym(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; message: string } | { error: string } {
-  const gym = store.ensureGymHabit();
+  const gym = store.ensureGymHabit(userId);
   const completed = args.undo === true ? false : true;
   const date = typeof args.date === "string" ? args.date : undefined;
-  const result = store.toggleHabitCheckIn(gym.id, { completed, date });
+  const result = store.toggleHabitCheckIn(userId, gym.id, { completed, date });
   if (!result) return { error: "Failed to update gym check-in." };
   return {
     success: true,
@@ -2017,15 +2018,15 @@ export function handleCheckInGym(
 }
 
 export function handleUpdateGoalCheckIn(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; goal: GoalWithStatus; message: string } | { error: string } {
-  const resolved = resolveGoalTarget(store, args);
+  const resolved = resolveGoalTarget(store, userId, args);
   if ("error" in resolved) {
     return resolved;
   }
 
-  const next = store.toggleGoalCheckIn(resolved.id, {
+  const next = store.toggleGoalCheckIn(userId, resolved.id, {
     completed: typeof args.completed === "boolean" ? args.completed : undefined
   });
 
@@ -2051,7 +2052,7 @@ function parseCadence(value: unknown, fallback: "daily" | "weekly"): "daily" | "
 }
 
 export function handleCreateHabit(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; habit: HabitWithStatus; created: boolean; message: string } | { error: string } {
   const name = asTrimmedString(args.name);
@@ -2060,7 +2061,7 @@ export function handleCreateHabit(
   }
 
   const existing = store
-    .getHabitsWithStatus()
+    .getHabitsWithStatus(userId)
     .find((habit) => normalizeSearchText(habit.name) === normalizeSearchText(name));
   if (existing) {
     return {
@@ -2075,7 +2076,7 @@ export function handleCreateHabit(
   const targetPerWeek = clampNumber(args.targetPerWeek, cadence === "daily" ? 5 : 3, 1, 14);
   const motivation = asTrimmedString(args.motivation) ?? undefined;
 
-  const habit = store.createHabit({
+  const habit = store.createHabit(userId, {
     name,
     cadence,
     targetPerWeek,
@@ -2091,7 +2092,7 @@ export function handleCreateHabit(
 }
 
 export function handleDeleteHabit(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): {
   success: true;
@@ -2100,7 +2101,7 @@ export function handleDeleteHabit(
   habitName?: string;
   message: string;
 } | { error: string } {
-  const habits = store.getHabitsWithStatus();
+  const habits = store.getHabitsWithStatus(userId);
   if (habits.length === 0) {
     return {
       success: true,
@@ -2154,7 +2155,7 @@ export function handleDeleteHabit(
     };
   }
 
-  const deleted = store.deleteHabit(target.id);
+  const deleted = store.deleteHabit(userId, target.id);
   if (!deleted) {
     return { error: "Unable to delete habit." };
   }
@@ -2169,7 +2170,7 @@ export function handleDeleteHabit(
 }
 
 export function handleCreateGoal(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; goal: GoalWithStatus; created: boolean; message: string } | { error: string } {
   const title = asTrimmedString(args.title);
@@ -2178,7 +2179,7 @@ export function handleCreateGoal(
   }
 
   const existing = store
-    .getGoalsWithStatus()
+    .getGoalsWithStatus(userId)
     .find((goal) => normalizeSearchText(goal.title) === normalizeSearchText(title));
   if (existing) {
     return {
@@ -2203,7 +2204,7 @@ export function handleCreateGoal(
   }
   const motivation = asTrimmedString(args.motivation) ?? undefined;
 
-  const goal = store.createGoal({
+  const goal = store.createGoal(userId, {
     title,
     cadence,
     targetCount,
@@ -2220,7 +2221,7 @@ export function handleCreateGoal(
 }
 
 export function handleDeleteGoal(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): {
   success: true;
@@ -2229,7 +2230,7 @@ export function handleDeleteGoal(
   goalTitle?: string;
   message: string;
 } | { error: string } {
-  const goals = store.getGoalsWithStatus();
+  const goals = store.getGoalsWithStatus(userId);
   if (goals.length === 0) {
     return {
       success: true,
@@ -2283,7 +2284,7 @@ export function handleDeleteGoal(
     };
   }
 
-  const deleted = store.deleteGoal(target.id);
+  const deleted = store.deleteGoal(userId, target.id);
   if (!deleted) {
     return { error: "Unable to delete goal." };
   }
@@ -2298,15 +2299,15 @@ export function handleDeleteGoal(
 }
 
 export function handleGetNutritionSummary(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): NutritionDailySummary {
   const date = parseNutritionDate(args.date);
-  return store.getNutritionDailySummary(date ?? new Date());
+  return store.getNutritionDailySummary(userId, date ?? new Date());
 }
 
 export function handleGetNutritionHistory(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { entries: NutritionDayHistoryEntry[]; from: string; to: string } {
   const rawFrom = parseNutritionDate(args.from);
@@ -2327,7 +2328,7 @@ export function handleGetNutritionHistory(
     toDate = end.toISOString().slice(0, 10);
   }
 
-  const entries = store.getNutritionDailyHistory(fromDate, toDate);
+  const entries = store.getNutritionDailyHistory(userId, fromDate, toDate);
   return { entries, from: fromDate, to: toDate };
 }
 
@@ -2344,12 +2345,12 @@ function mealNotesWithDoneToken(notes: string | undefined, completed: boolean): 
 }
 
 function resolveNutritionMealTarget(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown>
 ): NutritionMeal | { error: string } {
   const mealId = asTrimmedString(args.mealId);
   if (mealId) {
-    const byId = store.getNutritionMealById(mealId);
+    const byId = store.getNutritionMealById(userId, mealId);
     if (!byId) {
       return { error: `Meal not found: ${mealId}` };
     }
@@ -2357,7 +2358,7 @@ function resolveNutritionMealTarget(
   }
 
   const mealName = asTrimmedString(args.mealName);
-  const meals = store.getNutritionMeals({ limit: 500 });
+  const meals = store.getNutritionMeals(userId, { limit: 500 });
   if (meals.length === 0) {
     return { error: "No meals have been logged yet." };
   }
@@ -2448,18 +2449,18 @@ function parseNutritionConsumedAt(value: unknown): string | null {
 }
 
 export function handleGetNutritionTargets(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { date: string; profile: ReturnType<RuntimeStore["getNutritionTargetProfile"]> } {
   const date = parseNutritionDate(args.date) ?? toDateKey(new Date());
   return {
     date,
-    profile: store.getNutritionTargetProfile(date)
+    profile: store.getNutritionTargetProfile(userId, date)
   };
 }
 
 export function handleUpdateNutritionTargets(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; profile: ReturnType<RuntimeStore["upsertNutritionTargetProfile"]>; message: string } | { error: string } {
   const entry: {
@@ -2539,7 +2540,7 @@ export function handleUpdateNutritionTargets(
     };
   }
 
-  const profile = store.upsertNutritionTargetProfile(entry);
+  const profile = store.upsertNutritionTargetProfile(userId, entry);
   return {
     success: true,
     profile,
@@ -2548,7 +2549,7 @@ export function handleUpdateNutritionTargets(
 }
 
 export function handleGetNutritionMeals(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { meals: NutritionMeal[]; total: number } | { error: string } {
   const dateRaw = asTrimmedString(args.date);
@@ -2567,7 +2568,7 @@ export function handleGetNutritionMeals(
   }
 
   const limit = clampNumber(args.limit, 30, 1, 500);
-  const meals = store.getNutritionMeals({
+  const meals = store.getNutritionMeals(userId, {
     ...(date ? { date } : {}),
     ...(fromRaw ? { from: fromRaw } : {}),
     ...(toRaw ? { to: toRaw } : {}),
@@ -2580,12 +2581,12 @@ export function handleGetNutritionMeals(
 }
 
 function resolveNutritionPlanSnapshotTarget(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown>
 ): NutritionPlanSnapshot | { error: string } {
   const snapshotId = asTrimmedString(args.snapshotId);
   if (snapshotId) {
-    const byId = store.getNutritionPlanSnapshotById(snapshotId);
+    const byId = store.getNutritionPlanSnapshotById(userId, snapshotId);
     if (!byId) {
       return { error: `Nutrition plan snapshot not found: ${snapshotId}` };
     }
@@ -2593,7 +2594,7 @@ function resolveNutritionPlanSnapshotTarget(
   }
 
   const snapshotName = asTrimmedString(args.snapshotName);
-  const snapshots = store.getNutritionPlanSnapshots({ limit: 500 });
+  const snapshots = store.getNutritionPlanSnapshots(userId, { limit: 500 });
   if (snapshots.length === 0) {
     return { error: "No nutrition plan snapshots exist yet." };
   }
@@ -2626,12 +2627,12 @@ function resolveNutritionPlanSnapshotTarget(
 }
 
 export function handleGetNutritionPlanSnapshots(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { snapshots: NutritionPlanSnapshot[]; total: number } {
   const query = asTrimmedString(args.query) ?? undefined;
   const limit = clampNumber(args.limit, 20, 1, 200);
-  const snapshots = store.getNutritionPlanSnapshots({
+  const snapshots = store.getNutritionPlanSnapshots(userId, {
     ...(query ? { query } : {}),
     limit
   });
@@ -2642,7 +2643,7 @@ export function handleGetNutritionPlanSnapshots(
 }
 
 export function handleSaveNutritionPlanSnapshot(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; snapshot: NutritionPlanSnapshot; mealsSaved: number; message: string } | { error: string } {
   const dateRaw = asTrimmedString(args.date);
@@ -2654,7 +2655,7 @@ export function handleSaveNutritionPlanSnapshot(
   const effectiveDate = date ?? toDateKey(new Date());
   const name = asTrimmedString(args.name) ?? `Meal plan ${effectiveDate}`;
   const replaceSnapshotId = asTrimmedString(args.replaceSnapshotId) ?? asTrimmedString(args.snapshotId);
-  const snapshot = store.createNutritionPlanSnapshot({
+  const snapshot = store.createNutritionPlanSnapshot(userId, {
     name,
     date: effectiveDate,
     ...(replaceSnapshotId ? { replaceId: replaceSnapshotId } : {})
@@ -2673,7 +2674,7 @@ export function handleSaveNutritionPlanSnapshot(
 }
 
 export function handleApplyNutritionPlanSnapshot(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ):
   | {
@@ -2684,7 +2685,7 @@ export function handleApplyNutritionPlanSnapshot(
       message: string;
     }
   | { error: string } {
-  const resolvedSnapshot = resolveNutritionPlanSnapshotTarget(store, args);
+  const resolvedSnapshot = resolveNutritionPlanSnapshotTarget(store, userId, args);
   if ("error" in resolvedSnapshot) {
     return resolvedSnapshot;
   }
@@ -2697,7 +2698,7 @@ export function handleApplyNutritionPlanSnapshot(
 
   const replaceMeals = typeof args.replaceMeals === "boolean" ? args.replaceMeals : true;
   const setAsDefault = typeof args.setAsDefault === "boolean" ? args.setAsDefault : true;
-  const applied = store.applyNutritionPlanSnapshot(resolvedSnapshot.id, {
+  const applied = store.applyNutritionPlanSnapshot(userId, resolvedSnapshot.id, {
     date: date ?? toDateKey(new Date()),
     replaceMeals,
     setAsDefault
@@ -2716,13 +2717,13 @@ export function handleApplyNutritionPlanSnapshot(
 }
 
 export function handleDeleteNutritionPlanSnapshot(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ):
   | { success: true; deleted: true; snapshotId: string; snapshotName: string; message: string }
   | { success: true; deleted: false; message: string }
   | { error: string } {
-  const snapshots = store.getNutritionPlanSnapshots({ limit: 500 });
+  const snapshots = store.getNutritionPlanSnapshots(userId, { limit: 500 });
   if (snapshots.length === 0) {
     return {
       success: true,
@@ -2731,12 +2732,12 @@ export function handleDeleteNutritionPlanSnapshot(
     };
   }
 
-  const resolvedSnapshot = resolveNutritionPlanSnapshotTarget(store, args);
+  const resolvedSnapshot = resolveNutritionPlanSnapshotTarget(store, userId, args);
   if ("error" in resolvedSnapshot) {
     return resolvedSnapshot;
   }
 
-  const deleted = store.deleteNutritionPlanSnapshot(resolvedSnapshot.id);
+  const deleted = store.deleteNutritionPlanSnapshot(userId, resolvedSnapshot.id);
   if (!deleted) {
     return { error: "Unable to delete nutrition plan snapshot." };
   }
@@ -2751,12 +2752,12 @@ export function handleDeleteNutritionPlanSnapshot(
 }
 
 function resolveNutritionCustomFoodTarget(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown>
 ): NutritionCustomFood | { error: string } {
   const customFoodId = asTrimmedString(args.customFoodId);
   if (customFoodId) {
-    const byId = store.getNutritionCustomFoodById(customFoodId);
+    const byId = store.getNutritionCustomFoodById(userId, customFoodId);
     if (!byId) {
       return { error: `Custom food not found: ${customFoodId}` };
     }
@@ -2764,7 +2765,7 @@ function resolveNutritionCustomFoodTarget(
   }
 
   const customFoodName = asTrimmedString(args.customFoodName);
-  const foods = store.getNutritionCustomFoods({ limit: 500 });
+  const foods = store.getNutritionCustomFoods(userId, { limit: 500 });
   if (foods.length === 0) {
     return { error: "No custom foods are configured yet." };
   }
@@ -2797,12 +2798,12 @@ function resolveNutritionCustomFoodTarget(
 }
 
 export function handleGetNutritionCustomFoods(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { foods: NutritionCustomFood[]; total: number } {
   const query = asTrimmedString(args.query) ?? undefined;
   const limit = clampNumber(args.limit, 20, 1, 200);
-  const foods = store.getNutritionCustomFoods({
+  const foods = store.getNutritionCustomFoods(userId, {
     ...(query ? { query } : {}),
     limit
   });
@@ -2813,7 +2814,7 @@ export function handleGetNutritionCustomFoods(
 }
 
 export function handleCreateNutritionCustomFood(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; food: NutritionCustomFood; message: string } | { error: string } {
   const name = asTrimmedString(args.name);
@@ -2822,7 +2823,7 @@ export function handleCreateNutritionCustomFood(
   }
 
   // Check for existing custom food with the same name (case-insensitive)
-  const existingFoods = store.getNutritionCustomFoods({ limit: 500 });
+  const existingFoods = store.getNutritionCustomFoods(userId, { limit: 500 });
   const needle = normalizeSearchText(name);
   const duplicate = existingFoods.find((f) => normalizeSearchText(f.name) === needle);
   if (duplicate) {
@@ -2855,7 +2856,7 @@ export function handleCreateNutritionCustomFood(
     return { error: densityError };
   }
 
-  const food = store.createNutritionCustomFood({
+  const food = store.createNutritionCustomFood(userId, {
     name,
     unitLabel,
     caloriesPerUnit,
@@ -2872,10 +2873,10 @@ export function handleCreateNutritionCustomFood(
 }
 
 export function handleUpdateNutritionCustomFood(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; food: NutritionCustomFood; message: string } | { error: string } {
-  const resolved = resolveNutritionCustomFoodTarget(store, args);
+  const resolved = resolveNutritionCustomFoodTarget(store, userId, args);
   if ("error" in resolved) {
     return resolved;
   }
@@ -2926,7 +2927,7 @@ export function handleUpdateNutritionCustomFood(
     };
   }
 
-  const updated = store.updateNutritionCustomFood(resolved.id, patch);
+  const updated = store.updateNutritionCustomFood(userId, resolved.id, patch);
   if (!updated) {
     return { error: "Unable to update custom food." };
   }
@@ -2939,7 +2940,7 @@ export function handleUpdateNutritionCustomFood(
 }
 
 export function handleDeleteNutritionCustomFood(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ):
   | {
@@ -2950,7 +2951,7 @@ export function handleDeleteNutritionCustomFood(
       message: string;
     }
   | { error: string } {
-  const foods = store.getNutritionCustomFoods({ limit: 500 });
+  const foods = store.getNutritionCustomFoods(userId, { limit: 500 });
   if (foods.length === 0) {
     return {
       success: true,
@@ -2959,12 +2960,12 @@ export function handleDeleteNutritionCustomFood(
     };
   }
 
-  const resolved = resolveNutritionCustomFoodTarget(store, args);
+  const resolved = resolveNutritionCustomFoodTarget(store, userId, args);
   if ("error" in resolved) {
     return resolved;
   }
 
-  const deleted = store.deleteNutritionCustomFood(resolved.id);
+  const deleted = store.deleteNutritionCustomFood(userId, resolved.id);
   if (!deleted) {
     return { error: "Unable to delete custom food." };
   }
@@ -3047,7 +3048,7 @@ function assertPlausibleGramDensityForCustomFood(candidate: {
 }
 
 function parseNutritionMealItemsArg(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   value: unknown
 ): NutritionMeal["items"] | { error: string } {
   if (!Array.isArray(value)) {
@@ -3069,7 +3070,7 @@ function parseNutritionMealItemsArg(
     const quantity = clampFloat(record.quantity, 1, 1, 1000);
 
     if (customFoodId || customFoodName) {
-      const resolvedFood = resolveNutritionCustomFoodTarget(store, {
+      const resolvedFood = resolveNutritionCustomFoodTarget(store, userId, {
         customFoodId,
         customFoodName
       });
@@ -3127,7 +3128,7 @@ function parseNutritionMealItemsArg(
 }
 
 export function handleCreateNutritionMeal(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; meal: NutritionMeal; message: string } | { error: string } {
   const name = asTrimmedString(args.name);
@@ -3135,14 +3136,14 @@ export function handleCreateNutritionMeal(
     return { error: "name is required." };
   }
 
-  const parsedItems = parseNutritionMealItemsArg(store, args.items);
+  const parsedItems = parseNutritionMealItemsArg(store, userId, args.items);
   if ("error" in parsedItems) {
     return parsedItems;
   }
 
   let items = parsedItems;
   if (items.length === 0 && (asTrimmedString(args.customFoodId) || asTrimmedString(args.customFoodName))) {
-    const resolvedFood = resolveNutritionCustomFoodTarget(store, {
+    const resolvedFood = resolveNutritionCustomFoodTarget(store, userId, {
       customFoodId: asTrimmedString(args.customFoodId),
       customFoodName: asTrimmedString(args.customFoodName)
     });
@@ -3174,7 +3175,7 @@ export function handleCreateNutritionMeal(
     return { error: "consumedAt must be a valid datetime when provided." };
   }
 
-  const meal = store.createNutritionMeal({
+  const meal = store.createNutritionMeal(userId, {
     name,
     mealType: parseMealType(args.mealType),
     consumedAt,
@@ -3194,10 +3195,10 @@ export function handleCreateNutritionMeal(
 }
 
 export function handleUpdateNutritionMeal(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; meal: NutritionMeal; message: string } | { error: string } {
-  const resolved = resolveNutritionMealTarget(store, args);
+  const resolved = resolveNutritionMealTarget(store, userId, args);
   if ("error" in resolved) {
     return resolved;
   }
@@ -3258,7 +3259,7 @@ export function handleUpdateNutritionMeal(
     };
   }
 
-  const updated = store.updateNutritionMeal(resolved.id, patch);
+  const updated = store.updateNutritionMeal(userId, resolved.id, patch);
   if (!updated) {
     return { error: "Unable to update meal." };
   }
@@ -3271,15 +3272,15 @@ export function handleUpdateNutritionMeal(
 }
 
 export function handleAddNutritionMealItem(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; meal: NutritionMeal; item: NutritionMeal["items"][number]; message: string } | { error: string } {
-  const resolvedMeal = resolveNutritionMealTarget(store, args);
+  const resolvedMeal = resolveNutritionMealTarget(store, userId, args);
   if ("error" in resolvedMeal) {
     return resolvedMeal;
   }
 
-  const resolvedFood = resolveNutritionCustomFoodTarget(store, args);
+  const resolvedFood = resolveNutritionCustomFoodTarget(store, userId, args);
   if ("error" in resolvedFood) {
     return resolvedFood;
   }
@@ -3288,7 +3289,7 @@ export function handleAddNutritionMealItem(
   const nextItem = buildNutritionMealItemFromCustomFood(resolvedFood, quantity);
   const nextItems = [...resolvedMeal.items, nextItem];
 
-  const updated = store.updateNutritionMeal(resolvedMeal.id, { items: nextItems });
+  const updated = store.updateNutritionMeal(userId, resolvedMeal.id, { items: nextItems });
   if (!updated) {
     return { error: "Unable to add meal item." };
   }
@@ -3307,10 +3308,10 @@ export function handleAddNutritionMealItem(
 }
 
 export function handleUpdateNutritionMealItem(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; meal: NutritionMeal; item: NutritionMeal["items"][number]; message: string } | { error: string } {
-  const resolvedMeal = resolveNutritionMealTarget(store, args);
+  const resolvedMeal = resolveNutritionMealTarget(store, userId, args);
   if ("error" in resolvedMeal) {
     return resolvedMeal;
   }
@@ -3342,7 +3343,7 @@ export function handleUpdateNutritionMealItem(
       : item
   );
 
-  const updated = store.updateNutritionMeal(resolvedMeal.id, { items: nextItems });
+  const updated = store.updateNutritionMeal(userId, resolvedMeal.id, { items: nextItems });
   if (!updated) {
     return { error: "Unable to update meal item." };
   }
@@ -3361,10 +3362,10 @@ export function handleUpdateNutritionMealItem(
 }
 
 export function handleRemoveNutritionMealItem(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; meal: NutritionMeal; removedItemId?: string; message: string } | { error: string } {
-  const resolvedMeal = resolveNutritionMealTarget(store, args);
+  const resolvedMeal = resolveNutritionMealTarget(store, userId, args);
   if ("error" in resolvedMeal) {
     return resolvedMeal;
   }
@@ -3378,7 +3379,7 @@ export function handleRemoveNutritionMealItem(
   }
 
   const nextItems = resolvedMeal.items.filter((_, index) => index !== resolvedItem.index);
-  const updated = store.updateNutritionMeal(resolvedMeal.id, {
+  const updated = store.updateNutritionMeal(userId, resolvedMeal.id, {
     items: nextItems,
     ...(nextItems.length === 0
       ? {
@@ -3402,13 +3403,13 @@ export function handleRemoveNutritionMealItem(
 }
 
 export function handleMoveNutritionMeal(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ):
   | { success: true; moved: false; meal: NutritionMeal; message: string }
   | { success: true; moved: true; meal: NutritionMeal; message: string }
   | { error: string } {
-  const resolvedMeal = resolveNutritionMealTarget(store, args);
+  const resolvedMeal = resolveNutritionMealTarget(store, userId, args);
   if ("error" in resolvedMeal) {
     return resolvedMeal;
   }
@@ -3419,7 +3420,7 @@ export function handleMoveNutritionMeal(
   }
 
   const date = parseNutritionDate(args.date) ?? toDateKey(new Date(resolvedMeal.consumedAt));
-  const meals = store.getNutritionMeals({ date, limit: 1000 });
+  const meals = store.getNutritionMeals(userId, { date, limit: 1000 });
   const index = meals.findIndex((meal) => meal.id === resolvedMeal.id);
   if (index === -1) {
     return { error: "Meal is not in the requested day window." };
@@ -3443,7 +3444,7 @@ export function handleMoveNutritionMeal(
   const updatedMeals = new Map<string, NutritionMeal>();
   reordered.forEach((meal, orderIndex) => {
     const consumedAt = new Date(dayStart + orderIndex * 60_000).toISOString();
-    const updated = store.updateNutritionMeal(meal.id, { consumedAt });
+    const updated = store.updateNutritionMeal(userId, meal.id, { consumedAt });
     if (updated) {
       updatedMeals.set(updated.id, updated);
     }
@@ -3463,7 +3464,7 @@ export function handleMoveNutritionMeal(
 }
 
 export function handleSetNutritionMealOrder(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ):
   | { success: true; orderedMealNames: string[]; message: string }
@@ -3489,7 +3490,7 @@ export function handleSetNutritionMealOrder(
   });
 
   const date = parseNutritionDate(args.date) ?? toDateKey(new Date());
-  const meals = store.getNutritionMeals({ date, limit: 1000 });
+  const meals = store.getNutritionMeals(userId, { date, limit: 1000 });
   if (meals.length === 0) {
     return { error: `No meals found for ${date}.` };
   }
@@ -3533,7 +3534,7 @@ export function handleSetNutritionMealOrder(
   const updatedNames: string[] = [];
   for (const [orderIndex, meal] of finalOrder.entries()) {
     const consumedAt = new Date(dayStart + orderIndex * 60_000).toISOString();
-    const updated = store.updateNutritionMeal(meal.id, { consumedAt });
+    const updated = store.updateNutritionMeal(userId, meal.id, { consumedAt });
     if (!updated) {
       return { error: `Unable to reorder meal "${meal.name}".` };
     }
@@ -3548,7 +3549,7 @@ export function handleSetNutritionMealOrder(
 }
 
 export function handleLogMeal(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; meal: NutritionMeal; message: string } | { error: string } {
   const customFoodId = asTrimmedString(args.customFoodId);
@@ -3567,7 +3568,7 @@ export function handleLogMeal(
       : null;
 
   if (customFoodId || customFoodName) {
-    const resolved = resolveNutritionCustomFoodTarget(store, { customFoodId, customFoodName });
+    const resolved = resolveNutritionCustomFoodTarget(store, userId, { customFoodId, customFoodName });
     if ("error" in resolved) {
       return resolved;
     }
@@ -3610,7 +3611,7 @@ export function handleLogMeal(
       ? `${item.quantity} g`
       : `${roundToTenth(item.quantity)} ${resolved.unitLabel}`;
 
-    const meal = store.createNutritionMeal({
+    const meal = store.createNutritionMeal(userId, {
       name: mealName,
       mealType: parseMealType(args.mealType),
       consumedAt: asTrimmedString(args.consumedAt) ?? new Date().toISOString(),
@@ -3665,7 +3666,7 @@ export function handleLogMeal(
           }
         ];
 
-  const meal = store.createNutritionMeal({
+  const meal = store.createNutritionMeal(userId, {
     name: mealName,
     mealType: parseMealType(args.mealType),
     consumedAt: asTrimmedString(args.consumedAt) ?? new Date().toISOString(),
@@ -3685,7 +3686,7 @@ export function handleLogMeal(
 }
 
 export function handleDeleteMeal(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ):
   | {
@@ -3696,7 +3697,7 @@ export function handleDeleteMeal(
       message: string;
     }
   | { error: string } {
-  const meals = store.getNutritionMeals({ limit: 500 });
+  const meals = store.getNutritionMeals(userId, { limit: 500 });
   if (meals.length === 0) {
     return {
       success: true,
@@ -3750,7 +3751,7 @@ export function handleDeleteMeal(
     };
   }
 
-  const deleted = store.deleteNutritionMeal(target.id);
+  const deleted = store.deleteNutritionMeal(userId, target.id);
   if (!deleted) {
     return { error: "Unable to delete meal." };
   }
@@ -3881,10 +3882,10 @@ function scoreGitHubCourseDocument(doc: GitHubCourseDocument, queryTokens: strin
 }
 
 export function handleGetGitHubCourseContent(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): GitHubCourseDocument[] {
-  const githubData = store.getGitHubCourseData();
+  const githubData = store.getGitHubCourseData(userId);
   if (!githubData || githubData.documents.length === 0) {
     return [];
   }
@@ -3929,7 +3930,7 @@ function toPendingActionResponse(action: ChatPendingAction, message: string): Pe
 }
 
 export function handleQueueDeadlineAction(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): PendingActionToolResponse | ImmediateDeadlineActionResponse | { error: string } {
   const deadlineId = asTrimmedString(args.deadlineId);
@@ -3939,7 +3940,7 @@ export function handleQueueDeadlineAction(
     return { error: "deadlineId and action are required." };
   }
 
-  const deadline = store.getDeadlineById(deadlineId, false);
+  const deadline = store.getDeadlineById(userId, deadlineId, false);
   if (!deadline) {
     return { error: `Deadline not found: ${deadlineId}` };
   }
@@ -3949,7 +3950,7 @@ export function handleQueueDeadlineAction(
   }
 
   if (action === "complete") {
-    const updated = store.updateDeadline(deadline.id, { completed: true });
+    const updated = store.updateDeadline(userId, deadline.id, { completed: true });
     if (!updated) {
       return { error: "Unable to complete deadline." };
     }
@@ -3972,7 +3973,7 @@ export function handleQueueDeadlineAction(
     if (Number.isNaN(newDue.getTime())) {
       return { error: `Invalid newDueDate: ${rawDate}. Use ISO 8601 format.` };
     }
-    const updated = store.updateDeadline(deadline.id, { dueDate: newDue.toISOString() });
+    const updated = store.updateDeadline(userId, deadline.id, { dueDate: newDue.toISOString() });
     if (!updated) {
       return { error: "Unable to reschedule deadline." };
     }
@@ -3989,7 +3990,7 @@ export function handleQueueDeadlineAction(
 }
 
 export function handleScheduleReminder(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; scheduledNotification: ScheduledNotification; message: string } | { error: string } {
   const title = asTrimmedString(args.title);
@@ -4024,6 +4025,7 @@ export function handleScheduleReminder(
       : "none";
 
   const scheduled = store.scheduleNotification(
+    userId,
     {
       title,
       message,
@@ -4047,9 +4049,10 @@ export function handleScheduleReminder(
 }
 
 export function handleGetReminders(
-  store: RuntimeStore
+  store: RuntimeStore,
+  userId: string
 ): { reminders: Array<{ id: string; title: string; message: string; icon?: string; scheduledFor: string; recurrence?: string; priority: string }> } {
-  const all = store.getUpcomingScheduledNotifications("user-reminder");
+  const all = store.getUpcomingScheduledNotifications(userId, "user-reminder");
   return {
     reminders: all.map((s) => ({
       id: s.id,
@@ -4064,7 +4067,7 @@ export function handleGetReminders(
 }
 
 export function handleCancelReminder(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; cancelledId: string; title: string; message: string } | { error: string } {
   const reminderId = asTrimmedString(args.reminderId);
@@ -4075,12 +4078,12 @@ export function handleCancelReminder(
   }
 
   if (reminderId) {
-    const all = store.getUpcomingScheduledNotifications("user-reminder");
+    const all = store.getUpcomingScheduledNotifications(userId, "user-reminder");
     const target = all.find((s) => s.id === reminderId);
     if (!target) {
       return { error: `No scheduled reminder found with ID: ${reminderId}` };
     }
-    store.removeScheduledNotification(reminderId);
+    store.removeScheduledNotification(userId, reminderId);
     return {
       success: true,
       cancelledId: reminderId,
@@ -4090,12 +4093,12 @@ export function handleCancelReminder(
   }
 
   // Search by title hint
-  const all = store.getUpcomingScheduledNotifications("user-reminder");
+  const all = store.getUpcomingScheduledNotifications(userId, "user-reminder");
   const match = all.find((s) => s.notification.title.toLowerCase().includes(titleHint!));
   if (!match) {
     return { error: `No upcoming reminder found matching "${titleHint}"` };
   }
-  store.removeScheduledNotification(match.id);
+  store.removeScheduledNotification(userId, match.id);
   return {
     success: true,
     cancelledId: match.id,
@@ -4105,7 +4108,7 @@ export function handleCancelReminder(
 }
 
 export function handleCreateScheduleBlock(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; lecture: LectureEvent; message: string } | { error: string } {
   const title = asTrimmedString(args.title);
@@ -4125,7 +4128,7 @@ export function handleCreateScheduleBlock(
   const workload: LectureEvent["workload"] =
     workloadRaw === "low" || workloadRaw === "medium" || workloadRaw === "high" ? workloadRaw : "medium";
 
-  const lecture = store.createLectureEvent({
+  const lecture = store.createLectureEvent(userId, {
     title,
     startTime: startDate.toISOString(),
     durationMinutes,
@@ -4140,10 +4143,10 @@ export function handleCreateScheduleBlock(
 }
 
 export function handleUpdateScheduleBlock(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; lecture: LectureEvent; message: string } | { error: string } {
-  const resolved = resolveScheduleTarget(store, args);
+  const resolved = resolveScheduleTarget(store, userId, args);
   if ("error" in resolved) {
     return resolved;
   }
@@ -4172,7 +4175,7 @@ export function handleUpdateScheduleBlock(
     };
   }
 
-  const lecture = store.updateScheduleEvent(resolved.id, {
+  const lecture = store.updateScheduleEvent(userId, resolved.id, {
     ...(nextTitle ? { title: nextTitle } : {}),
     ...(normalizedStartTime ? { startTime: normalizedStartTime } : {}),
     ...(typeof nextDurationMinutes === "number" ? { durationMinutes: nextDurationMinutes } : {}),
@@ -4191,15 +4194,15 @@ export function handleUpdateScheduleBlock(
 }
 
 export function handleDeleteScheduleBlock(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; deleted: boolean; scheduleId: string; message: string } | { error: string } {
-  const resolved = resolveScheduleTarget(store, args);
+  const resolved = resolveScheduleTarget(store, userId, args);
   if ("error" in resolved) {
     return resolved;
   }
 
-  const deleted = store.deleteScheduleEvent(resolved.id);
+  const deleted = store.deleteScheduleEvent(userId, resolved.id);
   if (!deleted) {
     return { error: "Unable to delete schedule block." };
   }
@@ -4213,7 +4216,7 @@ export function handleDeleteScheduleBlock(
 }
 
 export function handleClearScheduleWindow(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): { success: true; deletedCount: number; mutedSuggestions: boolean; message: string } | { error: string } {
   const now = new Date();
@@ -4245,7 +4248,7 @@ export function handleClearScheduleWindow(
 
   const normalizedQuery = titleQuery ? normalizeSearchText(titleQuery) : null;
   const matchingEvents = store
-    .getScheduleEvents()
+    .getScheduleEvents(userId)
     .filter((event) => {
       const eventStart = new Date(event.startTime);
       if (Number.isNaN(eventStart.getTime())) {
@@ -4258,13 +4261,13 @@ export function handleClearScheduleWindow(
 
   let deletedCount = 0;
   for (const event of matchingEvents) {
-    if (store.deleteScheduleEvent(event.id)) {
+    if (store.deleteScheduleEvent(userId, event.id)) {
       deletedCount += 1;
     }
   }
 
   const mutedSuggestions = Boolean(
-    store.createScheduleSuggestionMute({
+    store.createScheduleSuggestionMute(userId, {
       startTime: startDate.toISOString(),
       endTime: endDate.toISOString()
     })
@@ -4291,7 +4294,7 @@ export function handleClearScheduleWindow(
 }
 
 export function handleQueueScheduleBlock(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): PendingActionToolResponse | { error: string } {
   const title = asTrimmedString(args.title);
@@ -4311,7 +4314,7 @@ export function handleQueueScheduleBlock(
   const workload: LectureEvent["workload"] =
     workloadRaw === "low" || workloadRaw === "medium" || workloadRaw === "high" ? workloadRaw : "medium";
 
-  const pending = store.createPendingChatAction({
+  const pending = store.createPendingChatAction(userId, {
     actionType: "create-schedule-block",
     summary: `Create schedule block "${title}" at ${startDate.toISOString()} (${durationMinutes} min)`,
     payload: {
@@ -4326,10 +4329,10 @@ export function handleQueueScheduleBlock(
 }
 
 export function handleQueueUpdateScheduleBlock(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): PendingActionToolResponse | { error: string } {
-  const resolved = resolveScheduleTarget(store, args);
+  const resolved = resolveScheduleTarget(store, userId, args);
   if ("error" in resolved) {
     return resolved;
   }
@@ -4358,7 +4361,7 @@ export function handleQueueUpdateScheduleBlock(
     };
   }
 
-  const pending = store.createPendingChatAction({
+  const pending = store.createPendingChatAction(userId, {
     actionType: "update-schedule-block",
     summary: `Update schedule block "${resolved.title}"`,
     payload: {
@@ -4374,15 +4377,15 @@ export function handleQueueUpdateScheduleBlock(
 }
 
 export function handleQueueDeleteScheduleBlock(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): PendingActionToolResponse | { error: string } {
-  const resolved = resolveScheduleTarget(store, args);
+  const resolved = resolveScheduleTarget(store, userId, args);
   if ("error" in resolved) {
     return resolved;
   }
 
-  const pending = store.createPendingChatAction({
+  const pending = store.createPendingChatAction(userId, {
     actionType: "delete-schedule-block",
     summary: `Delete schedule block "${resolved.title}"`,
     payload: {
@@ -4394,7 +4397,7 @@ export function handleQueueDeleteScheduleBlock(
 }
 
 export function handleQueueClearScheduleWindow(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): PendingActionToolResponse | { error: string } {
   const now = new Date();
@@ -4426,7 +4429,7 @@ export function handleQueueClearScheduleWindow(
 
   const normalizedQuery = titleQuery ? normalizeSearchText(titleQuery) : null;
   const matchingEvents = store
-    .getScheduleEvents()
+    .getScheduleEvents(userId)
     .filter((event) => {
       const eventStart = new Date(event.startTime);
       if (Number.isNaN(eventStart.getTime())) {
@@ -4438,7 +4441,7 @@ export function handleQueueClearScheduleWindow(
     .filter((event) => (includeAcademicBlocks ? true : !isAcademicScheduleBlockTitle(event.title)));
 
   const affectedCount = matchingEvents.length;
-  const pending = store.createPendingChatAction({
+  const pending = store.createPendingChatAction(userId, {
     actionType: "clear-schedule-window",
     summary:
       affectedCount > 0
@@ -4457,7 +4460,7 @@ export function handleQueueClearScheduleWindow(
 }
 
 export function handleQueueCreateRoutinePreset(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): ImmediateRoutinePresetActionResponse | { error: string } {
   const title = asTrimmedString(args.title);
@@ -4472,7 +4475,7 @@ export function handleQueueCreateRoutinePreset(
     return { error: "title and preferredStartTime (HH:mm) are required." };
   }
 
-  const routinePreset = store.createRoutinePreset({
+  const routinePreset = store.createRoutinePreset(userId, {
     title,
     preferredStartTime,
     durationMinutes,
@@ -4480,7 +4483,7 @@ export function handleQueueCreateRoutinePreset(
     weekdays,
     active: true
   });
-  const placement = applyRoutinePresetPlacements(store, { horizonDays: 7 });
+  const placement = applyRoutinePresetPlacements(store, userId, { horizonDays: 7 });
 
   return {
     success: true,
@@ -4495,10 +4498,10 @@ export function handleQueueCreateRoutinePreset(
 }
 
 export function handleQueueUpdateRoutinePreset(
-  store: RuntimeStore,
+  store: RuntimeStore, userId: string,
   args: Record<string, unknown> = {}
 ): ImmediateRoutinePresetActionResponse | { error: string } {
-  const resolved = resolveRoutinePresetTarget(store, args);
+  const resolved = resolveRoutinePresetTarget(store, userId, args);
   if ("error" in resolved) {
     return resolved;
   }
@@ -4540,11 +4543,11 @@ export function handleQueueUpdateRoutinePreset(
     patch.active = nextActive;
   }
 
-  const routinePreset = store.updateRoutinePreset(resolved.id, patch);
+  const routinePreset = store.updateRoutinePreset(userId, resolved.id, patch);
   if (!routinePreset) {
     return { error: "Unable to update routine preset." };
   }
-  const placement = applyRoutinePresetPlacements(store, { horizonDays: 7 });
+  const placement = applyRoutinePresetPlacements(store, userId, { horizonDays: 7 });
 
   return {
     success: true,
@@ -4560,7 +4563,8 @@ export function handleQueueUpdateRoutinePreset(
 
 export function executePendingChatAction(
   pendingAction: ChatPendingAction,
-  store: RuntimeStore
+  store: RuntimeStore,
+  userId: string
 ): PendingActionExecutionResult {
   switch (pendingAction.actionType) {
     case "complete-deadline": {
@@ -4574,7 +4578,7 @@ export function executePendingChatAction(
         };
       }
 
-      const updated = store.updateDeadline(deadlineId, { completed: true });
+      const updated = store.updateDeadline(userId, deadlineId, { completed: true });
       if (!updated) {
         return {
           actionId: pendingAction.id,
@@ -4614,7 +4618,7 @@ export function executePendingChatAction(
         };
       }
 
-      const rescheduled = store.updateDeadline(deadlineId, { dueDate: newDue.toISOString() });
+      const rescheduled = store.updateDeadline(userId, deadlineId, { dueDate: newDue.toISOString() });
       if (!rescheduled) {
         return {
           actionId: pendingAction.id,
@@ -4659,7 +4663,7 @@ export function executePendingChatAction(
       const workload: LectureEvent["workload"] =
         workloadRaw === "low" || workloadRaw === "medium" || workloadRaw === "high" ? workloadRaw : "medium";
 
-      const lecture = store.createLectureEvent({
+      const lecture = store.createLectureEvent(userId, {
         title,
         startTime: startDate.toISOString(),
         durationMinutes,
@@ -4685,7 +4689,7 @@ export function executePendingChatAction(
         };
       }
 
-      const existing = store.getScheduleEventById(scheduleId);
+      const existing = store.getScheduleEventById(userId, scheduleId);
       if (!existing) {
         return {
           actionId: pendingAction.id,
@@ -4734,7 +4738,7 @@ export function executePendingChatAction(
         };
       }
 
-      const lecture = store.updateScheduleEvent(scheduleId, patch);
+      const lecture = store.updateScheduleEvent(userId, scheduleId, patch);
       if (!lecture) {
         return {
           actionId: pendingAction.id,
@@ -4770,7 +4774,7 @@ export function executePendingChatAction(
 
       let deletedCount = 0;
       for (const scheduleId of new Set(scheduleIds)) {
-        if (store.deleteScheduleEvent(scheduleId)) {
+        if (store.deleteScheduleEvent(userId, scheduleId)) {
           deletedCount += 1;
         }
       }
@@ -4802,7 +4806,7 @@ export function executePendingChatAction(
 
       let deletedCount = 0;
       for (const scheduleId of new Set(scheduleIds)) {
-        if (store.deleteScheduleEvent(scheduleId)) {
+        if (store.deleteScheduleEvent(userId, scheduleId)) {
           deletedCount += 1;
         }
       }
@@ -4810,7 +4814,7 @@ export function executePendingChatAction(
       let mutedSuggestions = false;
       if (startTime && endTime) {
         mutedSuggestions = Boolean(
-          store.createScheduleSuggestionMute({
+          store.createScheduleSuggestionMute(userId, {
             startTime,
             endTime
           })
@@ -4860,7 +4864,7 @@ export function executePendingChatAction(
         workloadRaw === "low" || workloadRaw === "medium" || workloadRaw === "high" ? workloadRaw : "medium";
       const active = typeof pendingAction.payload.active === "boolean" ? pendingAction.payload.active : true;
 
-      const routinePreset = store.createRoutinePreset({
+      const routinePreset = store.createRoutinePreset(userId, {
         title,
         preferredStartTime,
         durationMinutes,
@@ -4868,7 +4872,7 @@ export function executePendingChatAction(
         weekdays,
         active
       });
-      const placement = applyRoutinePresetPlacements(store, { horizonDays: 7 });
+      const placement = applyRoutinePresetPlacements(store, userId, { horizonDays: 7 });
 
       return {
         actionId: pendingAction.id,
@@ -4929,7 +4933,7 @@ export function executePendingChatAction(
         };
       }
 
-      const routinePreset = store.updateRoutinePreset(presetId, patch);
+      const routinePreset = store.updateRoutinePreset(userId, presetId, patch);
       if (!routinePreset) {
         return {
           actionId: pendingAction.id,
@@ -4939,7 +4943,7 @@ export function executePendingChatAction(
         };
       }
 
-      const placement = applyRoutinePresetPlacements(store, { horizonDays: 7 });
+      const placement = applyRoutinePresetPlacements(store, userId, { horizonDays: 7 });
       return {
         actionId: pendingAction.id,
         actionType: pendingAction.actionType,
@@ -4972,7 +4976,7 @@ export function executePendingChatAction(
       const motivation = asTrimmedString(pendingAction.payload.motivation);
 
       const existingHabit = store
-        .getHabitsWithStatus()
+        .getHabitsWithStatus(userId)
         .find((habit) => habit.name.trim().toLowerCase() === name.trim().toLowerCase());
 
       if (existingHabit) {
@@ -4985,7 +4989,7 @@ export function executePendingChatAction(
         };
       }
 
-      const habit = store.createHabit({
+      const habit = store.createHabit(userId, {
         name,
         cadence,
         targetPerWeek,
@@ -5011,7 +5015,7 @@ export function executePendingChatAction(
         };
       }
 
-      const patch: Parameters<RuntimeStore["updateHabit"]>[1] = {};
+      const patch: Parameters<RuntimeStore["updateHabit"]>[2] = {};
       const name = asTrimmedString(pendingAction.payload.name);
       if (name) {
         patch.name = name;
@@ -5039,7 +5043,7 @@ export function executePendingChatAction(
         };
       }
 
-      const habit = store.updateHabit(habitId, patch);
+      const habit = store.updateHabit(userId, habitId, patch);
       if (!habit) {
         return {
           actionId: pendingAction.id,
@@ -5089,7 +5093,7 @@ export function executePendingChatAction(
       }
 
       const existingGoal = store
-        .getGoalsWithStatus()
+        .getGoalsWithStatus(userId)
         .find((goal) => goal.title.trim().toLowerCase() === title.trim().toLowerCase());
 
       if (existingGoal) {
@@ -5102,7 +5106,7 @@ export function executePendingChatAction(
         };
       }
 
-      const goal = store.createGoal({
+      const goal = store.createGoal(userId, {
         title,
         cadence,
         targetCount,
@@ -5129,7 +5133,7 @@ export function executePendingChatAction(
         };
       }
 
-      const patch: Parameters<RuntimeStore["updateGoal"]>[1] = {};
+      const patch: Parameters<RuntimeStore["updateGoal"]>[2] = {};
       const title = asTrimmedString(pendingAction.payload.title);
       if (title) {
         patch.title = title;
@@ -5177,7 +5181,7 @@ export function executePendingChatAction(
         };
       }
 
-      const goal = store.updateGoal(goalId, patch);
+      const goal = store.updateGoal(userId, goalId, patch);
       if (!goal) {
         return {
           actionId: pendingAction.id,
@@ -5211,160 +5215,161 @@ export function executePendingChatAction(
 export function executeFunctionCall(
   name: string,
   args: Record<string, unknown>,
-  store: RuntimeStore
+  store: RuntimeStore,
+  userId: string
 ): FunctionCallResult {
   let response: unknown;
 
   switch (name) {
     case "getSchedule":
-      response = handleGetSchedule(store, args);
+      response = handleGetSchedule(store, userId, args);
       break;
     case "getRoutinePresets":
-      response = handleGetRoutinePresets(store, args);
+      response = handleGetRoutinePresets(store, userId, args);
       break;
     case "getDeadlines":
-      response = handleGetDeadlines(store, args);
+      response = handleGetDeadlines(store, userId, args);
       break;
     case "getEmails":
-      response = handleGetEmails(store, args);
+      response = handleGetEmails(store, userId, args);
       break;
     case "getWithingsHealthSummary":
-      response = handleGetWithingsHealthSummary(store, args);
+      response = handleGetWithingsHealthSummary(store, userId, args);
       break;
     case "getHabitsGoalsStatus":
-      response = handleGetHabitsGoalsStatus(store);
+      response = handleGetHabitsGoalsStatus(store, userId);
       break;
     case "updateHabitCheckIn":
-      response = handleUpdateHabitCheckIn(store, args);
+      response = handleUpdateHabitCheckIn(store, userId, args);
       break;
     case "checkInGym":
-      response = handleCheckInGym(store, args);
+      response = handleCheckInGym(store, userId, args);
       break;
     case "updateGoalCheckIn":
-      response = handleUpdateGoalCheckIn(store, args);
+      response = handleUpdateGoalCheckIn(store, userId, args);
       break;
     case "createHabit":
-      response = handleCreateHabit(store, args);
+      response = handleCreateHabit(store, userId, args);
       break;
     case "deleteHabit":
-      response = handleDeleteHabit(store, args);
+      response = handleDeleteHabit(store, userId, args);
       break;
     case "createGoal":
-      response = handleCreateGoal(store, args);
+      response = handleCreateGoal(store, userId, args);
       break;
     case "deleteGoal":
-      response = handleDeleteGoal(store, args);
+      response = handleDeleteGoal(store, userId, args);
       break;
     case "getNutritionSummary":
-      response = handleGetNutritionSummary(store, args);
+      response = handleGetNutritionSummary(store, userId, args);
       break;
     case "getNutritionHistory":
-      response = handleGetNutritionHistory(store, args);
+      response = handleGetNutritionHistory(store, userId, args);
       break;
     case "getNutritionTargets":
-      response = handleGetNutritionTargets(store, args);
+      response = handleGetNutritionTargets(store, userId, args);
       break;
     case "updateNutritionTargets":
-      response = handleUpdateNutritionTargets(store, args);
+      response = handleUpdateNutritionTargets(store, userId, args);
       break;
     case "getNutritionMeals":
-      response = handleGetNutritionMeals(store, args);
+      response = handleGetNutritionMeals(store, userId, args);
       break;
     case "getNutritionPlanSnapshots":
-      response = handleGetNutritionPlanSnapshots(store, args);
+      response = handleGetNutritionPlanSnapshots(store, userId, args);
       break;
     case "saveNutritionPlanSnapshot":
-      response = handleSaveNutritionPlanSnapshot(store, args);
+      response = handleSaveNutritionPlanSnapshot(store, userId, args);
       break;
     case "applyNutritionPlanSnapshot":
-      response = handleApplyNutritionPlanSnapshot(store, args);
+      response = handleApplyNutritionPlanSnapshot(store, userId, args);
       break;
     case "deleteNutritionPlanSnapshot":
-      response = handleDeleteNutritionPlanSnapshot(store, args);
+      response = handleDeleteNutritionPlanSnapshot(store, userId, args);
       break;
     case "getNutritionCustomFoods":
-      response = handleGetNutritionCustomFoods(store, args);
+      response = handleGetNutritionCustomFoods(store, userId, args);
       break;
     case "createNutritionCustomFood":
-      response = handleCreateNutritionCustomFood(store, args);
+      response = handleCreateNutritionCustomFood(store, userId, args);
       break;
     case "updateNutritionCustomFood":
-      response = handleUpdateNutritionCustomFood(store, args);
+      response = handleUpdateNutritionCustomFood(store, userId, args);
       break;
     case "deleteNutritionCustomFood":
-      response = handleDeleteNutritionCustomFood(store, args);
+      response = handleDeleteNutritionCustomFood(store, userId, args);
       break;
     case "createNutritionMeal":
-      response = handleCreateNutritionMeal(store, args);
+      response = handleCreateNutritionMeal(store, userId, args);
       break;
     case "updateNutritionMeal":
-      response = handleUpdateNutritionMeal(store, args);
+      response = handleUpdateNutritionMeal(store, userId, args);
       break;
     case "addNutritionMealItem":
-      response = handleAddNutritionMealItem(store, args);
+      response = handleAddNutritionMealItem(store, userId, args);
       break;
     case "updateNutritionMealItem":
-      response = handleUpdateNutritionMealItem(store, args);
+      response = handleUpdateNutritionMealItem(store, userId, args);
       break;
     case "removeNutritionMealItem":
-      response = handleRemoveNutritionMealItem(store, args);
+      response = handleRemoveNutritionMealItem(store, userId, args);
       break;
     case "moveNutritionMeal":
-      response = handleMoveNutritionMeal(store, args);
+      response = handleMoveNutritionMeal(store, userId, args);
       break;
     case "setNutritionMealOrder":
-      response = handleSetNutritionMealOrder(store, args);
+      response = handleSetNutritionMealOrder(store, userId, args);
       break;
     case "logMeal":
-      response = handleLogMeal(store, args);
+      response = handleLogMeal(store, userId, args);
       break;
     case "deleteMeal":
-      response = handleDeleteMeal(store, args);
+      response = handleDeleteMeal(store, userId, args);
       break;
     case "getGitHubCourseContent":
-      response = handleGetGitHubCourseContent(store, args);
+      response = handleGetGitHubCourseContent(store, userId, args);
       break;
     case "queueDeadlineAction":
-      response = handleQueueDeadlineAction(store, args);
+      response = handleQueueDeadlineAction(store, userId, args);
       break;
     case "scheduleReminder":
-      response = handleScheduleReminder(store, args);
+      response = handleScheduleReminder(store, userId, args);
       break;
     case "getReminders":
-      response = handleGetReminders(store);
+      response = handleGetReminders(store, userId);
       break;
     case "cancelReminder":
-      response = handleCancelReminder(store, args);
+      response = handleCancelReminder(store, userId, args);
       break;
     case "createScheduleBlock":
-      response = handleCreateScheduleBlock(store, args);
+      response = handleCreateScheduleBlock(store, userId, args);
       break;
     case "updateScheduleBlock":
-      response = handleUpdateScheduleBlock(store, args);
+      response = handleUpdateScheduleBlock(store, userId, args);
       break;
     case "deleteScheduleBlock":
-      response = handleDeleteScheduleBlock(store, args);
+      response = handleDeleteScheduleBlock(store, userId, args);
       break;
     case "clearScheduleWindow":
-      response = handleClearScheduleWindow(store, args);
+      response = handleClearScheduleWindow(store, userId, args);
       break;
     case "queueScheduleBlock":
-      response = handleQueueScheduleBlock(store, args);
+      response = handleQueueScheduleBlock(store, userId, args);
       break;
     case "queueUpdateScheduleBlock":
-      response = handleQueueUpdateScheduleBlock(store, args);
+      response = handleQueueUpdateScheduleBlock(store, userId, args);
       break;
     case "queueDeleteScheduleBlock":
-      response = handleQueueDeleteScheduleBlock(store, args);
+      response = handleQueueDeleteScheduleBlock(store, userId, args);
       break;
     case "queueClearScheduleWindow":
-      response = handleQueueClearScheduleWindow(store, args);
+      response = handleQueueClearScheduleWindow(store, userId, args);
       break;
     case "queueCreateRoutinePreset":
-      response = handleQueueCreateRoutinePreset(store, args);
+      response = handleQueueCreateRoutinePreset(store, userId, args);
       break;
     case "queueUpdateRoutinePreset":
-      response = handleQueueUpdateRoutinePreset(store, args);
+      response = handleQueueUpdateRoutinePreset(store, userId, args);
       break;
     case "setResponseMood": {
       const validMoodSet = new Set(["neutral", "encouraging", "focused", "celebratory", "empathetic", "urgent"]);

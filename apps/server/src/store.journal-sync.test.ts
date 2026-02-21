@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - journal sync", () => {
+  const userId = "test-user";
+
   it("creates new entries with version metadata", () => {
     const store = new RuntimeStore(":memory:");
 
-    const result = store.syncJournalEntries([
+    const result = store.syncJournalEntries(userId, [
       {
         clientEntryId: "offline-1",
         content: "Initial offline note",
@@ -22,7 +24,7 @@ describe("RuntimeStore - journal sync", () => {
   it("returns conflicts when base version is stale", () => {
     const store = new RuntimeStore(":memory:");
 
-    const first = store.syncJournalEntries([
+    const first = store.syncJournalEntries(userId, [
       {
         clientEntryId: "offline-2",
         content: "first",
@@ -30,7 +32,7 @@ describe("RuntimeStore - journal sync", () => {
       }
     ]);
 
-    const second = store.syncJournalEntries([
+    const second = store.syncJournalEntries(userId, [
       {
         id: first.applied[0].id,
         clientEntryId: "offline-2",
@@ -43,7 +45,7 @@ describe("RuntimeStore - journal sync", () => {
     expect(second.conflicts).toHaveLength(0);
     expect(second.applied[0].version).toBe(2);
 
-    const stale = store.syncJournalEntries([
+    const stale = store.syncJournalEntries(userId, [
       {
         id: first.applied[0].id,
         clientEntryId: "offline-2",
@@ -60,10 +62,10 @@ describe("RuntimeStore - journal sync", () => {
 
   it("syncs journal tags and preserves existing tags when omitted", () => {
     const store = new RuntimeStore(":memory:");
-    const schoolTag = store.createTag("school");
-    const focusTag = store.createTag("focus");
+    const schoolTag = store.createTag(userId, "school");
+    const focusTag = store.createTag(userId, "focus");
 
-    const initial = store.syncJournalEntries([
+    const initial = store.syncJournalEntries(userId, [
       {
         clientEntryId: "offline-3",
         content: "Initial content",
@@ -74,7 +76,7 @@ describe("RuntimeStore - journal sync", () => {
 
     expect(initial.applied[0].tags).toEqual([schoolTag.name]);
 
-    const withoutTags = store.syncJournalEntries([
+    const withoutTags = store.syncJournalEntries(userId, [
       {
         id: initial.applied[0].id,
         clientEntryId: "offline-3",
@@ -86,7 +88,7 @@ describe("RuntimeStore - journal sync", () => {
 
     expect(withoutTags.applied[0].tags).toEqual([schoolTag.name]);
 
-    const retagged = store.syncJournalEntries([
+    const retagged = store.syncJournalEntries(userId, [
       {
         id: initial.applied[0].id,
         clientEntryId: "offline-3",
@@ -104,7 +106,7 @@ describe("RuntimeStore - journal sync", () => {
     const store = new RuntimeStore(":memory:");
     const photoDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
 
-    const result = store.syncJournalEntries([
+    const result = store.syncJournalEntries(userId, [
       {
         clientEntryId: "offline-photos",
         content: "Lecture whiteboard snapshot",
@@ -122,16 +124,16 @@ describe("RuntimeStore - journal sync", () => {
     expect(result.applied[0].photos?.[0].fileName).toBe("whiteboard.png");
     expect(result.applied[0].photos?.[0].id).toBeDefined();
 
-    const stored = store.getJournalEntries();
+    const stored = store.getJournalEntries(userId);
     expect(stored[0].photos?.[0].dataUrl).toBe(photoDataUrl);
   });
 
   it("resolves mixed tag refs (ids or names) and creates missing names", () => {
     const store = new RuntimeStore(":memory:");
-    const schoolTag = store.createTag("school");
-    const focusTag = store.createTag("focus");
+    const schoolTag = store.createTag(userId, "school");
+    const focusTag = store.createTag(userId, "focus");
 
-    const resolved = store.resolveTagIds(
+    const resolved = store.resolveTagIds(userId,
       [schoolTag.id, "focus", "chat-reflection", "tag-does-not-exist"],
       { createMissing: true }
     );
@@ -139,10 +141,10 @@ describe("RuntimeStore - journal sync", () => {
     expect(resolved).toContain(schoolTag.id);
     expect(resolved).toContain(focusTag.id);
 
-    const created = store.getTags().find((tag) => tag.name === "chat-reflection");
+    const created = store.getTags(userId).find((tag) => tag.name === "chat-reflection");
     expect(created).toBeDefined();
     expect(created?.id).toBeDefined();
     expect(created?.id && resolved.includes(created.id)).toBe(true);
-    expect(store.getTags().some((tag) => tag.name === "tag-does-not-exist")).toBe(false);
+    expect(store.getTags(userId).some((tag) => tag.name === "tag-does-not-exist")).toBe(false);
   });
 });

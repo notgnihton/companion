@@ -144,7 +144,7 @@ function sortDeadlinesAscending(deadlines: Deadline[]): Deadline[] {
   });
 }
 
-function buildDataset(store: RuntimeStore, periodDays: 7 | 14 | 30, now: Date): AnalyticsDataset {
+function buildDataset(store: RuntimeStore, userId: string, periodDays: 7 | 14 | 30, now: Date): AnalyticsDataset {
   const nowMs = now.getTime();
   const windowStartDate = new Date(nowMs - periodDays * 24 * 60 * 60 * 1000);
   const windowStartMs = windowStartDate.getTime();
@@ -152,7 +152,7 @@ function buildDataset(store: RuntimeStore, periodDays: 7 | 14 | 30, now: Date): 
   const windowEndIso = toIsoDate(now);
   const nextWeekMs = nowMs + 7 * 24 * 60 * 60 * 1000;
 
-  const deadlines = store.getAcademicDeadlines(now);
+  const deadlines = store.getAcademicDeadlines(userId, now);
   const deadlinesInWindow = sortDeadlinesAscending(deadlines).filter((deadline) =>
     inWindow(deadline.dueDate, windowStartMs, nowMs)
   );
@@ -164,18 +164,18 @@ function buildDataset(store: RuntimeStore, periodDays: 7 | 14 | 30, now: Date): 
     return dueMs !== null && dueMs >= nowMs && dueMs <= nextWeekMs;
   });
 
-  const habits = store.getHabitsWithStatus();
-  const goals = store.getGoalsWithStatus();
+  const habits = store.getHabitsWithStatus(userId);
+  const goals = store.getGoalsWithStatus(userId);
 
   const reflections = store
-    .getReflectionEntriesInRange(windowStartIso, windowEndIso, 300)
+    .getReflectionEntriesInRange(userId, windowStartIso, windowEndIso, 300)
     .slice(0, MAX_REFLECTION_SNIPPETS);
 
-  const adherence = store.getStudyPlanAdherenceMetrics({
+  const adherence = store.getStudyPlanAdherenceMetrics(userId, {
     windowStart: windowStartIso,
     windowEnd: windowEndIso
   });
-  const trends = store.getContextTrends();
+  const trends = store.getContextTrends(userId);
 
   const metrics: AnalyticsCoachMetrics = {
     deadlinesDue: deadlinesInWindow.length,
@@ -205,10 +205,10 @@ function buildDataset(store: RuntimeStore, periodDays: 7 | 14 | 30, now: Date): 
     habits,
     goals,
     reflections,
-    nutritionHistory: store.getNutritionDailyHistory(windowStartDate, now, { eatenOnly: true }),
-    bodyComp: store.getWithingsData().weight.filter((w) => inWindow(w.measuredAt, windowStartMs, nowMs)),
-    sleepHistory: store.getWithingsData().sleepSummary.filter((s) => inWindow(s.date, windowStartMs, nowMs)),
-    scheduleEvents: store.getScheduleEvents().filter((e) => inWindow(e.startTime, windowStartMs, nowMs))
+    nutritionHistory: store.getNutritionDailyHistory(userId, windowStartDate, now, { eatenOnly: true }),
+    bodyComp: store.getWithingsData(userId).weight.filter((w) => inWindow(w.measuredAt, windowStartMs, nowMs)),
+    sleepHistory: store.getWithingsData(userId).sleepSummary.filter((s) => inWindow(s.date, windowStartMs, nowMs)),
+    scheduleEvents: store.getScheduleEvents(userId).filter((e) => inWindow(e.startTime, windowStartMs, nowMs))
   };
 }
 
@@ -552,11 +552,12 @@ function parseInsightJson(raw: string): ParsedCoachInsight | null {
 
 export async function generateAnalyticsCoachInsight(
   store: RuntimeStore,
+  userId: string,
   options: GenerateAnalyticsCoachOptions = {}
 ): Promise<AnalyticsCoachInsight> {
   const now = options.now ?? new Date();
   const periodDays = coercePeriodDays(options.periodDays);
-  const dataset = buildDataset(store, periodDays, now);
+  const dataset = buildDataset(store, userId, periodDays, now);
   const fallback = buildFallbackInsight(dataset);
 
   const gemini = options.geminiClient ?? getGeminiClient();

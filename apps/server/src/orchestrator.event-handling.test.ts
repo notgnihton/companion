@@ -6,10 +6,11 @@ import { AgentEvent } from "./types.js";
 describe("OrchestratorRuntime - Event Handling", () => {
   let store: RuntimeStore;
   let orchestrator: OrchestratorRuntime;
+  const userId = "test-user";
 
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
-    orchestrator = new OrchestratorRuntime(store);
+    orchestrator = new OrchestratorRuntime(store, userId);
     vi.useFakeTimers();
   });
 
@@ -41,7 +42,7 @@ describe("OrchestratorRuntime - Event Handling", () => {
       
       await vi.advanceTimersByTimeAsync(100);
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       
       // The event should be recorded
       expect(snapshot.events).toContainEqual(mockEvent);
@@ -51,7 +52,7 @@ describe("OrchestratorRuntime - Event Handling", () => {
 
       await vi.advanceTimersByTimeAsync(40000); // Wait for lecture agent
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       
       // Check for lecture-related notifications
       const lectureNotifs = snapshot.notifications.filter(
@@ -67,7 +68,7 @@ describe("OrchestratorRuntime - Event Handling", () => {
 
       await vi.advanceTimersByTimeAsync(35000); // Wait for notes agent
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       
       // Check for note-related notifications
       const noteNotifs = snapshot.notifications.filter(
@@ -83,7 +84,7 @@ describe("OrchestratorRuntime - Event Handling", () => {
 
       await vi.advanceTimersByTimeAsync(25000); // Wait for assignment agent
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       
       const assignmentNotifs = snapshot.notifications.filter(
         (n) => n.source === "assignment-tracker"
@@ -100,7 +101,7 @@ describe("OrchestratorRuntime - Event Handling", () => {
 
       await vi.advanceTimersByTimeAsync(40000); // Wait for lecture agent
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       
       const lectureNotifs = snapshot.notifications.filter(
         (n) => n.source === "lecture-plan"
@@ -117,7 +118,7 @@ describe("OrchestratorRuntime - Event Handling", () => {
 
       await vi.advanceTimersByTimeAsync(35000); // Wait for notes agent
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       
       const noteNotifs = snapshot.notifications.filter(
         (n) => n.source === "notes"
@@ -135,7 +136,7 @@ describe("OrchestratorRuntime - Event Handling", () => {
 
       await vi.advanceTimersByTimeAsync(25000); // Assignment agent
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       
       const assignmentNotifs = snapshot.notifications.filter(
         (n) => n.source === "assignment-tracker"

@@ -48,6 +48,7 @@ import { RuntimeStore } from "./store.js";
 describe("gemini-tools", () => {
   let store: RuntimeStore;
   const testDbPath = ":memory:";
+  const userId = "test-user";
 
   beforeEach(() => {
     store = new RuntimeStore(testDbPath);
@@ -139,66 +140,66 @@ describe("gemini-tools", () => {
       const today = new Date();
       today.setHours(10, 0, 0, 0);
 
-      const event = store.createLectureEvent({
+      const event = store.createLectureEvent(userId, {
         title: "DAT520 Lecture",
         startTime: today.toISOString(),
         durationMinutes: 90,
         workload: "medium"
       });
 
-      const result = handleGetSchedule(store);
+      const result = handleGetSchedule(store, userId);
 
       expect(result.map((item) => item.id)).toContain(event.id);
       expect(result.some((item) => item.title === "DAT520 Lecture")).toBe(true);
     });
 
     it("should return empty array if no events today", () => {
-      const result = handleGetSchedule(store);
+      const result = handleGetSchedule(store, userId);
       const fixedEvents = result.filter((item) => item.recurrenceParentId !== "timeline-suggested");
       expect(fixedEvents).toEqual([]);
     });
 
     it("supports querying a specific future date", () => {
-      const todayEvent = store.createLectureEvent({
+      const todayEvent = store.createLectureEvent(userId, {
         title: "DAT520 Lecture",
         startTime: "2026-02-18T09:15:00.000Z",
         durationMinutes: 90,
         workload: "medium"
       });
-      const tomorrowEvent = store.createLectureEvent({
+      const tomorrowEvent = store.createLectureEvent(userId, {
         title: "DAT560 Lab",
         startTime: "2026-02-19T11:15:00.000Z",
         durationMinutes: 105,
         workload: "high"
       });
 
-      const result = handleGetSchedule(store, { date: "2026-02-19", includeSuggestions: false });
+      const result = handleGetSchedule(store, userId, { date: "2026-02-19", includeSuggestions: false });
 
       expect(result.map((item) => item.id)).toContain(tomorrowEvent.id);
       expect(result.map((item) => item.id)).not.toContain(todayEvent.id);
     });
 
     it("supports multi-day schedule windows for planning ahead", () => {
-      const dayOne = store.createLectureEvent({
+      const dayOne = store.createLectureEvent(userId, {
         title: "DAT520 Lecture",
         startTime: "2026-02-18T09:15:00.000Z",
         durationMinutes: 90,
         workload: "medium"
       });
-      const dayTwo = store.createLectureEvent({
+      const dayTwo = store.createLectureEvent(userId, {
         title: "DAT560 Lab",
         startTime: "2026-02-19T11:15:00.000Z",
         durationMinutes: 105,
         workload: "high"
       });
-      const dayThree = store.createLectureEvent({
+      const dayThree = store.createLectureEvent(userId, {
         title: "DAT600 Session",
         startTime: "2026-02-20T07:15:00.000Z",
         durationMinutes: 105,
         workload: "medium"
       });
 
-      const result = handleGetSchedule(store, {
+      const result = handleGetSchedule(store, userId, {
         date: "2026-02-18",
         daysAhead: 2,
         includeSuggestions: false
@@ -212,7 +213,7 @@ describe("gemini-tools", () => {
 
   describe("handleGetRoutinePresets", () => {
     it("returns configured routine presets", () => {
-      store.createRoutinePreset({
+      store.createRoutinePreset(userId, {
         title: "Morning gym",
         preferredStartTime: "07:00",
         durationMinutes: 60,
@@ -221,7 +222,7 @@ describe("gemini-tools", () => {
         active: true
       });
 
-      const result = handleGetRoutinePresets(store);
+      const result = handleGetRoutinePresets(store, userId);
       expect(result).toHaveLength(1);
       expect(result[0]?.title).toBe("Morning gym");
     });
@@ -232,7 +233,7 @@ describe("gemini-tools", () => {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
 
-      const deadline = store.createDeadline({
+      const deadline = store.createDeadline(userId, {
         course: "DAT520",
         task: "Assignment 1",
         dueDate: tomorrow.toISOString(),
@@ -240,7 +241,7 @@ describe("gemini-tools", () => {
         completed: false
       });
 
-      const result = handleGetDeadlines(store);
+      const result = handleGetDeadlines(store, userId);
 
       expect(result.length).toBeGreaterThan(0);
       expect(result[0]?.id).toBe(deadline.id);
@@ -250,7 +251,7 @@ describe("gemini-tools", () => {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
 
-      store.createDeadline({
+      store.createDeadline(userId, {
         course: "DAT520",
         task: "Completed assignment",
         dueDate: tomorrow.toISOString(),
@@ -258,7 +259,7 @@ describe("gemini-tools", () => {
         completed: true
       });
 
-      const active = store.createDeadline({
+      const active = store.createDeadline(userId, {
         course: "DAT560",
         task: "Active assignment",
         dueDate: tomorrow.toISOString(),
@@ -266,7 +267,7 @@ describe("gemini-tools", () => {
         completed: false
       });
 
-      const result = handleGetDeadlines(store);
+      const result = handleGetDeadlines(store, userId);
       expect(result.map((item) => item.id)).toContain(active.id);
       expect(result.some((item) => item.task.includes("Completed assignment"))).toBe(false);
     });
@@ -275,7 +276,7 @@ describe("gemini-tools", () => {
       const farFuture = new Date();
       farFuture.setDate(farFuture.getDate() + 20);
 
-      const deadline = store.createDeadline({
+      const deadline = store.createDeadline(userId, {
         course: "DAT520",
         task: "Assignment 1",
         dueDate: farFuture.toISOString(),
@@ -283,8 +284,8 @@ describe("gemini-tools", () => {
         completed: false
       });
 
-      const result7Days = handleGetDeadlines(store, { daysAhead: 7 });
-      const result30Days = handleGetDeadlines(store, { daysAhead: 30 });
+      const result7Days = handleGetDeadlines(store, userId, { daysAhead: 7 });
+      const result30Days = handleGetDeadlines(store, userId, { daysAhead: 30 });
 
       expect(result7Days).toHaveLength(0);
       expect(result30Days.length).toBeGreaterThan(0);
@@ -294,7 +295,7 @@ describe("gemini-tools", () => {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
 
-      const deadline = store.createDeadline({
+      const deadline = store.createDeadline(userId, {
         course: "DAT520",
         task: "Assignment 1",
         dueDate: yesterday.toISOString(),
@@ -302,7 +303,7 @@ describe("gemini-tools", () => {
         completed: false
       });
 
-      const result = handleGetDeadlines(store);
+      const result = handleGetDeadlines(store, userId);
       expect(result).toHaveLength(0);
     });
 
@@ -310,7 +311,7 @@ describe("gemini-tools", () => {
       const soon = new Date();
       soon.setDate(soon.getDate() + 3);
 
-      const dat520 = store.createDeadline({
+      const dat520 = store.createDeadline(userId, {
         course: "DAT520-1 26V",
         task: "Assignment 3",
         dueDate: soon.toISOString(),
@@ -318,7 +319,7 @@ describe("gemini-tools", () => {
         completed: false
       });
 
-      store.createDeadline({
+      store.createDeadline(userId, {
         course: "DAT560-1 26V",
         task: "Assignment 2",
         dueDate: soon.toISOString(),
@@ -326,7 +327,7 @@ describe("gemini-tools", () => {
         completed: false
       });
 
-      const result = handleGetDeadlines(store, { courseCode: "DAT520", daysAhead: 30 });
+      const result = handleGetDeadlines(store, userId, { courseCode: "DAT520", daysAhead: 30 });
       expect(result).toHaveLength(1);
       expect(result[0]?.id).toBe(dat520.id);
     });
@@ -334,7 +335,7 @@ describe("gemini-tools", () => {
 
   describe("handleGetEmails", () => {
     it("returns synced Gmail messages (not local digest records)", () => {
-      store.recordEmailDigest({
+      store.recordEmailDigest(userId, {
         type: "daily",
         reason: "inactivity",
         recipient: "lucy@example.com",
@@ -343,7 +344,7 @@ describe("gemini-tools", () => {
         timeframeStart: "2026-02-17T00:00:00.000Z",
         timeframeEnd: "2026-02-17T23:59:59.000Z"
       });
-      store.setGmailMessages(
+      store.setGmailMessages(userId, 
         [
           {
             id: "gmail-1",
@@ -358,14 +359,14 @@ describe("gemini-tools", () => {
         "2026-02-17T11:05:00.000Z"
       );
 
-      const result = handleGetEmails(store);
+      const result = handleGetEmails(store, userId);
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(1);
       expect(result[0]?.subject).toBe("DAT560 Assignment 2 feedback");
     });
 
     it("respects limit and unreadOnly parameters", () => {
-      store.setGmailMessages(
+      store.setGmailMessages(userId, 
         [
           {
             id: "gmail-older",
@@ -389,7 +390,7 @@ describe("gemini-tools", () => {
         "2026-02-17T12:05:00.000Z"
       );
 
-      const result = handleGetEmails(store, { limit: 1, unreadOnly: true });
+      const result = handleGetEmails(store, userId, { limit: 1, unreadOnly: true });
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(1);
       expect(result[0]?.id).toBe("gmail-newer");
@@ -398,20 +399,20 @@ describe("gemini-tools", () => {
 
   describe("handleGetWithingsHealthSummary", () => {
     it("returns connection status false when Withings is not connected", () => {
-      const result = handleGetWithingsHealthSummary(store);
+      const result = handleGetWithingsHealthSummary(store, userId);
       expect(result.connected).toBe(false);
       expect(result.weight).toHaveLength(0);
       expect(result.sleepSummary).toHaveLength(0);
     });
 
     it("returns latest weight/sleep data within requested window", () => {
-      store.setWithingsTokens({
+      store.setWithingsTokens(userId, {
         refreshToken: "refresh-token",
         accessToken: "access-token",
         connectedAt: "2026-02-17T10:00:00.000Z",
         source: "env"
       });
-      store.setWithingsData(
+      store.setWithingsData(userId, 
         [
           {
             measuredAt: "2026-02-17T07:00:00.000Z",
@@ -435,7 +436,7 @@ describe("gemini-tools", () => {
         "2026-02-17T07:01:00.000Z"
       );
 
-      const result = handleGetWithingsHealthSummary(store, { daysBack: 14 });
+      const result = handleGetWithingsHealthSummary(store, userId, { daysBack: 14 });
       expect(result.connected).toBe(true);
       expect(result.latestWeight?.weightKg).toBe(73.2);
       expect(result.latestSleep?.date).toBe("2026-02-17");
@@ -446,19 +447,19 @@ describe("gemini-tools", () => {
 
   describe("habits and goals handlers", () => {
     it("returns habits/goals status summary", () => {
-      const habit = store.createHabit({
+      const habit = store.createHabit(userId, {
         name: "Unit Test Habit",
         cadence: "daily",
         targetPerWeek: 6
       });
-      const goal = store.createGoal({
+      const goal = store.createGoal(userId, {
         title: "Unit Test Goal",
         cadence: "weekly",
         targetCount: 3,
         dueDate: null
       });
 
-      const result = handleGetHabitsGoalsStatus(store);
+      const result = handleGetHabitsGoalsStatus(store, userId);
       expect(result.habits.some((item) => item.id === habit.id)).toBe(true);
       expect(result.goals.some((item) => item.id === goal.id)).toBe(true);
       expect(result.summary.habitsTotal).toBe(result.habits.length);
@@ -466,13 +467,13 @@ describe("gemini-tools", () => {
     });
 
     it("updates a habit check-in by habitName", () => {
-      store.createHabit({
+      store.createHabit(userId, {
         name: "Unit Test Habit Checkin",
         cadence: "daily",
         targetPerWeek: 6
       });
 
-      const result = handleUpdateHabitCheckIn(store, {
+      const result = handleUpdateHabitCheckIn(store, userId, {
         habitName: "unit test habit checkin",
         completed: true
       });
@@ -487,14 +488,14 @@ describe("gemini-tools", () => {
     });
 
     it("updates a goal check-in by goalTitle", () => {
-      store.createGoal({
+      store.createGoal(userId, {
         title: "Ship DAT520 Lab 4",
         cadence: "weekly",
         targetCount: 4,
         dueDate: null
       });
 
-      const result = handleUpdateGoalCheckIn(store, {
+      const result = handleUpdateGoalCheckIn(store, userId, {
         goalTitle: "lab 4",
         completed: true
       });
@@ -509,7 +510,7 @@ describe("gemini-tools", () => {
     });
 
     it("creates a habit from empty state", () => {
-      const result = handleCreateHabit(store, {
+      const result = handleCreateHabit(store, userId, {
         name: "Deep work",
         cadence: "daily",
         targetPerWeek: 5
@@ -522,11 +523,11 @@ describe("gemini-tools", () => {
       expect(result.success).toBe(true);
       expect(result.created).toBe(true);
       expect(result.habit.name).toBe("Deep work");
-      expect(store.getHabitsWithStatus().length).toBe(1);
+      expect(store.getHabitsWithStatus(userId).length).toBe(1);
     });
 
     it("returns non-deleted success when deleting habit with empty state", () => {
-      const result = handleDeleteHabit(store, {
+      const result = handleDeleteHabit(store, userId, {
         habitName: "study sprint"
       });
 
@@ -540,7 +541,7 @@ describe("gemini-tools", () => {
     });
 
     it("creates and deletes a goal", () => {
-      const created = handleCreateGoal(store, {
+      const created = handleCreateGoal(store, userId, {
         title: "Finish DAT560 lab",
         cadence: "weekly",
         targetCount: 2
@@ -553,7 +554,7 @@ describe("gemini-tools", () => {
       expect(created.success).toBe(true);
       expect(created.created).toBe(true);
 
-      const deleted = handleDeleteGoal(store, {
+      const deleted = handleDeleteGoal(store, userId, {
         goalTitle: "dat560 lab"
       });
 
@@ -563,13 +564,13 @@ describe("gemini-tools", () => {
 
       expect(deleted.success).toBe(true);
       expect(deleted.deleted).toBe(true);
-      expect(store.getGoalsWithStatus()).toHaveLength(0);
+      expect(store.getGoalsWithStatus(userId)).toHaveLength(0);
     });
   });
 
   describe("nutrition handlers", () => {
     it("returns daily nutrition summary", () => {
-      store.createNutritionMeal({
+      store.createNutritionMeal(userId, {
         name: "Overnight oats",
         mealType: "breakfast",
         consumedAt: "2026-02-17T07:30:00.000Z",
@@ -579,17 +580,17 @@ describe("gemini-tools", () => {
         fatGrams: 14
       });
 
-      const result = handleGetNutritionSummary(store, { date: "2026-02-17" });
+      const result = handleGetNutritionSummary(store, userId, { date: "2026-02-17" });
       expect(result.mealsLogged).toBe(1);
       expect(result.totals.calories).toBe(480);
     });
 
     it("gets and updates nutrition targets", () => {
-      const before = handleGetNutritionTargets(store, { date: "2026-02-17" });
+      const before = handleGetNutritionTargets(store, userId, { date: "2026-02-17" });
       expect(before.date).toBe("2026-02-17");
       expect(before.profile).toBeNull();
 
-      const updated = handleUpdateNutritionTargets(store, {
+      const updated = handleUpdateNutritionTargets(store, userId, {
         date: "2026-02-17",
         weightKg: 73,
         maintenanceCalories: 2621,
@@ -602,13 +603,13 @@ describe("gemini-tools", () => {
       expect(updated.profile.weightKg).toBe(73);
       expect(updated.profile.targetCalories).toBeGreaterThan(2800);
 
-      const after = handleGetNutritionTargets(store, { date: "2026-02-17" });
+      const after = handleGetNutritionTargets(store, userId, { date: "2026-02-17" });
       expect(after.profile?.targetProteinGrams).toBeGreaterThan(0);
       expect(after.profile?.targetCarbsGrams).toBeGreaterThan(0);
     });
 
     it("creates a meal with custom-food items and updates/removes item quantities", () => {
-      const createdFood = handleCreateNutritionCustomFood(store, {
+      const createdFood = handleCreateNutritionCustomFood(store, userId, {
         name: "Jasmine rice",
         unitLabel: "g",
         caloriesPerUnit: 1.3,
@@ -620,7 +621,7 @@ describe("gemini-tools", () => {
         throw new Error(createdFood.error);
       }
 
-      const createdMeal = handleCreateNutritionMeal(store, {
+      const createdMeal = handleCreateNutritionMeal(store, userId, {
         name: "Meal 1",
         mealType: "lunch",
         items: [{ customFoodId: createdFood.food.id, quantity: 100 }]
@@ -629,7 +630,7 @@ describe("gemini-tools", () => {
         throw new Error(createdMeal.error);
       }
 
-      const addedItem = handleAddNutritionMealItem(store, {
+      const addedItem = handleAddNutritionMealItem(store, userId, {
         mealId: createdMeal.meal.id,
         customFoodId: createdFood.food.id,
         quantity: 50
@@ -645,7 +646,7 @@ describe("gemini-tools", () => {
         throw new Error("Expected meal item id");
       }
 
-      const updatedItem = handleUpdateNutritionMealItem(store, {
+      const updatedItem = handleUpdateNutritionMealItem(store, userId, {
         mealId: createdMeal.meal.id,
         itemId: firstItemId,
         delta: 25
@@ -655,7 +656,7 @@ describe("gemini-tools", () => {
       }
       expect(updatedItem.item.quantity).toBe(125);
 
-      const removedItem = handleRemoveNutritionMealItem(store, {
+      const removedItem = handleRemoveNutritionMealItem(store, userId, {
         mealId: createdMeal.meal.id,
         itemId: firstItemId
       });
@@ -666,7 +667,7 @@ describe("gemini-tools", () => {
     });
 
     it("updates meal completion and supports moving meals", () => {
-      const first = handleCreateNutritionMeal(store, {
+      const first = handleCreateNutritionMeal(store, userId, {
         name: "Breakfast",
         mealType: "breakfast",
         consumedAt: "2026-02-17T08:00:00.000Z",
@@ -675,7 +676,7 @@ describe("gemini-tools", () => {
       if ("error" in first) {
         throw new Error(first.error);
       }
-      const second = handleCreateNutritionMeal(store, {
+      const second = handleCreateNutritionMeal(store, userId, {
         name: "Lunch",
         mealType: "lunch",
         consumedAt: "2026-02-17T12:00:00.000Z",
@@ -685,7 +686,7 @@ describe("gemini-tools", () => {
         throw new Error(second.error);
       }
 
-      const marked = handleUpdateNutritionMeal(store, {
+      const marked = handleUpdateNutritionMeal(store, userId, {
         mealId: second.meal.id,
         completed: true,
         consumedAt: "2026-02-17T12:00:00.000Z"
@@ -695,7 +696,7 @@ describe("gemini-tools", () => {
       }
       expect(marked.meal.notes ?? "").toContain("[done]");
 
-      const moved = handleMoveNutritionMeal(store, {
+      const moved = handleMoveNutritionMeal(store, userId, {
         mealId: second.meal.id,
         direction: "up",
         date: "2026-02-17"
@@ -705,7 +706,7 @@ describe("gemini-tools", () => {
       }
       expect(moved.success).toBe(true);
 
-      const ordered = handleGetNutritionMeals(store, { date: "2026-02-17", limit: 10 });
+      const ordered = handleGetNutritionMeals(store, userId, { date: "2026-02-17", limit: 10 });
       if ("error" in ordered) {
         throw new Error(ordered.error);
       }
@@ -713,7 +714,7 @@ describe("gemini-tools", () => {
     });
 
     it("logs and deletes meals", () => {
-      const logged = handleLogMeal(store, {
+      const logged = handleLogMeal(store, userId, {
         name: "Chicken wrap",
         mealType: "lunch",
         calories: 640,
@@ -729,7 +730,7 @@ describe("gemini-tools", () => {
       expect(logged.success).toBe(true);
       expect(logged.meal.name).toBe("Chicken wrap");
 
-      const deleted = handleDeleteMeal(store, { mealId: logged.meal.id });
+      const deleted = handleDeleteMeal(store, userId, { mealId: logged.meal.id });
       if ("error" in deleted) {
         throw new Error(deleted.error);
       }
@@ -737,7 +738,7 @@ describe("gemini-tools", () => {
     });
 
     it("creates, lists, updates, and deletes custom foods", () => {
-      const created = handleCreateNutritionCustomFood(store, {
+      const created = handleCreateNutritionCustomFood(store, userId, {
         name: "Whey isolate",
         unitLabel: "scoop",
         caloriesPerUnit: 110,
@@ -752,11 +753,11 @@ describe("gemini-tools", () => {
       expect(created.success).toBe(true);
       expect(created.food.name).toBe("Whey isolate");
 
-      const listed = handleGetNutritionCustomFoods(store, { query: "whey" });
+      const listed = handleGetNutritionCustomFoods(store, userId, { query: "whey" });
       expect(listed.foods).toHaveLength(1);
       expect(listed.foods[0]?.id).toBe(created.food.id);
 
-      const updated = handleUpdateNutritionCustomFood(store, {
+      const updated = handleUpdateNutritionCustomFood(store, userId, {
         customFoodId: created.food.id,
         caloriesPerUnit: 114.975,
         proteinGramsPerUnit: 0.027,
@@ -771,7 +772,7 @@ describe("gemini-tools", () => {
       expect(updated.food.carbsGramsPerUnit).toBeCloseTo(0.286, 3);
       expect(updated.food.fatGramsPerUnit).toBeCloseTo(0.003, 3);
 
-      const deleted = handleDeleteNutritionCustomFood(store, {
+      const deleted = handleDeleteNutritionCustomFood(store, userId, {
         customFoodId: created.food.id
       });
       if ("error" in deleted) {
@@ -781,7 +782,7 @@ describe("gemini-tools", () => {
     });
 
     it("logs meal from custom food with servings multiplier", () => {
-      const created = handleCreateNutritionCustomFood(store, {
+      const created = handleCreateNutritionCustomFood(store, userId, {
         name: "Greek yogurt",
         unitLabel: "cup",
         caloriesPerUnit: 150,
@@ -793,7 +794,7 @@ describe("gemini-tools", () => {
         throw new Error(created.error);
       }
 
-      const logged = handleLogMeal(store, {
+      const logged = handleLogMeal(store, userId, {
         customFoodId: created.food.id,
         servings: 1.5,
         mealType: "snack"
@@ -811,7 +812,7 @@ describe("gemini-tools", () => {
     });
 
     it("rejects gram-unit custom foods with implausible per-gram nutrition density", () => {
-      const created = handleCreateNutritionCustomFood(store, {
+      const created = handleCreateNutritionCustomFood(store, userId, {
         name: "Lasagne",
         unitLabel: "g",
         caloriesPerUnit: 620,
@@ -826,7 +827,7 @@ describe("gemini-tools", () => {
     });
 
     it("requires explicit quantity for gram-based custom food logMeal calls", () => {
-      const created = handleCreateNutritionCustomFood(store, {
+      const created = handleCreateNutritionCustomFood(store, userId, {
         name: "Cooked rice",
         unitLabel: "g",
         caloriesPerUnit: 1.3,
@@ -838,7 +839,7 @@ describe("gemini-tools", () => {
         throw new Error(created.error);
       }
 
-      const logged = handleLogMeal(store, {
+      const logged = handleLogMeal(store, userId, {
         customFoodId: created.food.id
       });
 
@@ -849,7 +850,7 @@ describe("gemini-tools", () => {
     });
 
     it("rejects createNutritionMeal items with implausible per-gram density", () => {
-      const created = handleCreateNutritionMeal(store, {
+      const created = handleCreateNutritionMeal(store, userId, {
         name: "Image meal",
         mealType: "dinner",
         items: [
@@ -874,13 +875,13 @@ describe("gemini-tools", () => {
 
   describe("handleGetGitHubCourseContent", () => {
     it("returns empty array when no GitHub data is synced", () => {
-      const result = handleGetGitHubCourseContent(store);
+      const result = handleGetGitHubCourseContent(store, userId);
       expect(result).toEqual([]);
     });
 
     it("filters GitHub docs by course code and query terms", () => {
       const now = new Date().toISOString();
-      store.setGitHubCourseData({
+      store.setGitHubCourseData(userId, {
         repositories: [
           { owner: "dat560-2026", repo: "info", courseCode: "DAT560" },
           { owner: "dat520-2026", repo: "assignments", courseCode: "DAT520" }
@@ -917,7 +918,7 @@ describe("gemini-tools", () => {
         lastSyncedAt: now
       });
 
-      const result = handleGetGitHubCourseContent(store, {
+      const result = handleGetGitHubCourseContent(store, userId, {
         courseCode: "dat560",
         query: "deliverables",
         limit: 5
@@ -930,7 +931,7 @@ describe("gemini-tools", () => {
 
   describe("queue action handlers", () => {
     it("completes a deadline immediately without pending confirmation", () => {
-      const deadline = store.createDeadline({
+      const deadline = store.createDeadline(userId, {
         course: "DAT560",
         task: "Assignment 2",
         dueDate: "2026-02-20T12:00:00.000Z",
@@ -938,7 +939,7 @@ describe("gemini-tools", () => {
         completed: false
       });
 
-      const result = handleQueueDeadlineAction(store, {
+      const result = handleQueueDeadlineAction(store, userId, {
         deadlineId: deadline.id,
         action: "complete"
       });
@@ -953,11 +954,11 @@ describe("gemini-tools", () => {
       expect(result.success).toBe(true);
       expect(result.action).toBe("complete");
       expect(result.deadline.completed).toBe(true);
-      expect(store.getPendingChatActions()).toHaveLength(0);
+      expect(store.getPendingChatActions(userId)).toHaveLength(0);
     });
 
     it("reschedules a deadline to an exact date", () => {
-      const deadline = store.createDeadline({
+      const deadline = store.createDeadline(userId, {
         course: "DAT560",
         task: "Assignment 2",
         dueDate: "2026-02-20T12:00:00.000Z",
@@ -965,7 +966,7 @@ describe("gemini-tools", () => {
         completed: false
       });
 
-      const result = handleQueueDeadlineAction(store, {
+      const result = handleQueueDeadlineAction(store, userId, {
         deadlineId: deadline.id,
         action: "reschedule",
         newDueDate: "2026-02-22T23:59:00.000Z"
@@ -981,11 +982,11 @@ describe("gemini-tools", () => {
       expect(result.success).toBe(true);
       expect(result.action).toBe("reschedule");
       expect(result.deadline.dueDate).toBe("2026-02-22T23:59:00.000Z");
-      expect(store.getPendingChatActions()).toHaveLength(0);
+      expect(store.getPendingChatActions(userId)).toHaveLength(0);
     });
 
     it("returns error when reschedule is missing newDueDate", () => {
-      const deadline = store.createDeadline({
+      const deadline = store.createDeadline(userId, {
         course: "DAT560",
         task: "Assignment 2",
         dueDate: "2026-02-20T12:00:00.000Z",
@@ -993,7 +994,7 @@ describe("gemini-tools", () => {
         completed: false
       });
 
-      const result = handleQueueDeadlineAction(store, {
+      const result = handleQueueDeadlineAction(store, userId, {
         deadlineId: deadline.id,
         action: "reschedule"
       });
@@ -1002,7 +1003,7 @@ describe("gemini-tools", () => {
     });
 
     it("queues a schedule block action", () => {
-      const result = handleQueueScheduleBlock(store, {
+      const result = handleQueueScheduleBlock(store, userId, {
         title: "DAT520 revision",
         startTime: "2026-02-18T13:00:00.000Z",
         durationMinutes: 90,
@@ -1015,18 +1016,18 @@ describe("gemini-tools", () => {
       }
 
       expect(result.pendingAction.actionType).toBe("create-schedule-block");
-      expect(store.getPendingChatActions()).toHaveLength(1);
+      expect(store.getPendingChatActions(userId)).toHaveLength(1);
     });
 
     it("queues a schedule block update action", () => {
-      const scheduleBlock = store.createLectureEvent({
+      const scheduleBlock = store.createLectureEvent(userId, {
         title: "Gym",
         startTime: "2026-02-18T07:00:00.000Z",
         durationMinutes: 60,
         workload: "medium"
       });
 
-      const result = handleQueueUpdateScheduleBlock(store, {
+      const result = handleQueueUpdateScheduleBlock(store, userId, {
         scheduleId: scheduleBlock.id,
         startTime: "2026-02-18T08:00:00.000Z"
       });
@@ -1037,18 +1038,18 @@ describe("gemini-tools", () => {
       }
 
       expect(result.pendingAction.actionType).toBe("update-schedule-block");
-      expect(store.getPendingChatActions()).toHaveLength(1);
+      expect(store.getPendingChatActions(userId)).toHaveLength(1);
     });
 
     it("queues a schedule block delete action", () => {
-      const scheduleBlock = store.createLectureEvent({
+      const scheduleBlock = store.createLectureEvent(userId, {
         title: "Optional focus block",
         startTime: "2026-02-18T18:00:00.000Z",
         durationMinutes: 60,
         workload: "medium"
       });
 
-      const result = handleQueueDeleteScheduleBlock(store, {
+      const result = handleQueueDeleteScheduleBlock(store, userId, {
         scheduleId: scheduleBlock.id
       });
 
@@ -1058,24 +1059,24 @@ describe("gemini-tools", () => {
       }
 
       expect(result.pendingAction.actionType).toBe("delete-schedule-block");
-      expect(store.getPendingChatActions()).toHaveLength(1);
+      expect(store.getPendingChatActions(userId)).toHaveLength(1);
     });
 
     it("queues clear schedule window while preserving classes by default", () => {
-      store.createLectureEvent({
+      store.createLectureEvent(userId, {
         title: "DAT520 Lecture",
         startTime: "2026-02-18T10:00:00.000Z",
         durationMinutes: 90,
         workload: "medium"
       });
-      const optionalBlock = store.createLectureEvent({
+      const optionalBlock = store.createLectureEvent(userId, {
         title: "Project deep work",
         startTime: "2026-02-18T13:00:00.000Z",
         durationMinutes: 90,
         workload: "high"
       });
 
-      const result = handleQueueClearScheduleWindow(store, {
+      const result = handleQueueClearScheduleWindow(store, userId, {
         startTime: "2026-02-18T00:00:00.000Z",
         endTime: "2026-02-18T23:59:59.999Z"
       });
@@ -1092,7 +1093,7 @@ describe("gemini-tools", () => {
     });
 
     it("applies routine preset create and update actions immediately", () => {
-      const createResult = handleQueueCreateRoutinePreset(store, {
+      const createResult = handleQueueCreateRoutinePreset(store, userId, {
         title: "Morning gym",
         preferredStartTime: "07:00",
         durationMinutes: 60,
@@ -1108,7 +1109,7 @@ describe("gemini-tools", () => {
       expect(createResult.action).toBe("create-routine-preset");
       expect(createResult.routinePreset.title).toBe("Morning gym");
 
-      const updateResult = handleQueueUpdateRoutinePreset(store, {
+      const updateResult = handleQueueUpdateRoutinePreset(store, userId, {
         presetId: createResult.routinePreset.id,
         preferredStartTime: "20:30",
         active: false
@@ -1129,27 +1130,27 @@ describe("gemini-tools", () => {
 
   describe("executePendingChatAction", () => {
     it("executes queued deadline completion", () => {
-      const deadline = store.createDeadline({
+      const deadline = store.createDeadline(userId, {
         course: "DAT560",
         task: "Assignment 3",
         dueDate: "2026-02-21T12:00:00.000Z",
         priority: "high",
         completed: false
       });
-      const pending = store.createPendingChatAction({
+      const pending = store.createPendingChatAction(userId, {
         actionType: "complete-deadline",
         summary: "Complete deadline",
         payload: { deadlineId: deadline.id }
       });
 
-      const result = executePendingChatAction(pending, store);
+      const result = executePendingChatAction(pending, store, userId);
 
       expect(result.success).toBe(true);
       expect(result.deadline?.completed).toBe(true);
     });
 
     it("executes queued schedule block creation", () => {
-      const pending = store.createPendingChatAction({
+      const pending = store.createPendingChatAction(userId, {
         actionType: "create-schedule-block",
         summary: "Create DAT600 block",
         payload: {
@@ -1160,21 +1161,21 @@ describe("gemini-tools", () => {
         }
       });
 
-      const result = executePendingChatAction(pending, store);
+      const result = executePendingChatAction(pending, store, userId);
 
       expect(result.success).toBe(true);
       expect(result.lecture?.title).toContain("DAT600");
     });
 
     it("executes queued schedule block update", () => {
-      const scheduleBlock = store.createLectureEvent({
+      const scheduleBlock = store.createLectureEvent(userId, {
         title: "Morning gym",
         startTime: "2026-02-22T07:00:00.000Z",
         durationMinutes: 60,
         workload: "medium"
       });
 
-      const pending = store.createPendingChatAction({
+      const pending = store.createPendingChatAction(userId, {
         actionType: "update-schedule-block",
         summary: "Move morning gym to 08:00",
         payload: {
@@ -1184,7 +1185,7 @@ describe("gemini-tools", () => {
         }
       });
 
-      const result = executePendingChatAction(pending, store);
+      const result = executePendingChatAction(pending, store, userId);
 
       expect(result.success).toBe(true);
       expect(result.lecture?.startTime).toContain("T08:00:00.000Z");
@@ -1192,20 +1193,20 @@ describe("gemini-tools", () => {
     });
 
     it("executes queued clear schedule window action", () => {
-      const blockA = store.createLectureEvent({
+      const blockA = store.createLectureEvent(userId, {
         title: "Optional deep work",
         startTime: "2026-02-22T15:00:00.000Z",
         durationMinutes: 60,
         workload: "medium"
       });
-      const blockB = store.createLectureEvent({
+      const blockB = store.createLectureEvent(userId, {
         title: "Gym",
         startTime: "2026-02-22T17:00:00.000Z",
         durationMinutes: 60,
         workload: "medium"
       });
 
-      const pending = store.createPendingChatAction({
+      const pending = store.createPendingChatAction(userId, {
         actionType: "clear-schedule-window",
         summary: "Clear the evening",
         payload: {
@@ -1213,15 +1214,15 @@ describe("gemini-tools", () => {
         }
       });
 
-      const result = executePendingChatAction(pending, store);
+      const result = executePendingChatAction(pending, store, userId);
       expect(result.success).toBe(true);
       expect(result.message).toContain("Cleared 2 schedule blocks");
-      expect(store.getScheduleEventById(blockA.id)).toBeNull();
-      expect(store.getScheduleEventById(blockB.id)).toBeNull();
+      expect(store.getScheduleEventById(userId, blockA.id)).toBeNull();
+      expect(store.getScheduleEventById(userId, blockB.id)).toBeNull();
     });
 
     it("executes queued routine preset create and update", () => {
-      const createPending = store.createPendingChatAction({
+      const createPending = store.createPendingChatAction(userId, {
         actionType: "create-routine-preset",
         summary: "Create morning gym preset",
         payload: {
@@ -1233,11 +1234,11 @@ describe("gemini-tools", () => {
         }
       });
 
-      const created = executePendingChatAction(createPending, store);
+      const created = executePendingChatAction(createPending, store, userId);
       expect(created.success).toBe(true);
       expect(created.routinePreset?.title).toBe("Morning gym");
 
-      const updatePending = store.createPendingChatAction({
+      const updatePending = store.createPendingChatAction(userId, {
         actionType: "update-routine-preset",
         summary: "Update morning gym preset",
         payload: {
@@ -1246,7 +1247,7 @@ describe("gemini-tools", () => {
         }
       });
 
-      const updated = executePendingChatAction(updatePending, store);
+      const updated = executePendingChatAction(updatePending, store, userId);
       expect(updated.success).toBe(true);
       expect(updated.routinePreset?.preferredStartTime).toBe("08:00");
     });
@@ -1254,35 +1255,35 @@ describe("gemini-tools", () => {
 
   describe("executeFunctionCall", () => {
     it("should execute getSchedule function", () => {
-      const result = executeFunctionCall("getSchedule", {}, store);
+      const result = executeFunctionCall("getSchedule", {}, store, userId);
 
       expect(result.name).toBe("getSchedule");
       expect(Array.isArray(result.response)).toBe(true);
     });
 
     it("should execute getRoutinePresets function", () => {
-      const result = executeFunctionCall("getRoutinePresets", {}, store);
+      const result = executeFunctionCall("getRoutinePresets", {}, store, userId);
 
       expect(result.name).toBe("getRoutinePresets");
       expect(Array.isArray(result.response)).toBe(true);
     });
 
     it("should execute getDeadlines function", () => {
-      const result = executeFunctionCall("getDeadlines", { daysAhead: 7 }, store);
+      const result = executeFunctionCall("getDeadlines", { daysAhead: 7 }, store, userId);
 
       expect(result.name).toBe("getDeadlines");
       expect(Array.isArray(result.response)).toBe(true);
     });
 
     it("should execute getEmails function", () => {
-      const result = executeFunctionCall("getEmails", { limit: 5 }, store);
+      const result = executeFunctionCall("getEmails", { limit: 5 }, store, userId);
 
       expect(result.name).toBe("getEmails");
       expect(Array.isArray(result.response)).toBe(true);
     });
 
     it("should execute getHabitsGoalsStatus function", () => {
-      const result = executeFunctionCall("getHabitsGoalsStatus", {}, store);
+      const result = executeFunctionCall("getHabitsGoalsStatus", {}, store, userId);
 
       expect(result.name).toBe("getHabitsGoalsStatus");
       expect(result.response).toHaveProperty("habits");
@@ -1290,44 +1291,44 @@ describe("gemini-tools", () => {
     });
 
     it("should execute updateHabitCheckIn function", () => {
-      const habit = store.createHabit({
+      const habit = store.createHabit(userId, {
         name: "Study sprint",
         cadence: "daily",
         targetPerWeek: 5
       });
-      const result = executeFunctionCall("updateHabitCheckIn", { habitId: habit.id, completed: true }, store);
+      const result = executeFunctionCall("updateHabitCheckIn", { habitId: habit.id, completed: true }, store, userId);
 
       expect(result.name).toBe("updateHabitCheckIn");
       expect(result.response).toHaveProperty("success", true);
     });
 
     it("should execute updateGoalCheckIn function", () => {
-      const goal = store.createGoal({
+      const goal = store.createGoal(userId, {
         title: "Ship DAT560 assignment",
         cadence: "weekly",
         targetCount: 3,
         dueDate: null
       });
-      const result = executeFunctionCall("updateGoalCheckIn", { goalId: goal.id, completed: true }, store);
+      const result = executeFunctionCall("updateGoalCheckIn", { goalId: goal.id, completed: true }, store, userId);
 
       expect(result.name).toBe("updateGoalCheckIn");
       expect(result.response).toHaveProperty("success", true);
     });
 
     it("should execute createHabit function", () => {
-      const result = executeFunctionCall("createHabit", { name: "Read papers" }, store);
+      const result = executeFunctionCall("createHabit", { name: "Read papers" }, store, userId);
 
       expect(result.name).toBe("createHabit");
       expect(result.response).toHaveProperty("success", true);
     });
 
     it("should execute deleteHabit function", () => {
-      const habit = store.createHabit({
+      const habit = store.createHabit(userId, {
         name: "Morning planning",
         cadence: "daily",
         targetPerWeek: 5
       });
-      const result = executeFunctionCall("deleteHabit", { habitId: habit.id }, store);
+      const result = executeFunctionCall("deleteHabit", { habitId: habit.id }, store, userId);
 
       expect(result.name).toBe("deleteHabit");
       expect(result.response).toHaveProperty("success", true);
@@ -1335,20 +1336,20 @@ describe("gemini-tools", () => {
     });
 
     it("should execute createGoal function", () => {
-      const result = executeFunctionCall("createGoal", { title: "Finish report" }, store);
+      const result = executeFunctionCall("createGoal", { title: "Finish report" }, store, userId);
 
       expect(result.name).toBe("createGoal");
       expect(result.response).toHaveProperty("success", true);
     });
 
     it("should execute deleteGoal function", () => {
-      const goal = store.createGoal({
+      const goal = store.createGoal(userId, {
         title: "Submit assignment",
         cadence: "weekly",
         targetCount: 1,
         dueDate: null
       });
-      const result = executeFunctionCall("deleteGoal", { goalId: goal.id }, store);
+      const result = executeFunctionCall("deleteGoal", { goalId: goal.id }, store, userId);
 
       expect(result.name).toBe("deleteGoal");
       expect(result.response).toHaveProperty("success", true);
@@ -1356,7 +1357,7 @@ describe("gemini-tools", () => {
     });
 
     it("should execute getNutritionSummary function", () => {
-      const result = executeFunctionCall("getNutritionSummary", { date: "2026-02-17" }, store);
+      const result = executeFunctionCall("getNutritionSummary", { date: "2026-02-17" }, store, userId);
 
       expect(result.name).toBe("getNutritionSummary");
       expect(result.response).toHaveProperty("totals");
@@ -1365,21 +1366,17 @@ describe("gemini-tools", () => {
     it("should execute nutrition targets and meal-item mutation functions", () => {
       const updateTargets = executeFunctionCall(
         "updateNutritionTargets",
-        { date: "2026-02-17", weightKg: 73, maintenanceCalories: 2621, surplusCalories: 300 },
-        store
-      );
+        { date: "2026-02-17", weightKg: 73, maintenanceCalories: 2621, surplusCalories: 300 }, store, userId);
       expect(updateTargets.name).toBe("updateNutritionTargets");
       expect(updateTargets.response).toHaveProperty("success", true);
 
-      const targets = executeFunctionCall("getNutritionTargets", { date: "2026-02-17" }, store);
+      const targets = executeFunctionCall("getNutritionTargets", { date: "2026-02-17" }, store, userId);
       expect(targets.name).toBe("getNutritionTargets");
       expect(targets.response).toHaveProperty("profile");
 
       const createdFood = executeFunctionCall(
         "createNutritionCustomFood",
-        { name: "Rice", unitLabel: "g", caloriesPerUnit: 1.3, carbsGramsPerUnit: 0.286 },
-        store
-      );
+        { name: "Rice", unitLabel: "g", caloriesPerUnit: 1.3, carbsGramsPerUnit: 0.286 }, store, userId);
       const foodId = (createdFood.response as { food?: { id?: string } }).food?.id;
       expect(foodId).toBeDefined();
       if (!foodId) {
@@ -1391,9 +1388,7 @@ describe("gemini-tools", () => {
         {
           name: "Meal 1",
           items: [{ customFoodId: foodId, quantity: 100 }]
-        },
-        store
-      );
+        }, store, userId);
       expect(createdMeal.name).toBe("createNutritionMeal");
       expect(createdMeal.response).toHaveProperty("success", true);
 
@@ -1409,13 +1404,11 @@ describe("gemini-tools", () => {
           mealId,
           customFoodId: foodId,
           quantity: 50
-        },
-        store
-      );
+        }, store, userId);
       expect(addedItem.name).toBe("addNutritionMealItem");
       expect(addedItem.response).toHaveProperty("success", true);
 
-      const meals = executeFunctionCall("getNutritionMeals", { date: "2026-02-17" }, store);
+      const meals = executeFunctionCall("getNutritionMeals", { date: "2026-02-17" }, store, userId);
       expect(meals.name).toBe("getNutritionMeals");
       expect(meals.response).toHaveProperty("meals");
 
@@ -1429,25 +1422,19 @@ describe("gemini-tools", () => {
 
       const updatedItem = executeFunctionCall(
         "updateNutritionMealItem",
-        { mealId, itemId: firstItemId, delta: 10 },
-        store
-      );
+        { mealId, itemId: firstItemId, delta: 10 }, store, userId);
       expect(updatedItem.name).toBe("updateNutritionMealItem");
       expect(updatedItem.response).toHaveProperty("success", true);
 
       const removedItem = executeFunctionCall(
         "removeNutritionMealItem",
-        { mealId, itemId: firstItemId },
-        store
-      );
+        { mealId, itemId: firstItemId }, store, userId);
       expect(removedItem.name).toBe("removeNutritionMealItem");
       expect(removedItem.response).toHaveProperty("success", true);
 
       const movedMeal = executeFunctionCall(
         "moveNutritionMeal",
-        { mealId, direction: "down" },
-        store
-      );
+        { mealId, direction: "down" }, store, userId);
       expect(movedMeal.name).toBe("moveNutritionMeal");
       expect(movedMeal.response).toHaveProperty("success", true);
     });
@@ -1455,9 +1442,7 @@ describe("gemini-tools", () => {
     it("should execute custom food nutrition functions", () => {
       const created = executeFunctionCall(
         "createNutritionCustomFood",
-        { name: "Banana", unitLabel: "piece", caloriesPerUnit: 105, carbsGramsPerUnit: 27 },
-        store
-      );
+        { name: "Banana", unitLabel: "piece", caloriesPerUnit: 105, carbsGramsPerUnit: 27 }, store, userId);
       expect(created.name).toBe("createNutritionCustomFood");
       expect(created.response).toHaveProperty("success", true);
       const createdFoodId = (created.response as { food?: { id?: string } }).food?.id;
@@ -1466,19 +1451,17 @@ describe("gemini-tools", () => {
         throw new Error("Expected created custom food id");
       }
 
-      const listed = executeFunctionCall("getNutritionCustomFoods", { query: "banana" }, store);
+      const listed = executeFunctionCall("getNutritionCustomFoods", { query: "banana" }, store, userId);
       expect(listed.name).toBe("getNutritionCustomFoods");
       expect(listed.response).toHaveProperty("foods");
 
       const updated = executeFunctionCall(
         "updateNutritionCustomFood",
-        { customFoodId: createdFoodId, proteinGramsPerUnit: 1.3 },
-        store
-      );
+        { customFoodId: createdFoodId, proteinGramsPerUnit: 1.3 }, store, userId);
       expect(updated.name).toBe("updateNutritionCustomFood");
       expect(updated.response).toHaveProperty("success", true);
 
-      const deleted = executeFunctionCall("deleteNutritionCustomFood", { customFoodId: createdFoodId }, store);
+      const deleted = executeFunctionCall("deleteNutritionCustomFood", { customFoodId: createdFoodId }, store, userId);
       expect(deleted.name).toBe("deleteNutritionCustomFood");
       expect(deleted.response).toHaveProperty("deleted", true);
     });
@@ -1486,9 +1469,7 @@ describe("gemini-tools", () => {
     it("should execute logMeal function", () => {
       const result = executeFunctionCall(
         "logMeal",
-        { name: "Protein smoothie", calories: 320, proteinGrams: 32, carbsGrams: 24, fatGrams: 8 },
-        store
-      );
+        { name: "Protein smoothie", calories: 320, proteinGrams: 32, carbsGrams: 24, fatGrams: 8 }, store, userId);
 
       expect(result.name).toBe("logMeal");
       expect(result.response).toHaveProperty("success", true);
@@ -1496,7 +1477,7 @@ describe("gemini-tools", () => {
 
     it("should execute getGitHubCourseContent function", () => {
       const now = new Date().toISOString();
-      store.setGitHubCourseData({
+      store.setGitHubCourseData(userId, {
         repositories: [{ owner: "dat560-2026", repo: "info", courseCode: "DAT560" }],
         documents: [
           {
@@ -1517,7 +1498,7 @@ describe("gemini-tools", () => {
         lastSyncedAt: now
       });
 
-      const result = executeFunctionCall("getGitHubCourseContent", { courseCode: "DAT560" }, store);
+      const result = executeFunctionCall("getGitHubCourseContent", { courseCode: "DAT560" }, store, userId);
 
       expect(result.name).toBe("getGitHubCourseContent");
       expect(Array.isArray(result.response)).toBe(true);
@@ -1525,7 +1506,7 @@ describe("gemini-tools", () => {
     });
 
     it("should execute queueDeadlineAction function for complete", () => {
-      const deadline = store.createDeadline({
+      const deadline = store.createDeadline(userId, {
         course: "DAT520",
         task: "Lab 4",
         dueDate: "2026-02-24T12:00:00.000Z",
@@ -1535,18 +1516,16 @@ describe("gemini-tools", () => {
 
       const result = executeFunctionCall(
         "queueDeadlineAction",
-        { deadlineId: deadline.id, action: "complete" },
-        store
-      );
+        { deadlineId: deadline.id, action: "complete" }, store, userId);
 
       expect(result.name).toBe("queueDeadlineAction");
       expect(result.response).toHaveProperty("requiresConfirmation", false);
       expect(result.response).toHaveProperty("success", true);
-      expect(store.getDeadlineById(deadline.id, false)?.completed).toBe(true);
+      expect(store.getDeadlineById(userId, deadline.id, false)?.completed).toBe(true);
     });
 
     it("should execute updateScheduleBlock function", () => {
-      const scheduleBlock = store.createLectureEvent({
+      const scheduleBlock = store.createLectureEvent(userId, {
         title: "Focus block",
         startTime: "2026-02-24T10:00:00.000Z",
         durationMinutes: 90,
@@ -1555,16 +1534,14 @@ describe("gemini-tools", () => {
 
       const result = executeFunctionCall(
         "updateScheduleBlock",
-        { scheduleId: scheduleBlock.id, durationMinutes: 60 },
-        store
-      );
+        { scheduleId: scheduleBlock.id, durationMinutes: 60 }, store, userId);
 
       expect(result.name).toBe("updateScheduleBlock");
       expect(result.response).toHaveProperty("success", true);
     });
 
     it("should execute direct schedule mutation functions", () => {
-      const scheduleBlock = store.createLectureEvent({
+      const scheduleBlock = store.createLectureEvent(userId, {
         title: "Unblockable item",
         startTime: "2026-02-24T12:00:00.000Z",
         durationMinutes: 60,
@@ -1577,18 +1554,14 @@ describe("gemini-tools", () => {
           title: "Evening review",
           startTime: "2026-02-24T18:00:00.000Z",
           durationMinutes: 45
-        },
-        store
-      );
+        }, store, userId);
 
       expect(createResult.name).toBe("createScheduleBlock");
       expect(createResult.response).toHaveProperty("success", true);
 
       const deleteResult = executeFunctionCall(
         "deleteScheduleBlock",
-        { scheduleId: scheduleBlock.id },
-        store
-      );
+        { scheduleId: scheduleBlock.id }, store, userId);
 
       expect(deleteResult.name).toBe("deleteScheduleBlock");
       expect(deleteResult.response).toHaveProperty("success", true);
@@ -1599,9 +1572,7 @@ describe("gemini-tools", () => {
           startTime: "2026-02-24T00:00:00.000Z",
           endTime: "2026-02-24T23:59:59.999Z",
           includeAcademicBlocks: true
-        },
-        store
-      );
+        }, store, userId);
 
       expect(clearResult.name).toBe("clearScheduleWindow");
       expect(clearResult.response).toHaveProperty("success", true);
@@ -1610,9 +1581,7 @@ describe("gemini-tools", () => {
     it("should execute routine preset queue functions", () => {
       const createResult = executeFunctionCall(
         "queueCreateRoutinePreset",
-        { title: "Morning gym", preferredStartTime: "07:00", durationMinutes: 60 },
-        store
-      );
+        { title: "Morning gym", preferredStartTime: "07:00", durationMinutes: 60 }, store, userId);
 
       expect(createResult.name).toBe("queueCreateRoutinePreset");
       expect(createResult.response).toHaveProperty("requiresConfirmation", false);
@@ -1623,9 +1592,7 @@ describe("gemini-tools", () => {
 
       const updateResult = executeFunctionCall(
         "queueUpdateRoutinePreset",
-        { presetId: createdPresetId, preferredStartTime: "20:30" },
-        store
-      );
+        { presetId: createdPresetId, preferredStartTime: "20:30" }, store, userId);
 
       expect(updateResult.name).toBe("queueUpdateRoutinePreset");
       expect(updateResult.response).toHaveProperty("requiresConfirmation", false);
@@ -1634,7 +1601,7 @@ describe("gemini-tools", () => {
 
     it("should throw error for unknown function", () => {
       expect(() => {
-        executeFunctionCall("unknownFunction", {}, store);
+        executeFunctionCall("unknownFunction", {}, store, userId);
       }).toThrow("Unknown function: unknownFunction");
     });
   });
@@ -1642,7 +1609,7 @@ describe("gemini-tools", () => {
   describe("handleScheduleReminder", () => {
     it("schedules a reminder with icon", () => {
       const futureTime = new Date(Date.now() + 3600_000).toISOString();
-      const result = handleScheduleReminder(store, {
+      const result = handleScheduleReminder(store, userId, {
         title: "Start DAT520 lab",
         message: "Time to work on the distributed systems lab",
         scheduledFor: futureTime,
@@ -1660,7 +1627,7 @@ describe("gemini-tools", () => {
 
     it("schedules a reminder without icon (defaults to medium priority)", () => {
       const futureTime = new Date(Date.now() + 7200_000).toISOString();
-      const result = handleScheduleReminder(store, {
+      const result = handleScheduleReminder(store, userId, {
         title: "Check emails",
         message: "Review inbox for professor replies",
         scheduledFor: futureTime
@@ -1674,14 +1641,14 @@ describe("gemini-tools", () => {
     });
 
     it("returns error when required fields are missing", () => {
-      const result = handleScheduleReminder(store, { title: "No message" });
+      const result = handleScheduleReminder(store, userId, { title: "No message" });
       expect(result).toHaveProperty("error");
       expect((result as { error: string }).error).toContain("required");
     });
 
     it("returns error when scheduledFor is in the past", () => {
       const pastTime = new Date(Date.now() - 120_000).toISOString();
-      const result = handleScheduleReminder(store, {
+      const result = handleScheduleReminder(store, userId, {
         title: "Late reminder",
         message: "This is too late",
         scheduledFor: pastTime
@@ -1691,7 +1658,7 @@ describe("gemini-tools", () => {
     });
 
     it("returns error for invalid datetime format", () => {
-      const result = handleScheduleReminder(store, {
+      const result = handleScheduleReminder(store, userId, {
         title: "Bad date",
         message: "Invalid format",
         scheduledFor: "not-a-date"
@@ -1704,7 +1671,7 @@ describe("gemini-tools", () => {
       const scheduledFor = new Date(Date.now() - 1000); // slightly in the past for immediate retrieval
       // Use a time just barely in the past but within the 60s grace window
       const justPast = new Date(Date.now() - 30_000).toISOString();
-      const result = handleScheduleReminder(store, {
+      const result = handleScheduleReminder(store, userId, {
         title: "Gym time",
         message: "Hit the weights",
         scheduledFor: justPast,
@@ -1714,7 +1681,7 @@ describe("gemini-tools", () => {
       expect(result).toHaveProperty("success", true);
 
       // Retrieve due notifications — the one we just scheduled should be due
-      const due = store.getDueScheduledNotifications(new Date());
+      const due = store.getDueScheduledNotifications(userId, new Date());
       const match = due.find((d) => d.notification.title === "Gym time");
       expect(match).toBeDefined();
       expect(match!.notification.icon).toBe("🏋️");
@@ -1724,9 +1691,7 @@ describe("gemini-tools", () => {
       const futureTime = new Date(Date.now() + 3600_000).toISOString();
       const result = executeFunctionCall(
         "scheduleReminder",
-        { title: "Test reminder", message: "Via executeFunctionCall", scheduledFor: futureTime, icon: "🔔" },
-        store
-      );
+        { title: "Test reminder", message: "Via executeFunctionCall", scheduledFor: futureTime, icon: "🔔" }, store, userId);
 
       expect(result.name).toBe("scheduleReminder");
       expect(result.response).toHaveProperty("success", true);
@@ -1734,7 +1699,7 @@ describe("gemini-tools", () => {
 
     it("supports recurrence parameter", () => {
       const futureTime = new Date(Date.now() + 3600_000).toISOString();
-      const result = handleScheduleReminder(store, {
+      const result = handleScheduleReminder(store, userId, {
         title: "Daily standup",
         message: "Check in with the team",
         scheduledFor: futureTime,
@@ -1750,26 +1715,26 @@ describe("gemini-tools", () => {
 
   describe("handleGetReminders", () => {
     it("returns empty array when no reminders scheduled", () => {
-      const result = handleGetReminders(store);
+      const result = handleGetReminders(store, userId);
       expect(result.reminders).toEqual([]);
     });
 
     it("returns all scheduled reminders", () => {
       const t1 = new Date(Date.now() + 3600_000).toISOString();
       const t2 = new Date(Date.now() + 7200_000).toISOString();
-      handleScheduleReminder(store, {
+      handleScheduleReminder(store, userId, {
         title: "First",
         message: "First reminder",
         scheduledFor: t1,
         icon: "1️⃣"
       });
-      handleScheduleReminder(store, {
+      handleScheduleReminder(store, userId, {
         title: "Second",
         message: "Second reminder",
         scheduledFor: t2
       });
 
-      const result = handleGetReminders(store);
+      const result = handleGetReminders(store, userId);
       expect(result.reminders).toHaveLength(2);
       expect(result.reminders[0].title).toBe("First");
       expect(result.reminders[0].icon).toBe("1️⃣");
@@ -1780,42 +1745,42 @@ describe("gemini-tools", () => {
   describe("handleCancelReminder", () => {
     it("cancels by ID", () => {
       const futureTime = new Date(Date.now() + 3600_000).toISOString();
-      const schedResult = handleScheduleReminder(store, {
+      const schedResult = handleScheduleReminder(store, userId, {
         title: "Cancel me",
         message: "Should be cancelled",
         scheduledFor: futureTime
       });
 
       const reminderId = (schedResult as { scheduledNotification: { id: string } }).scheduledNotification.id;
-      const cancelResult = handleCancelReminder(store, { reminderId });
+      const cancelResult = handleCancelReminder(store, userId, { reminderId });
       expect(cancelResult).toHaveProperty("success", true);
       expect((cancelResult as { title: string }).title).toBe("Cancel me");
 
       // Should be gone
-      const remaining = handleGetReminders(store);
+      const remaining = handleGetReminders(store, userId);
       expect(remaining.reminders).toHaveLength(0);
     });
 
     it("cancels by title hint", () => {
       const futureTime = new Date(Date.now() + 3600_000).toISOString();
-      handleScheduleReminder(store, {
+      handleScheduleReminder(store, userId, {
         title: "DAT520 lab deadline",
         message: "Start the lab",
         scheduledFor: futureTime
       });
 
-      const result = handleCancelReminder(store, { titleHint: "dat520" });
+      const result = handleCancelReminder(store, userId, { titleHint: "dat520" });
       expect(result).toHaveProperty("success", true);
       expect((result as { title: string }).title).toBe("DAT520 lab deadline");
     });
 
     it("returns error when no match found", () => {
-      const result = handleCancelReminder(store, { titleHint: "nonexistent" });
+      const result = handleCancelReminder(store, userId, { titleHint: "nonexistent" });
       expect(result).toHaveProperty("error");
     });
 
     it("returns error when no identifier provided", () => {
-      const result = handleCancelReminder(store, {});
+      const result = handleCancelReminder(store, userId, {});
       expect(result).toHaveProperty("error");
     });
 
@@ -1823,12 +1788,10 @@ describe("gemini-tools", () => {
       const futureTime = new Date(Date.now() + 3600_000).toISOString();
       const schedResult = executeFunctionCall(
         "scheduleReminder",
-        { title: "Test cancel", message: "To be cancelled", scheduledFor: futureTime },
-        store
-      );
+        { title: "Test cancel", message: "To be cancelled", scheduledFor: futureTime }, store, userId);
 
       const id = (schedResult.response as { scheduledNotification: { id: string } }).scheduledNotification.id;
-      const cancelResult = executeFunctionCall("cancelReminder", { reminderId: id }, store);
+      const cancelResult = executeFunctionCall("cancelReminder", { reminderId: id }, store, userId);
       expect(cancelResult.name).toBe("cancelReminder");
       expect(cancelResult.response).toHaveProperty("success", true);
     });

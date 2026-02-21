@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - Agent Lifecycle", () => {
+  const userId = "test-user";
   let store: RuntimeStore;
 
   beforeEach(() => {
@@ -20,7 +21,7 @@ describe("RuntimeStore - Agent Lifecycle", () => {
 
       store.markAgentRunning("notes");
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       const notesAgent = snapshot.agentStates.find((s) => s.name === "notes");
 
       expect(notesAgent?.status).toBe("running");
@@ -30,7 +31,7 @@ describe("RuntimeStore - Agent Lifecycle", () => {
     it("should only update the specified agent", () => {
       store.markAgentRunning("notes");
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       const otherAgents = snapshot.agentStates.filter((s) => s.name !== "notes");
 
       otherAgents.forEach((agent) => {
@@ -47,7 +48,7 @@ describe("RuntimeStore - Agent Lifecycle", () => {
 
       store.markAgentError("orchestrator");
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       const orchestratorAgent = snapshot.agentStates.find((s) => s.name === "orchestrator");
 
       expect(orchestratorAgent?.status).toBe("error");

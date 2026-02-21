@@ -8,16 +8,19 @@ describe("GmailSyncService", () => {
   let service: GmailSyncService;
   let gmailOAuth: GmailOAuthService;
 
+  const userId = "test-user";
+
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
-    gmailOAuth = new GmailOAuthService(store);
-    service = new GmailSyncService(store, gmailOAuth);
+    gmailOAuth = new GmailOAuthService(store, userId);
+    service = new GmailSyncService(store, userId, gmailOAuth);
   });
 
   describe("sync", () => {
     it("should fail when Gmail not connected", async () => {
       const disconnectedService = new GmailSyncService(
         store,
+        userId,
         {
           isConnected: () => false
         } as GmailOAuthService
@@ -48,7 +51,7 @@ describe("GmailSyncService", () => {
         }
       ];
 
-      store.setGmailMessages(testMessages, new Date().toISOString());
+      store.setGmailMessages(userId, testMessages, new Date().toISOString());
       const messages = service.getMessages();
 
       expect(messages).toEqual(testMessages);
@@ -68,7 +71,7 @@ describe("GmailSyncService", () => {
       ];
 
       const syncTime = new Date().toISOString();
-      store.setGmailMessages(testMessages, syncTime);
+      store.setGmailMessages(userId, testMessages, syncTime);
       const data = service.getData();
 
       expect(data.messages).toEqual(testMessages);

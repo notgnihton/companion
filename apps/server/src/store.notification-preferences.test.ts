@@ -3,6 +3,7 @@ import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - notification preferences", () => {
   let store: RuntimeStore;
+  const userId = "test-user";
 
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
@@ -14,7 +15,7 @@ describe("RuntimeStore - notification preferences", () => {
   });
 
   it("applies priority and category filters", () => {
-    store.setNotificationPreferences({
+    store.setNotificationPreferences(userId, {
       minimumPriority: "high",
       categoryToggles: {
         notes: false
@@ -22,7 +23,7 @@ describe("RuntimeStore - notification preferences", () => {
     });
 
     expect(
-      store.shouldDispatchNotification({
+      store.shouldDispatchNotification(userId, {
         id: "n1",
         title: "t",
         message: "m",
@@ -33,7 +34,7 @@ describe("RuntimeStore - notification preferences", () => {
     ).toBe(false);
 
     expect(
-      store.shouldDispatchNotification({
+      store.shouldDispatchNotification(userId, {
         id: "n2",
         title: "t",
         message: "m",
@@ -44,7 +45,7 @@ describe("RuntimeStore - notification preferences", () => {
     ).toBe(false);
 
     expect(
-      store.shouldDispatchNotification({
+      store.shouldDispatchNotification(userId, {
         id: "n3",
         title: "t",
         message: "m",
@@ -56,7 +57,7 @@ describe("RuntimeStore - notification preferences", () => {
   });
 
   it("respects quiet hours with critical override", () => {
-    store.setNotificationPreferences({
+    store.setNotificationPreferences(userId, {
       quietHours: {
         enabled: true,
         startHour: 22,
@@ -66,7 +67,7 @@ describe("RuntimeStore - notification preferences", () => {
     });
 
     expect(
-      store.shouldDispatchNotification({
+      store.shouldDispatchNotification(userId, {
         id: "n4",
         title: "t",
         message: "m",
@@ -77,7 +78,7 @@ describe("RuntimeStore - notification preferences", () => {
     ).toBe(false);
 
     expect(
-      store.shouldDispatchNotification({
+      store.shouldDispatchNotification(userId, {
         id: "n5",
         title: "t",
         message: "m",

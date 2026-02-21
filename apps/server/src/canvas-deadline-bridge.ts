@@ -22,9 +22,11 @@ export interface CanvasDeadlineBridgeResult {
  */
 export class CanvasDeadlineBridge {
   private readonly store: RuntimeStore;
+  private readonly userId: string;
 
-  constructor(store: RuntimeStore) {
+  constructor(store: RuntimeStore, userId: string) {
     this.store = store;
+    this.userId = userId;
   }
 
   /**
@@ -47,7 +49,7 @@ export class CanvasDeadlineBridge {
     }
 
     // Get all existing deadlines to check for Canvas-sourced ones
-    const existingDeadlines = this.store.getDeadlines(new Date(), false);
+    const existingDeadlines = this.store.getDeadlines(this.userId, new Date(), false);
     const canvasDeadlineMap = new Map<number, Deadline>();
     
     for (const deadline of existingDeadlines) {
@@ -88,7 +90,7 @@ export class CanvasDeadlineBridge {
           existingDeadline.completed !== isSubmitted;
 
         if (needsUpdate) {
-          this.store.updateDeadline(existingDeadline.id, {
+          this.store.updateDeadline(this.userId, existingDeadline.id, {
             task: assignment.name,
             dueDate: nextDueDate,
             sourceDueDate: assignment.due_at,
@@ -116,7 +118,7 @@ export class CanvasDeadlineBridge {
           canvasAssignmentId: assignment.id
         };
 
-        const created = this.store.createDeadline(deadline);
+        const created = this.store.createDeadline(this.userId, deadline);
         result.created++;
         result.createdDeadlines.push(created);
 
@@ -132,7 +134,7 @@ export class CanvasDeadlineBridge {
         continue;
       }
 
-      if (this.store.deleteDeadline(deadline.id)) {
+      if (this.store.deleteDeadline(this.userId, deadline.id)) {
         result.removed++;
       }
     }

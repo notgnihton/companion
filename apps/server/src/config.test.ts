@@ -51,7 +51,7 @@ describe("config", () => {
       delete process.env.INTEGRATION_WINDOW_PAST_DAYS;
       delete process.env.INTEGRATION_WINDOW_FUTURE_DAYS;
       const { config } = await import("./config.js");
-      expect(config.INTEGRATION_WINDOW_PAST_DAYS).toBe(30);
+      expect(config.INTEGRATION_WINDOW_PAST_DAYS).toBe(7);
       expect(config.INTEGRATION_WINDOW_FUTURE_DAYS).toBe(180);
     });
 

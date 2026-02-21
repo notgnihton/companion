@@ -3,14 +3,14 @@ import { GeminiClient } from "./gemini.js";
 import { RuntimeStore } from "./store.js";
 import { generateAnalyticsCoachInsight } from "./analytics-coach.js";
 
-function seedAnalyticsData(store: RuntimeStore, referenceNow: Date): void {
+function seedAnalyticsData(store: RuntimeStore, userId: string, referenceNow: Date): void {
   const nowIso = referenceNow.toISOString();
 
   const dueSoon = new Date(referenceNow.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString();
   const dueYesterday = new Date(referenceNow.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString();
   const goalDue = new Date(referenceNow.getTime() + 9 * 24 * 60 * 60 * 1000).toISOString();
 
-  store.createDeadline({
+  store.createDeadline(userId, {
     course: "DAT600",
     task: "Assignment 2",
     dueDate: dueSoon,
@@ -18,7 +18,7 @@ function seedAnalyticsData(store: RuntimeStore, referenceNow: Date): void {
     completed: false
   });
 
-  store.createDeadline({
+  store.createDeadline(userId, {
     course: "DAT520",
     task: "Assignment lab report",
     dueDate: dueYesterday,
@@ -26,24 +26,24 @@ function seedAnalyticsData(store: RuntimeStore, referenceNow: Date): void {
     completed: true
   });
 
-  const habit = store.createHabit({
+  const habit = store.createHabit(userId, {
     name: "Study sprint",
     cadence: "daily",
     targetPerWeek: 6
   });
-  store.toggleHabitCheckIn(habit.id, { completed: true, date: nowIso });
+  store.toggleHabitCheckIn(userId, habit.id, { completed: true, date: nowIso });
 
-  const goal = store.createGoal({
+  const goal = store.createGoal(userId, {
     title: "Finish project report",
     cadence: "weekly",
     targetCount: 5,
     dueDate: goalDue
   });
-  store.toggleGoalCheckIn(goal.id, { completed: true, date: nowIso });
+  store.toggleGoalCheckIn(userId, goal.id, { completed: true, date: nowIso });
 
-  store.recordJournalEntry("Focused well on distributed systems reading.");
-  const reflectionMessage = store.recordChatMessage("user", "I should prioritize DAT600 before the weekend.");
-  store.upsertReflectionEntry({
+  store.recordJournalEntry(userId, "Focused well on distributed systems reading.");
+  const reflectionMessage = store.recordChatMessage(userId, "user", "I should prioritize DAT600 before the weekend.");
+  store.upsertReflectionEntry(userId, {
     event: "Deadline planning",
     feelingStress: "neutral (stress: medium)",
     intent: "Set an intention",
@@ -58,15 +58,16 @@ function seedAnalyticsData(store: RuntimeStore, referenceNow: Date): void {
 describe("analytics-coach", () => {
   it("returns deterministic fallback insight when Gemini is unavailable", async () => {
     const store = new RuntimeStore(":memory:");
+    const userId = "test-user";
     const now = new Date("2026-02-17T14:00:00.000Z");
-    seedAnalyticsData(store, now);
+    seedAnalyticsData(store, userId, now);
 
     const fakeGemini = {
       isConfigured: () => false,
       generateChatResponse: vi.fn()
     } as unknown as GeminiClient;
 
-    const insight = await generateAnalyticsCoachInsight(store, {
+    const insight = await generateAnalyticsCoachInsight(store, userId, {
       periodDays: 7,
       now,
       geminiClient: fakeGemini
@@ -84,8 +85,9 @@ describe("analytics-coach", () => {
 
   it("uses Gemini narrative output when strict JSON is returned", async () => {
     const store = new RuntimeStore(":memory:");
+    const userId = "test-user";
     const now = new Date("2026-02-17T14:00:00.000Z");
-    seedAnalyticsData(store, now);
+    seedAnalyticsData(store, userId, now);
 
     const fakeGemini = {
       isConfigured: () => true,
@@ -103,7 +105,7 @@ describe("analytics-coach", () => {
       })
     } as unknown as GeminiClient;
 
-    const insight = await generateAnalyticsCoachInsight(store, {
+    const insight = await generateAnalyticsCoachInsight(store, userId, {
       periodDays: 14,
       now,
       geminiClient: fakeGemini
@@ -119,8 +121,9 @@ describe("analytics-coach", () => {
 
   it("falls back when Gemini returns non-JSON text", async () => {
     const store = new RuntimeStore(":memory:");
+    const userId = "test-user";
     const now = new Date("2026-02-17T14:00:00.000Z");
-    seedAnalyticsData(store, now);
+    seedAnalyticsData(store, userId, now);
 
     const fakeGemini = {
       isConfigured: () => true,
@@ -129,7 +132,7 @@ describe("analytics-coach", () => {
       })
     } as unknown as GeminiClient;
 
-    const insight = await generateAnalyticsCoachInsight(store, {
+    const insight = await generateAnalyticsCoachInsight(store, userId, {
       periodDays: 30,
       now,
       geminiClient: fakeGemini
@@ -142,8 +145,9 @@ describe("analytics-coach", () => {
 
   it("normalizes third-person references to second-person voice", async () => {
     const store = new RuntimeStore(":memory:");
+    const userId = "test-user";
     const now = new Date("2026-02-17T14:00:00.000Z");
-    seedAnalyticsData(store, now);
+    seedAnalyticsData(store, userId, now);
 
     const fakeGemini = {
       isConfigured: () => true,
@@ -157,7 +161,7 @@ describe("analytics-coach", () => {
       })
     } as unknown as GeminiClient;
 
-    const insight = await generateAnalyticsCoachInsight(store, {
+    const insight = await generateAnalyticsCoachInsight(store, userId, {
       periodDays: 7,
       now,
       geminiClient: fakeGemini

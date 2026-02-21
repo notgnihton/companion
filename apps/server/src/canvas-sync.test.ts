@@ -6,6 +6,7 @@ import { CanvasData } from "./types.js";
 
 describe("Canvas Integration", () => {
   let store: RuntimeStore;
+  const userId = "test-user";
   
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
@@ -42,7 +43,7 @@ describe("Canvas Integration", () => {
 
   describe("CanvasSyncService", () => {
     it("should construct with store", () => {
-      const service = new CanvasSyncService(store);
+      const service = new CanvasSyncService(store, userId);
       expect(service).toBeDefined();
     });
 
@@ -54,7 +55,7 @@ describe("Canvas Integration", () => {
         getAnnouncements: async () => []
       } as unknown as CanvasClient;
 
-      const service = new CanvasSyncService(store, mockClient);
+      const service = new CanvasSyncService(store, userId, mockClient);
       const result = await service.triggerSync();
       
       expect(result.success).toBe(true);
@@ -65,7 +66,7 @@ describe("Canvas Integration", () => {
     });
 
     it("keeps existing schedule events unchanged during Canvas sync", async () => {
-      const lecture = store.createLectureEvent({
+      const lecture = store.createLectureEvent(userId, {
         title: "DAT520 Laboratorium / Lab",
         location: "E-456",
         startTime: "2026-02-18T09:15:00.000Z",
@@ -80,11 +81,11 @@ describe("Canvas Integration", () => {
         getAnnouncements: async () => []
       } as unknown as CanvasClient;
 
-      const service = new CanvasSyncService(store, mockClient);
+      const service = new CanvasSyncService(store, userId, mockClient);
       const result = await service.triggerSync();
 
       expect(result.success).toBe(true);
-      expect(store.getScheduleEvents()).toEqual([lecture]);
+      expect(store.getScheduleEvents(userId)).toEqual([lecture]);
     });
 
     it("filters assignments to integration date window before storing and bridging", async () => {
@@ -121,13 +122,13 @@ describe("Canvas Integration", () => {
         getAnnouncements: async () => []
       } as unknown as CanvasClient;
 
-      const service = new CanvasSyncService(store, mockClient);
+      const service = new CanvasSyncService(store, userId, mockClient);
       const result = await service.triggerSync();
 
       expect(result.success).toBe(true);
       expect(result.assignmentsCount).toBe(1);
       expect(result.deadlineBridge?.created).toBe(1);
-      const canvasData = store.getCanvasData();
+      const canvasData = store.getCanvasData(userId);
       expect(canvasData?.assignments).toHaveLength(1);
       expect(canvasData?.assignments[0]?.id).toBe(1);
     });
@@ -159,7 +160,7 @@ describe("Canvas Integration", () => {
         notifications.push(notification);
       });
 
-      const service = new CanvasSyncService(store, mockClient);
+      const service = new CanvasSyncService(store, userId, mockClient);
       const result = await service.triggerSync();
       unsubscribe();
 
@@ -235,7 +236,7 @@ describe("Canvas Integration", () => {
         ]
       } as unknown as CanvasClient;
 
-      const service = new CanvasSyncService(store, mockClient);
+      const service = new CanvasSyncService(store, userId, mockClient);
       const result = await service.sync({ courseIds: [7] });
 
       expect(result.success).toBe(true);
@@ -246,7 +247,7 @@ describe("Canvas Integration", () => {
 
       expect(getAllAssignments).toHaveBeenCalledTimes(1);
 
-      const canvasData = store.getCanvasData();
+      const canvasData = store.getCanvasData(userId);
       expect(canvasData?.courses.map((course) => course.id)).toEqual([7]);
       expect(canvasData?.assignments.map((assignment) => assignment.course_id)).toEqual([7]);
       expect(canvasData?.announcements.map((announcement) => announcement.id)).toEqual([201]);
@@ -287,7 +288,7 @@ describe("Canvas Integration", () => {
         getAnnouncements: async () => []
       } as unknown as CanvasClient;
 
-      const service = new CanvasSyncService(store, mockClient);
+      const service = new CanvasSyncService(store, userId, mockClient);
       const result = await service.sync({
         pastDays: 0,
         futureDays: 5
@@ -295,7 +296,7 @@ describe("Canvas Integration", () => {
 
       expect(result.success).toBe(true);
       expect(result.assignmentsCount).toBe(1);
-      expect(store.getCanvasData()?.assignments.map((assignment) => assignment.id)).toEqual([301]);
+      expect(store.getCanvasData(userId)?.assignments.map((assignment) => assignment.id)).toEqual([301]);
     });
 
     it("should use override token and baseUrl when provided", async () => {
@@ -319,7 +320,7 @@ describe("Canvas Integration", () => {
         } as unknown as Response;
       });
 
-      const service = new CanvasSyncService(store);
+      const service = new CanvasSyncService(store, userId);
       const result = await service.sync({
         baseUrl: "https://manual.canvas.test",
         token: "token-123"
@@ -344,13 +345,13 @@ describe("Canvas Integration", () => {
         getAnnouncements: async () => []
       } as unknown as CanvasClient;
 
-      const service = new CanvasSyncService(store, mockClient);
+      const service = new CanvasSyncService(store, userId, mockClient);
       const first = await service.syncIfStale({ staleMs: 60_000, minIntervalMs: 60_000 });
       expect(first?.success).toBe(true);
       expect(getCourses).toHaveBeenCalledTimes(1);
 
       // Make canvas data stale, but keep call within min interval so sync is throttled.
-      store.setCanvasData({
+      store.setCanvasData(userId, {
         courses: [],
         assignments: [],
         modules: [],
@@ -381,7 +382,7 @@ describe("Canvas Integration", () => {
         getAnnouncements: async () => []
       } as unknown as CanvasClient;
 
-      const service = new CanvasSyncService(store, mockClient);
+      const service = new CanvasSyncService(store, userId, mockClient);
       const firstSyncPromise = service.syncIfStale({ staleMs: 0, minIntervalMs: 0 });
       const secondSyncPromise = service.syncIfStale({ staleMs: 0, minIntervalMs: 0 });
 
@@ -397,7 +398,7 @@ describe("Canvas Integration", () => {
 
   describe("RuntimeStore Canvas methods", () => {
     it("should return null when no Canvas data exists", () => {
-      const data = store.getCanvasData();
+      const data = store.getCanvasData(userId);
       expect(data).toBeNull();
     });
 
@@ -446,8 +447,8 @@ describe("Canvas Integration", () => {
         lastSyncedAt: "2026-02-16T15:00:00Z"
       };
 
-      store.setCanvasData(canvasData);
-      const retrieved = store.getCanvasData();
+      store.setCanvasData(userId, canvasData);
+      const retrieved = store.getCanvasData(userId);
 
       expect(retrieved).toBeDefined();
       expect(retrieved?.courses).toHaveLength(1);
@@ -470,7 +471,7 @@ describe("Canvas Integration", () => {
         lastSyncedAt: "2026-02-16T15:00:00Z"
       };
 
-      store.setCanvasData(data1);
+      store.setCanvasData(userId, data1);
 
       const data2: CanvasData = {
         courses: [
@@ -483,8 +484,8 @@ describe("Canvas Integration", () => {
         lastSyncedAt: "2026-02-16T16:00:00Z"
       };
 
-      store.setCanvasData(data2);
-      const retrieved = store.getCanvasData();
+      store.setCanvasData(userId, data2);
+      const retrieved = store.getCanvasData(userId);
 
       expect(retrieved?.courses).toHaveLength(2);
       expect(retrieved?.lastSyncedAt).toBe("2026-02-16T16:00:00Z");

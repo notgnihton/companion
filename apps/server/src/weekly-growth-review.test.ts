@@ -10,14 +10,15 @@ import {
 describe("weekly-growth-review", () => {
   it("generates a weekly review with explicit commitments", async () => {
     const store = new RuntimeStore(":memory:");
-    store.createDeadline({
+    const userId = "test-user";
+    store.createDeadline(userId, {
       course: "DAT560",
       task: "Assignment 2",
       dueDate: "2026-02-20T22:59:00.000Z",
       priority: "high",
       completed: false
     });
-    store.createHabit({
+    store.createHabit(userId, {
       name: "Study sprint",
       cadence: "daily",
       targetPerWeek: 5,
@@ -25,7 +26,7 @@ describe("weekly-growth-review", () => {
     });
 
     const geminiStub = { isConfigured: () => false } as unknown as GeminiClient;
-    const review = await generateWeeklyGrowthReview(store, {
+    const review = await generateWeeklyGrowthReview(store, userId, {
       now: new Date("2026-02-17T12:00:00.000Z"),
       geminiClient: geminiStub
     });

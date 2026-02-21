@@ -3,6 +3,7 @@ import { RuntimeStore } from "./store.js";
 import { AgentEvent } from "./types.js";
 
 describe("RuntimeStore - Event Management", () => {
+  const userId = "test-user";
   let store: RuntimeStore;
 
   beforeEach(() => {
@@ -30,7 +31,7 @@ describe("RuntimeStore - Event Management", () => {
 
       store.recordEvent(event);
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       expect(snapshot.events).toHaveLength(1);
       expect(snapshot.events[0]).toEqual(event);
     });
@@ -52,7 +53,7 @@ describe("RuntimeStore - Event Management", () => {
 
       store.recordEvent(event);
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       const notesAgent = snapshot.agentStates.find((s) => s.name === "notes");
 
       expect(notesAgent?.status).toBe("idle");
@@ -81,7 +82,7 @@ describe("RuntimeStore - Event Management", () => {
       store.recordEvent(event1);
       store.recordEvent(event2);
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       expect(snapshot.events[0]).toEqual(event2);
       expect(snapshot.events[1]).toEqual(event1);
     });
@@ -99,7 +100,7 @@ describe("RuntimeStore - Event Management", () => {
         store.recordEvent(event);
       }
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       expect(snapshot.events).toHaveLength(100);
       expect(snapshot.events[0].id).toBe("evt-149");
       expect(snapshot.events[99].id).toBe("evt-50");

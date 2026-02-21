@@ -83,10 +83,11 @@ function findNearestFreeSlot(
 
 function createRoutineEvent(
   store: RuntimeStore,
+  userId: string,
   preset: RoutinePreset,
   startMs: number
 ): LectureEvent {
-  return store.createLectureEvent({
+  return store.createLectureEvent(userId, {
     title: preset.title,
     startTime: new Date(startMs).toISOString(),
     durationMinutes: preset.durationMinutes,
@@ -97,6 +98,7 @@ function createRoutineEvent(
 
 export function applyRoutinePresetPlacements(
   store: RuntimeStore,
+  userId: string,
   options: RoutinePlacementOptions = {}
 ): RoutinePlacementResult {
   const now = options.now ?? new Date();
@@ -109,7 +111,7 @@ export function applyRoutinePresetPlacements(
   const windowEndMs = windowEndDate.getTime();
 
   let clearedEvents = 0;
-  for (const event of store.getScheduleEvents()) {
+  for (const event of store.getScheduleEvents(userId)) {
     if (!isRoutineGenerated(event)) {
       continue;
     }
@@ -117,13 +119,13 @@ export function applyRoutinePresetPlacements(
     if (!Number.isFinite(startMs) || startMs < windowStartMs || startMs >= windowEndMs) {
       continue;
     }
-    if (store.deleteScheduleEvent(event.id)) {
+    if (store.deleteScheduleEvent(userId, event.id)) {
       clearedEvents += 1;
     }
   }
 
   const presets = store
-    .getRoutinePresets()
+    .getRoutinePresets(userId)
     .filter((preset) => preset.active)
     .sort((left, right) => {
       const leftMinutes = parseTimeToMinutes(left.preferredStartTime) ?? 24 * 60;
@@ -134,7 +136,7 @@ export function applyRoutinePresetPlacements(
       return left.title.localeCompare(right.title);
     });
 
-  const fixedEvents = store.getScheduleEvents().filter((event) => !isRoutineGenerated(event));
+  const fixedEvents = store.getScheduleEvents(userId).filter((event) => !isRoutineGenerated(event));
   const createdEvents: LectureEvent[] = [];
   let skippedPlacements = 0;
 
@@ -178,7 +180,7 @@ export function applyRoutinePresetPlacements(
         continue;
       }
 
-      createdEvents.push(createRoutineEvent(store, preset, startMs));
+      createdEvents.push(createRoutineEvent(store, userId, preset, startMs));
     }
   }
 

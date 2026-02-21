@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - Withings tokens and sync data", () => {
+  const userId = "test-user";
+
   it("preserves Withings tokens when writing synced health data", () => {
     const store = new RuntimeStore(":memory:");
 
-    store.setWithingsTokens({
+    store.setWithingsTokens(userId, {
       refreshToken: "refresh-token",
       accessToken: "access-token",
       tokenExpiresAt: "2026-02-18T20:00:00.000Z",
@@ -15,7 +17,7 @@ describe("RuntimeStore - Withings tokens and sync data", () => {
       source: "oauth"
     });
 
-    store.setWithingsData(
+    store.setWithingsData(userId,
       [
         {
           measuredAt: "2026-02-18T07:00:00.000Z",
@@ -31,8 +33,8 @@ describe("RuntimeStore - Withings tokens and sync data", () => {
       "2026-02-18T17:10:00.000Z"
     );
 
-    const tokens = store.getWithingsTokens();
-    const data = store.getWithingsData();
+    const tokens = store.getWithingsTokens(userId);
+    const data = store.getWithingsData(userId);
 
     expect(tokens?.refreshToken).toBe("refresh-token");
     expect(tokens?.accessToken).toBe("access-token");
@@ -45,13 +47,13 @@ describe("RuntimeStore - Withings tokens and sync data", () => {
   it("supports Withings token records with only an access token", () => {
     const store = new RuntimeStore(":memory:");
 
-    store.setWithingsTokens({
+    store.setWithingsTokens(userId, {
       accessToken: "env-access-token",
       connectedAt: "2026-02-18T17:00:00.000Z",
       source: "env"
     });
 
-    const tokens = store.getWithingsTokens();
+    const tokens = store.getWithingsTokens(userId);
     expect(tokens).not.toBeNull();
     expect(tokens?.refreshToken).toBeUndefined();
     expect(tokens?.accessToken).toBe("env-access-token");

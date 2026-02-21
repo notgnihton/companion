@@ -42,9 +42,10 @@ class FakeOAuth2Client {
 class TestableGmailOAuthService extends GmailOAuthService {
   constructor(
     store: RuntimeStore,
+    userId: string,
     private readonly fakeOAuthClient: FakeOAuth2Client
   ) {
-    super(store);
+    super(store, userId);
   }
 
   override getOAuth2Client(): ReturnType<GmailOAuthService["getOAuth2Client"]> {
@@ -53,13 +54,15 @@ class TestableGmailOAuthService extends GmailOAuthService {
 }
 
 describe("GmailOAuthService", () => {
+  const userId = "test-user";
+
   it("refreshes access token using refresh token before returning client", async () => {
     const store = new RuntimeStore(":memory:");
     const fakeClient = new FakeOAuth2Client();
     fakeClient.refreshedAccessToken = "fresh-access-token";
-    const service = new TestableGmailOAuthService(store, fakeClient);
+    const service = new TestableGmailOAuthService(store, userId, fakeClient);
 
-    store.setGmailTokens({
+    store.setGmailTokens(userId, {
       refreshToken: "refresh-token",
       accessToken: "expired-access-token",
       email: "lucy@example.com",
@@ -71,7 +74,7 @@ describe("GmailOAuthService", () => {
 
     expect(fakeClient.getAccessTokenCalls).toBe(1);
 
-    const tokens = store.getGmailTokens();
+    const tokens = store.getGmailTokens(userId);
     expect(tokens?.refreshToken).toBe("refresh-token");
     expect(tokens?.accessToken).toBe("fresh-access-token");
   });
@@ -80,9 +83,9 @@ describe("GmailOAuthService", () => {
     const store = new RuntimeStore(":memory:");
     const fakeClient = new FakeOAuth2Client();
     fakeClient.throwOnRefresh = true;
-    const service = new TestableGmailOAuthService(store, fakeClient);
+    const service = new TestableGmailOAuthService(store, userId, fakeClient);
 
-    store.setGmailTokens({
+    store.setGmailTokens(userId, {
       refreshToken: "refresh-token",
       accessToken: "existing-access-token",
       email: "lucy@example.com",
@@ -92,16 +95,16 @@ describe("GmailOAuthService", () => {
 
     await expect(service.getAuthenticatedClient()).resolves.toBeDefined();
     expect(fakeClient.getAccessTokenCalls).toBe(1);
-    expect(store.getGmailTokens()?.accessToken).toBe("existing-access-token");
+    expect(store.getGmailTokens(userId)?.accessToken).toBe("existing-access-token");
   });
 
   it("throws when refresh fails and no access token is available", async () => {
     const store = new RuntimeStore(":memory:");
     const fakeClient = new FakeOAuth2Client();
     fakeClient.throwOnRefresh = true;
-    const service = new TestableGmailOAuthService(store, fakeClient);
+    const service = new TestableGmailOAuthService(store, userId, fakeClient);
 
-    store.setGmailTokens({
+    store.setGmailTokens(userId, {
       refreshToken: "refresh-token",
       email: "lucy@example.com",
       connectedAt: "2026-02-17T18:00:00.000Z",
@@ -114,9 +117,9 @@ describe("GmailOAuthService", () => {
   it("uses access-token-only mode without refresh when no refresh token exists", async () => {
     const store = new RuntimeStore(":memory:");
     const fakeClient = new FakeOAuth2Client();
-    const service = new TestableGmailOAuthService(store, fakeClient);
+    const service = new TestableGmailOAuthService(store, userId, fakeClient);
 
-    store.setGmailTokens({
+    store.setGmailTokens(userId, {
       accessToken: "access-only-token",
       email: "lucy@example.com",
       connectedAt: "2026-02-17T18:00:00.000Z",

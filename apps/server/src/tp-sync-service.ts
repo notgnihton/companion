@@ -7,6 +7,7 @@ import { SyncAutoHealingPolicy, SyncAutoHealingState } from "./sync-auto-healing
  */
 export class TPSyncService {
   private readonly store: RuntimeStore;
+  private readonly userId: string;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private retryTimeout: ReturnType<typeof setTimeout> | null = null;
   private isSyncing = false;
@@ -20,8 +21,9 @@ export class TPSyncService {
     circuitOpenMs: 30 * 60 * 1000
   });
 
-  constructor(store: RuntimeStore) {
+  constructor(store: RuntimeStore, userId: string) {
     this.store = store;
+    this.userId = userId;
   }
 
   /**
@@ -76,9 +78,9 @@ export class TPSyncService {
 
     try {
       const tpEvents = await fetchTPSchedule();
-      const existingEvents = this.store.getScheduleEvents();
+      const existingEvents = this.store.getScheduleEvents(this.userId);
       const diff = diffScheduleEvents(existingEvents, tpEvents);
-      const result = this.store.upsertScheduleEvents(diff.toCreate, diff.toUpdate, diff.toDelete);
+      const result = this.store.upsertScheduleEvents(this.userId, diff.toCreate, diff.toUpdate, diff.toDelete);
 
       return {
         success: true,

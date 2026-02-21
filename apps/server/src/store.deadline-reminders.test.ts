@@ -3,6 +3,7 @@ import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - deadline completion reminders", () => {
   let store: RuntimeStore;
+  const userId = "test-user";
 
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
@@ -15,7 +16,7 @@ describe("RuntimeStore - deadline completion reminders", () => {
   });
 
   it("returns overdue incomplete deadlines and respects reminder cooldown", () => {
-    const overdue = store.createDeadline({
+    const overdue = store.createDeadline(userId, {
       course: "Algorithms",
       task: "Problem Set 8",
       dueDate: "2026-03-10T09:00:00.000Z",
@@ -23,7 +24,7 @@ describe("RuntimeStore - deadline completion reminders", () => {
       completed: false,
       canvasAssignmentId: 1001
     });
-    store.createDeadline({
+    store.createDeadline(userId, {
       course: "Systems",
       task: "Lab 5",
       dueDate: "2026-03-10T16:00:00.000Z",
@@ -32,22 +33,22 @@ describe("RuntimeStore - deadline completion reminders", () => {
       canvasAssignmentId: 1002
     });
 
-    const overdueCandidates = store.getOverdueDeadlinesRequiringReminder();
+    const overdueCandidates = store.getOverdueDeadlinesRequiringReminder(userId);
     expect(overdueCandidates).toHaveLength(1);
     expect(overdueCandidates[0]).toMatchObject({ id: overdue.id, priority: "critical" });
 
-    const reminder = store.recordDeadlineReminder(overdue.id);
+    const reminder = store.recordDeadlineReminder(userId, overdue.id);
     expect(reminder?.reminderCount).toBe(1);
-    expect(store.getOverdueDeadlinesRequiringReminder()).toHaveLength(0);
+    expect(store.getOverdueDeadlinesRequiringReminder(userId)).toHaveLength(0);
 
     vi.advanceTimersByTime(3 * 60 * 60 * 1000);
-    const afterCooldown = store.getOverdueDeadlinesRequiringReminder();
+    const afterCooldown = store.getOverdueDeadlinesRequiringReminder(userId);
     expect(afterCooldown).toHaveLength(1);
     expect(afterCooldown[0]).toMatchObject({ id: overdue.id, priority: "critical" });
   });
 
   it("records completion confirmations and updates the deadline state", () => {
-    const overdue = store.createDeadline({
+    const overdue = store.createDeadline(userId, {
       course: "Databases",
       task: "Schema report",
       dueDate: "2026-03-10T08:00:00.000Z",
@@ -55,13 +56,13 @@ describe("RuntimeStore - deadline completion reminders", () => {
       completed: false
     });
 
-    store.recordDeadlineReminder(overdue.id);
-    const confirmation = store.confirmDeadlineStatus(overdue.id, true);
+    store.recordDeadlineReminder(userId, overdue.id);
+    const confirmation = store.confirmDeadlineStatus(userId, overdue.id, true);
 
     expect(confirmation).not.toBeNull();
     expect(confirmation?.deadline.completed).toBe(true);
     expect(confirmation?.reminder.lastConfirmationAt).not.toBeNull();
     expect(confirmation?.reminder.lastConfirmedCompleted).toBe(true);
-    expect(store.getOverdueDeadlinesRequiringReminder()).toHaveLength(0);
+    expect(store.getOverdueDeadlinesRequiringReminder(userId)).toHaveLength(0);
   });
 });

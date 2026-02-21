@@ -4,6 +4,7 @@ import fs from "fs";
 
 describe("Smart timing integration", () => {
   let store: RuntimeStore;
+  const userId = "test-user";
   const testDbPath = "test-smart-timing.db";
 
   beforeEach(() => {
@@ -29,18 +30,18 @@ describe("Smart timing integration", () => {
     };
 
     const scheduledFor = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
-    const scheduled = store.scheduleNotification(notification, scheduledFor);
+    const scheduled = store.scheduleNotification(userId, notification, scheduledFor);
 
     expect(scheduled.id).toMatch(/^sched-notif-/);
     expect(scheduled.notification).toEqual(notification);
     expect(scheduled.scheduledFor).toBe(scheduledFor.toISOString());
 
     // Should not be due yet
-    const dueNow = store.getDueScheduledNotifications();
+    const dueNow = store.getDueScheduledNotifications(userId);
     expect(dueNow.length).toBe(0);
 
     // Should be due if we check 2 hours ahead
-    const dueLater = store.getDueScheduledNotifications(new Date(Date.now() + 2 * 60 * 60 * 1000));
+    const dueLater = store.getDueScheduledNotifications(userId, new Date(Date.now() + 2 * 60 * 60 * 1000));
     expect(dueLater.length).toBe(1);
     expect(dueLater[0].id).toBe(scheduled.id);
   });
@@ -54,24 +55,24 @@ describe("Smart timing integration", () => {
     };
 
     const scheduledFor = new Date(Date.now() - 1000); // Already due
-    const scheduled = store.scheduleNotification(notification, scheduledFor);
+    const scheduled = store.scheduleNotification(userId, notification, scheduledFor);
 
     // Should be due
-    const due = store.getDueScheduledNotifications();
+    const due = store.getDueScheduledNotifications(userId);
     expect(due.length).toBe(1);
 
     // Remove it
-    const removed = store.removeScheduledNotification(scheduled.id);
+    const removed = store.removeScheduledNotification(userId, scheduled.id);
     expect(removed).toBe(true);
 
     // Should no longer be due
-    const dueAfter = store.getDueScheduledNotifications();
+    const dueAfter = store.getDueScheduledNotifications(userId);
     expect(dueAfter.length).toBe(0);
   });
 
   it("retrieves deadline history for pattern analysis", () => {
     // Create a deadline and record some reminders
-    const deadline = store.createDeadline({
+    const deadline = store.createDeadline(userId, {
       course: "Algorithms",
       task: "Problem Set",
       dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
@@ -79,11 +80,11 @@ describe("Smart timing integration", () => {
       completed: false
     });
 
-    store.recordDeadlineReminder(deadline.id);
-    store.confirmDeadlineStatus(deadline.id, true);
+    store.recordDeadlineReminder(userId, deadline.id);
+    store.confirmDeadlineStatus(userId, deadline.id, true);
 
     // Get all deadline history
-    const history = store.getAllDeadlineReminderStates();
+    const history = store.getAllDeadlineReminderStates(userId);
     expect(history.length).toBeGreaterThan(0);
     
     const deadlineHistory = history.find(h => h.deadlineId === deadline.id);
@@ -94,21 +95,21 @@ describe("Smart timing integration", () => {
 
   it("smart timing uses schedule gaps", () => {
     // Create lectures with a gap
-    store.createLectureEvent({
+    store.createLectureEvent(userId, {
       title: "Morning Lecture",
       startTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
       durationMinutes: 60,
       workload: "medium"
     });
 
-    store.createLectureEvent({
+    store.createLectureEvent(userId, {
       title: "Afternoon Lecture",
       startTime: new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString(),
       durationMinutes: 90,
       workload: "high"
     });
 
-    const scheduleEvents = store.getScheduleEvents();
+    const scheduleEvents = store.getScheduleEvents(userId);
     expect(scheduleEvents.length).toBe(2);
 
     // The smart timing module can use these to find gaps

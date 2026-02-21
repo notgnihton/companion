@@ -36,6 +36,7 @@ function inferNotificationPriority(deadline: Deadline, now: Date): Priority {
 
 export function publishNewDeadlineReleaseNotifications(
   store: RuntimeStore,
+  userId: string,
   source: DeadlineReleaseSource,
   deadlines: Deadline[]
 ): void {
@@ -53,7 +54,7 @@ export function publishNewDeadlineReleaseNotifications(
     const dueLabel = formatDueDateForNotification(deadline.dueDate);
     const priority = inferNotificationPriority(deadline, now);
 
-    store.pushNotification({
+    store.pushNotification(userId, {
       source: "assignment-tracker",
       title: `New ${releaseType} published`,
       message: `${deadline.course}: ${deadline.task} due ${dueLabel}.`,

@@ -7,9 +7,11 @@ const REDIRECT_URI = "http://localhost:8787/api/auth/gmail/callback";
 
 export class GmailOAuthService {
   private store: RuntimeStore;
+  private userId: string;
 
-  constructor(store: RuntimeStore) {
+  constructor(store: RuntimeStore, userId: string) {
     this.store = store;
+    this.userId = userId;
     this.bootstrapTokensFromEnvironment();
   }
 
@@ -40,8 +42,8 @@ export class GmailOAuthService {
       return;
     }
 
-    const existing = this.store.getGmailTokens();
-    this.store.setGmailTokens({
+    const existing = this.store.getGmailTokens(this.userId);
+    this.store.setGmailTokens(this.userId, {
       refreshToken: envRefreshToken || existing?.refreshToken,
       accessToken: envAccessToken || existing?.accessToken,
       email: existing?.email ?? "env-token",
@@ -94,7 +96,7 @@ export class GmailOAuthService {
 
       // Store the refresh token
       const connectedAt = new Date().toISOString();
-      this.store.setGmailTokens({
+      this.store.setGmailTokens(this.userId, {
         refreshToken: tokens.refresh_token,
         accessToken: tokens.access_token ?? undefined,
         email,
@@ -110,7 +112,7 @@ export class GmailOAuthService {
   }
 
   async getAuthenticatedClient() {
-    const tokens = this.store.getGmailTokens();
+    const tokens = this.store.getGmailTokens(this.userId);
     
     if (!tokens?.refreshToken && !tokens?.accessToken) {
       throw new Error("Gmail not connected");
@@ -125,8 +127,8 @@ export class GmailOAuthService {
         return;
       }
 
-      const latest = this.store.getGmailTokens();
-      this.store.setGmailTokens({
+      const latest = this.store.getGmailTokens(this.userId);
+      this.store.setGmailTokens(this.userId, {
         refreshToken: nextRefreshToken ?? latest?.refreshToken,
         accessToken: nextAccessToken ?? latest?.accessToken,
         email: latest?.email ?? tokens.email ?? "unknown",
@@ -181,12 +183,12 @@ export class GmailOAuthService {
   }
 
   isConnected(): boolean {
-    const tokens = this.store.getGmailTokens();
+    const tokens = this.store.getGmailTokens(this.userId);
     return !!tokens?.refreshToken;
   }
 
   getConnectionInfo() {
-    const tokens = this.store.getGmailTokens();
+    const tokens = this.store.getGmailTokens(this.userId);
     
     if (!tokens) {
       return { connected: false };

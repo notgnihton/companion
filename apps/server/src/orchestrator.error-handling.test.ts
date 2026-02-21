@@ -3,12 +3,13 @@ import { OrchestratorRuntime } from "./orchestrator.js";
 import { RuntimeStore } from "./store.js";
 
 describe("OrchestratorRuntime - Error Handling", () => {
+  const userId = "test-user";
   let store: RuntimeStore;
   let orchestrator: OrchestratorRuntime;
 
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
-    orchestrator = new OrchestratorRuntime(store);
+    orchestrator = new OrchestratorRuntime(store, userId);
     vi.useFakeTimers();
   });
 
@@ -33,7 +34,7 @@ describe("OrchestratorRuntime - Error Handling", () => {
       await vi.advanceTimersByTimeAsync(100);
 
       // The orchestrator should continue running even if an agent fails
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       expect(snapshot).toBeDefined();
     });
 
@@ -44,7 +45,7 @@ describe("OrchestratorRuntime - Error Handling", () => {
       // We verify the system is resilient
       await vi.advanceTimersByTimeAsync(1000);
 
-      const snapshot = store.getSnapshot();
+      const snapshot = store.getSnapshot(userId);
       
       // System should still be operational
       expect(snapshot.notifications).toBeDefined();

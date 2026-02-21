@@ -3,21 +3,22 @@ import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - Chat", () => {
   let store: RuntimeStore;
+  const userId = "test-user";
 
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
   });
 
   it("records chat messages with metadata and paginates history", () => {
-    store.recordChatMessage("user", "Hi there");
-    store.recordChatMessage("assistant", "Hello!", {
+    store.recordChatMessage(userId, "user", "Hi there");
+    store.recordChatMessage(userId, "assistant", "Hello!", {
       finishReason: "stop",
       usage: {
         totalTokens: 5
       }
     });
 
-    const history = store.getChatHistory({ page: 1, pageSize: 10 });
+    const history = store.getChatHistory(userId, { page: 1, pageSize: 10 });
 
     expect(history.total).toBe(2);
     expect(history.page).toBe(1);
@@ -29,11 +30,11 @@ describe("RuntimeStore - Chat", () => {
   });
 
   it("returns recent chat messages in chronological order", () => {
-    store.recordChatMessage("user", "First");
-    store.recordChatMessage("assistant", "Second");
-    store.recordChatMessage("user", "Third");
+    store.recordChatMessage(userId, "user", "First");
+    store.recordChatMessage(userId, "assistant", "Second");
+    store.recordChatMessage(userId, "user", "Third");
 
-    const recent = store.getRecentChatMessages(2);
+    const recent = store.getRecentChatMessages(userId, 2);
 
     expect(recent).toHaveLength(2);
     expect(recent[0].content).toBe("Second");
@@ -42,10 +43,10 @@ describe("RuntimeStore - Chat", () => {
 
   it("trims chat history beyond max capacity", () => {
     for (let i = 0; i < 505; i += 1) {
-      store.recordChatMessage("user", `message-${i}`);
+      store.recordChatMessage(userId, "user", `message-${i}`);
     }
 
-    const history = store.getChatHistory({ page: 1, pageSize: 50 });
+    const history = store.getChatHistory(userId, { page: 1, pageSize: 50 });
 
     expect(history.total).toBe(505);
     expect(history.messages[0].content).toBe("message-504");
@@ -53,7 +54,7 @@ describe("RuntimeStore - Chat", () => {
   });
 
   it("upserts structured reflection entries keyed by source message id", () => {
-    const first = store.upsertReflectionEntry({
+    const first = store.upsertReflectionEntry(userId, {
       event: "Deadline planning",
       feelingStress: "negative (stress: high)",
       intent: "Get guidance or action help",
@@ -64,7 +65,7 @@ describe("RuntimeStore - Chat", () => {
       sourceMessageId: "chat-1"
     });
 
-    const updated = store.upsertReflectionEntry({
+    const updated = store.upsertReflectionEntry(userId, {
       event: "Deadline planning",
       feelingStress: "positive (stress: low)",
       intent: "Report progress",
@@ -75,7 +76,7 @@ describe("RuntimeStore - Chat", () => {
       sourceMessageId: "chat-1"
     });
 
-    const reflections = store.getRecentReflectionEntries(10);
+    const reflections = store.getRecentReflectionEntries(userId, 10);
     expect(reflections).toHaveLength(1);
     expect(reflections[0]?.id).toBe(first.id);
     expect(updated.id).toBe(first.id);
@@ -84,7 +85,7 @@ describe("RuntimeStore - Chat", () => {
   });
 
   it("returns structured reflections within a timestamp window", () => {
-    store.upsertReflectionEntry({
+    store.upsertReflectionEntry(userId, {
       event: "General reflection",
       feelingStress: "neutral (stress: medium)",
       intent: "Share context",
@@ -94,7 +95,7 @@ describe("RuntimeStore - Chat", () => {
       evidenceSnippet: "Morning update.",
       sourceMessageId: "chat-a"
     });
-    store.upsertReflectionEntry({
+    store.upsertReflectionEntry(userId, {
       event: "Schedule adjustment",
       feelingStress: "neutral (stress: medium)",
       intent: "Get guidance or action help",
@@ -105,7 +106,7 @@ describe("RuntimeStore - Chat", () => {
       sourceMessageId: "chat-b"
     });
 
-    const inRange = store.getReflectionEntriesInRange(
+    const inRange = store.getReflectionEntriesInRange(userId,
       "2026-02-19T00:00:00.000Z",
       "2026-02-19T23:59:59.999Z",
       20

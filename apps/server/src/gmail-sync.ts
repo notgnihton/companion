@@ -11,6 +11,7 @@ export interface GmailSyncOptions {
 
 export class GmailSyncService {
   private readonly store: RuntimeStore;
+  private readonly userId: string;
   private readonly gmailOAuth: GmailOAuthService;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
   private retryTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -24,9 +25,10 @@ export class GmailSyncService {
     circuitOpenMs: 20 * 60 * 1000
   });
 
-  constructor(store: RuntimeStore, gmailOAuth?: GmailOAuthService) {
+  constructor(store: RuntimeStore, userId: string, gmailOAuth?: GmailOAuthService) {
     this.store = store;
-    this.gmailOAuth = gmailOAuth ?? new GmailOAuthService(store);
+    this.userId = userId;
+    this.gmailOAuth = gmailOAuth ?? new GmailOAuthService(store, userId);
   }
 
   /**
@@ -144,7 +146,7 @@ export class GmailSyncService {
 
       // Store messages in database
       const lastSyncedAt = new Date().toISOString();
-      this.store.setGmailMessages(messages, lastSyncedAt);
+      this.store.setGmailMessages(this.userId, messages, lastSyncedAt);
 
       return {
         success: true,
@@ -172,14 +174,14 @@ export class GmailSyncService {
    * Get synced messages
    */
   getMessages(): GmailMessage[] {
-    return this.store.getGmailMessages();
+    return this.store.getGmailMessages(this.userId);
   }
 
   /**
    * Get Gmail data with sync info
    */
   getData(): { messages: GmailMessage[]; lastSyncedAt: string | null } {
-    return this.store.getGmailData();
+    return this.store.getGmailData(this.userId);
   }
 
   getAutoHealingStatus(): SyncAutoHealingState {

@@ -3,6 +3,7 @@ import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - habits and goals", () => {
   let store: RuntimeStore;
+  const userId = "test-user";
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -15,20 +16,20 @@ describe("RuntimeStore - habits and goals", () => {
   });
 
   it("starts with no seeded habits or goals", () => {
-    expect(store.getHabitsWithStatus()).toEqual([]);
-    expect(store.getGoalsWithStatus()).toEqual([]);
+    expect(store.getHabitsWithStatus(userId)).toEqual([]);
+    expect(store.getGoalsWithStatus(userId)).toEqual([]);
   });
 
   it("creates habits and tracks daily streaks", () => {
-    const habit = store.createHabit({
+    const habit = store.createHabit(userId, {
       name: "Evening stretch",
       cadence: "daily",
       targetPerWeek: 6,
       motivation: "Stay loose after study sessions"
     });
 
-    store.toggleHabitCheckIn(habit.id, { date: "2026-02-14T18:00:00.000Z", completed: true });
-    const updated = store.toggleHabitCheckIn(habit.id, { date: "2026-02-15T07:30:00.000Z", completed: true });
+    store.toggleHabitCheckIn(userId, habit.id, { date: "2026-02-14T18:00:00.000Z", completed: true });
+    const updated = store.toggleHabitCheckIn(userId, habit.id, { date: "2026-02-15T07:30:00.000Z", completed: true });
 
     expect(updated).not.toBeNull();
     expect(updated?.todayCompleted).toBe(true);
@@ -38,51 +39,51 @@ describe("RuntimeStore - habits and goals", () => {
   });
 
   it("allows streak recovery within 24hrs of a missed day", () => {
-    const habit = store.createHabit({
+    const habit = store.createHabit(userId, {
       name: "Hydrate",
       cadence: "daily",
       targetPerWeek: 7
     });
 
-    store.toggleHabitCheckIn(habit.id, { date: "2026-02-14T18:00:00.000Z", completed: true });
-    store.toggleHabitCheckIn(habit.id, { date: "2026-02-16T07:30:00.000Z", completed: true });
+    store.toggleHabitCheckIn(userId, habit.id, { date: "2026-02-14T18:00:00.000Z", completed: true });
+    store.toggleHabitCheckIn(userId, habit.id, { date: "2026-02-16T07:30:00.000Z", completed: true });
 
     vi.setSystemTime(new Date("2026-02-16T12:00:00.000Z"));
-    const recovered = store.getHabitsWithStatus().find((h) => h.id === habit.id);
+    const recovered = store.getHabitsWithStatus(userId).find((h) => h.id === habit.id);
 
     // Grace bridges the gap (Feb 15 missed) but doesn't count it as a streak day
     expect(recovered?.streak).toBe(2);
   });
 
   it("tracks goal progress, remaining counts, and allows toggling check-ins", () => {
-    const goal = store.createGoal({
+    const goal = store.createGoal(userId, {
       title: "Ship resume updates",
       cadence: "daily",
       targetCount: 3,
       dueDate: "2026-02-20T00:00:00.000Z"
     });
 
-    store.toggleGoalCheckIn(goal.id, { date: "2026-02-14T12:00:00.000Z", completed: true });
-    const status = store.toggleGoalCheckIn(goal.id, { completed: true });
+    store.toggleGoalCheckIn(userId, goal.id, { date: "2026-02-14T12:00:00.000Z", completed: true });
+    const status = store.toggleGoalCheckIn(userId, goal.id, { completed: true });
 
     expect(status).not.toBeNull();
     expect(status?.progressCount).toBeGreaterThanOrEqual(2);
     expect(status?.remaining).toBeLessThanOrEqual(1);
     expect(status?.streak).toBeGreaterThanOrEqual(1);
 
-    const reversed = store.toggleGoalCheckIn(goal.id, { completed: false });
+    const reversed = store.toggleGoalCheckIn(userId, goal.id, { completed: false });
     expect(reversed?.progressCount).toBe(status?.progressCount ? status.progressCount - 1 : 0);
   });
 
   it("updates and deletes habits", () => {
-    const habit = store.createHabit({
+    const habit = store.createHabit(userId, {
       name: "Evening stretch",
       cadence: "daily",
       targetPerWeek: 6,
       motivation: "Stay loose"
     });
 
-    const updated = store.updateHabit(habit.id, {
+    const updated = store.updateHabit(userId, habit.id, {
       name: "Evening mobility",
       cadence: "weekly",
       targetPerWeek: 4,
@@ -95,12 +96,12 @@ describe("RuntimeStore - habits and goals", () => {
     expect(updated?.targetPerWeek).toBe(4);
     expect(updated?.motivation).toBe("Recovery first");
 
-    expect(store.deleteHabit(habit.id)).toBe(true);
-    expect(store.getHabitById(habit.id)).toBeNull();
+    expect(store.deleteHabit(userId, habit.id)).toBe(true);
+    expect(store.getHabitById(userId, habit.id)).toBeNull();
   });
 
   it("updates and deletes goals", () => {
-    const goal = store.createGoal({
+    const goal = store.createGoal(userId, {
       title: "Ship portfolio",
       cadence: "daily",
       targetCount: 5,
@@ -108,7 +109,7 @@ describe("RuntimeStore - habits and goals", () => {
       motivation: "Internship prep"
     });
 
-    const updated = store.updateGoal(goal.id, {
+    const updated = store.updateGoal(userId, goal.id, {
       title: "Ship portfolio v2",
       cadence: "weekly",
       targetCount: 8,
@@ -123,7 +124,7 @@ describe("RuntimeStore - habits and goals", () => {
     expect(updated?.dueDate).toBeNull();
     expect(updated?.motivation).toBe("Interview readiness");
 
-    expect(store.deleteGoal(goal.id)).toBe(true);
-    expect(store.getGoalById(goal.id)).toBeNull();
+    expect(store.deleteGoal(userId, goal.id)).toBe(true);
+    expect(store.getGoalById(userId, goal.id)).toBeNull();
   });
 });

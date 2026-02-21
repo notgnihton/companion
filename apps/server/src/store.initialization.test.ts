@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - Initialization", () => {
+  const userId = "test-user";
   let store: RuntimeStore;
 
   beforeEach(() => {
@@ -14,7 +15,7 @@ describe("RuntimeStore - Initialization", () => {
   });
 
   it("should initialize with correct default state", () => {
-    const snapshot = store.getSnapshot();
+    const snapshot = store.getSnapshot(userId);
 
     expect(snapshot.agentStates).toHaveLength(4);
     expect(snapshot.events).toHaveLength(0);
@@ -22,7 +23,7 @@ describe("RuntimeStore - Initialization", () => {
   });
 
   it("should initialize with default user context", () => {
-    const context = store.getUserContext();
+    const context = store.getUserContext(userId);
 
     expect(context).toEqual({
       stressLevel: "medium",

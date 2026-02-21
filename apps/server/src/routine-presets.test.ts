@@ -4,6 +4,7 @@ import { RuntimeStore } from "./store.js";
 
 describe("routine-presets placement", () => {
   let store: RuntimeStore;
+  const userId = "test-user";
 
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
@@ -13,13 +14,13 @@ describe("routine-presets placement", () => {
     const now = new Date("2026-02-17T06:00:00.000Z");
     const weekday = new Date("2026-02-17T00:00:00.000Z").getUTCDay();
 
-    store.createLectureEvent({
+    store.createLectureEvent(userId, {
       title: "DAT520 Lecture",
       startTime: "2026-02-17T07:00:00.000Z",
       durationMinutes: 60,
       workload: "medium"
     });
-    const preset = store.createRoutinePreset({
+    const preset = store.createRoutinePreset(userId, {
       title: "Morning gym",
       preferredStartTime: "07:00",
       durationMinutes: 60,
@@ -28,9 +29,9 @@ describe("routine-presets placement", () => {
       active: true
     });
 
-    const placement = applyRoutinePresetPlacements(store, { now, horizonDays: 1, stepMinutes: 15 });
+    const placement = applyRoutinePresetPlacements(store, userId, { now, horizonDays: 1, stepMinutes: 15 });
     const routineEvent = store
-      .getScheduleEvents()
+      .getScheduleEvents(userId)
       .find((event) => event.recurrenceParentId === `routine-preset:${preset.id}`);
 
     expect(placement.createdEvents).toBe(1);
@@ -42,7 +43,7 @@ describe("routine-presets placement", () => {
     const now = new Date("2026-02-17T06:00:00.000Z");
     const weekday = new Date("2026-02-17T00:00:00.000Z").getUTCDay();
 
-    const preset = store.createRoutinePreset({
+    const preset = store.createRoutinePreset(userId, {
       title: "Nightly review",
       preferredStartTime: "21:00",
       durationMinutes: 45,
@@ -51,11 +52,11 @@ describe("routine-presets placement", () => {
       active: true
     });
 
-    const first = applyRoutinePresetPlacements(store, { now, horizonDays: 1 });
-    const second = applyRoutinePresetPlacements(store, { now, horizonDays: 1 });
+    const first = applyRoutinePresetPlacements(store, userId, { now, horizonDays: 1 });
+    const second = applyRoutinePresetPlacements(store, userId, { now, horizonDays: 1 });
 
     const routineEvents = store
-      .getScheduleEvents()
+      .getScheduleEvents(userId)
       .filter((event) => event.recurrenceParentId === `routine-preset:${preset.id}`);
 
     expect(first.createdEvents).toBe(1);

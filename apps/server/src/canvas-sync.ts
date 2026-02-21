@@ -50,6 +50,7 @@ function filterAnnouncementsByCourseScope(
 
 export class CanvasSyncService {
   private readonly store: RuntimeStore;
+  private readonly userId: string;
   private readonly client: CanvasClient;
   private readonly deadlineBridge: CanvasDeadlineBridge;
   private syncInterval: ReturnType<typeof setInterval> | null = null;
@@ -66,10 +67,11 @@ export class CanvasSyncService {
     circuitOpenMs: 20 * 60 * 1000
   });
 
-  constructor(store: RuntimeStore, client?: CanvasClient) {
+  constructor(store: RuntimeStore, userId: string, client?: CanvasClient) {
     this.store = store;
+    this.userId = userId;
     this.client = client ?? new CanvasClient();
-    this.deadlineBridge = new CanvasDeadlineBridge(store);
+    this.deadlineBridge = new CanvasDeadlineBridge(store, userId);
   }
 
   isConfigured(): boolean {
@@ -149,11 +151,11 @@ export class CanvasSyncService {
           lastSyncedAt: new Date().toISOString()
         };
 
-        this.store.setCanvasData(canvasData);
+        this.store.setCanvasData(this.userId, canvasData);
 
         // Bridge Canvas assignments to deadlines
         const deadlineBridge = this.deadlineBridge.syncAssignments(scopedCourses, filteredAssignments);
-        publishNewDeadlineReleaseNotifications(this.store, "canvas", deadlineBridge.createdDeadlines);
+        publishNewDeadlineReleaseNotifications(this.store, this.userId, "canvas", deadlineBridge.createdDeadlines);
 
         return {
           success: true,
@@ -211,7 +213,7 @@ export class CanvasSyncService {
     const staleMs = options.staleMs ?? this.autoSyncIntervalMs;
     const minIntervalMs = options.minIntervalMs ?? Math.min(staleMs, 5 * 60 * 1000);
     const now = Date.now();
-    const current = this.store.getCanvasData();
+    const current = this.store.getCanvasData(this.userId);
     const lastSyncedAtMs = current?.lastSyncedAt ? Date.parse(current.lastSyncedAt) : Number.NaN;
     const isStale = !Number.isFinite(lastSyncedAtMs) || now - lastSyncedAtMs >= staleMs;
 

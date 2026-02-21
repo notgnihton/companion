@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - weekly summary", () => {
+  const userId = "test-user";
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-19T20:00:00.000Z"));
@@ -14,7 +16,7 @@ describe("RuntimeStore - weekly summary", () => {
   it("builds summary from recent deadlines and reflections", () => {
     const store = new RuntimeStore(":memory:");
 
-    store.createDeadline({
+    store.createDeadline(userId, {
       course: "Algorithms",
       task: "Problem Set",
       dueDate: "2026-02-18T09:00:00.000Z",
@@ -22,7 +24,7 @@ describe("RuntimeStore - weekly summary", () => {
       completed: true
     });
 
-    store.createDeadline({
+    store.createDeadline(userId, {
       course: "Systems",
       task: "Lab report",
       dueDate: "2026-02-19T09:00:00.000Z",
@@ -30,8 +32,8 @@ describe("RuntimeStore - weekly summary", () => {
       completed: false
     });
 
-    const firstReflection = store.recordChatMessage("user", "Finished review session");
-    store.upsertReflectionEntry({
+    const firstReflection = store.recordChatMessage(userId, "user", "Finished review session");
+    store.upsertReflectionEntry(userId, {
       event: "General reflection",
       feelingStress: "neutral (stress: medium)",
       intent: "Report progress",
@@ -42,8 +44,8 @@ describe("RuntimeStore - weekly summary", () => {
       sourceMessageId: firstReflection.id
     });
     vi.setSystemTime(new Date("2026-02-17T20:00:00.000Z"));
-    const secondReflection = store.recordChatMessage("user", "Had a productive deep work block");
-    store.upsertReflectionEntry({
+    const secondReflection = store.recordChatMessage(userId, "user", "Had a productive deep work block");
+    store.upsertReflectionEntry(userId, {
       event: "General reflection",
       feelingStress: "positive (stress: low)",
       intent: "Report progress",
@@ -54,7 +56,7 @@ describe("RuntimeStore - weekly summary", () => {
       sourceMessageId: secondReflection.id
     });
 
-    const summary = store.getWeeklySummary("2026-02-20T22:00:00.000Z");
+    const summary = store.getWeeklySummary(userId, "2026-02-20T22:00:00.000Z");
 
     expect(summary.deadlinesDue).toBe(2);
     expect(summary.deadlinesCompleted).toBe(1);

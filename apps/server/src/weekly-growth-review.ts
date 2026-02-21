@@ -70,10 +70,11 @@ function buildCommitments(recommendations: string[], summary: string): string[] 
 
 export async function generateWeeklyGrowthReview(
   store: RuntimeStore,
+  userId: string,
   options: GenerateWeeklyGrowthReviewOptions = {}
 ): Promise<WeeklyGrowthReview> {
   const now = options.now ?? new Date();
-  const insight = await generateAnalyticsCoachInsight(store, {
+  const insight = await generateAnalyticsCoachInsight(store, userId, {
     periodDays: 7,
     now,
     geminiClient: options.geminiClient

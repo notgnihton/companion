@@ -2,15 +2,17 @@ import { describe, it, expect } from "vitest";
 import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore GitHub course data", () => {
+  const userId = "test-user";
+
   it("returns null when no GitHub course data has been synced", () => {
     const store = new RuntimeStore(":memory:");
-    expect(store.getGitHubCourseData()).toBeNull();
+    expect(store.getGitHubCourseData(userId)).toBeNull();
   });
 
   it("persists and retrieves GitHub course data payload", () => {
     const store = new RuntimeStore(":memory:");
 
-    store.setGitHubCourseData({
+    store.setGitHubCourseData(userId, {
       repositories: [{ owner: "dat560-2026", repo: "info", courseCode: "DAT560" }],
       documents: [
         {
@@ -31,7 +33,7 @@ describe("RuntimeStore GitHub course data", () => {
       lastSyncedAt: "2026-02-17T00:00:00.000Z"
     });
 
-    const data = store.getGitHubCourseData();
+    const data = store.getGitHubCourseData(userId);
 
     expect(data).not.toBeNull();
     expect(data?.repositories).toHaveLength(1);

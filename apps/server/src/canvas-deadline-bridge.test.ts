@@ -6,10 +6,11 @@ import { CanvasAssignment, CanvasCourse } from "./types.js";
 describe("CanvasDeadlineBridge", () => {
   let store: RuntimeStore;
   let bridge: CanvasDeadlineBridge;
+  const userId = "test-user";
 
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
-    bridge = new CanvasDeadlineBridge(store);
+    bridge = new CanvasDeadlineBridge(store, userId);
   });
 
   describe("syncAssignments", () => {
@@ -48,7 +49,7 @@ describe("CanvasDeadlineBridge", () => {
         dueDate: "2026-01-15T22:59:00.000Z"
       });
 
-      const deadlines = store.getDeadlines(new Date(), false);
+      const deadlines = store.getDeadlines(userId, new Date(), false);
       expect(deadlines).toHaveLength(1);
       expect(deadlines[0].task).toBe("Lab 1: UDP Echo Server");
       expect(deadlines[0].course).toBe("DAT520-1");
@@ -86,7 +87,7 @@ describe("CanvasDeadlineBridge", () => {
       expect(result.created).toBe(0);
       expect(result.skipped).toBe(1);
 
-      const deadlines = store.getDeadlines(new Date(), false);
+      const deadlines = store.getDeadlines(userId, new Date(), false);
       expect(deadlines).toHaveLength(0);
     });
 
@@ -124,7 +125,7 @@ describe("CanvasDeadlineBridge", () => {
       expect(result.created).toBe(1);
       expect(result.completed).toBe(1);
 
-      const deadlines = store.getDeadlines(new Date(), false);
+      const deadlines = store.getDeadlines(userId, new Date(), false);
       expect(deadlines).toHaveLength(1);
       expect(deadlines[0].completed).toBe(true);
     });
@@ -182,7 +183,7 @@ describe("CanvasDeadlineBridge", () => {
       expect(result.completed).toBe(1);
       expect(result.createdDeadlines).toHaveLength(0);
 
-      const deadlines = store.getDeadlines(new Date(), false);
+      const deadlines = store.getDeadlines(userId, new Date(), false);
       expect(deadlines).toHaveLength(1);
       expect(deadlines[0].task).toBe("Lab 1: UDP Echo Server (Extended)");
       expect(deadlines[0].dueDate).toBe("2026-01-20T22:59:00.000Z");
@@ -213,8 +214,8 @@ describe("CanvasDeadlineBridge", () => {
         }
       ]);
 
-      const created = store.getDeadlines(new Date(), false)[0];
-      store.updateDeadline(created.id, {
+      const created = store.getDeadlines(userId, new Date(), false)[0];
+      store.updateDeadline(userId, created.id, {
         dueDate: "2026-01-18T22:59:00.000Z"
       });
 
@@ -232,7 +233,7 @@ describe("CanvasDeadlineBridge", () => {
       ]);
 
       expect(result.updated).toBe(1);
-      const updated = store.getDeadlines(new Date(), false)[0];
+      const updated = store.getDeadlines(userId, new Date(), false)[0];
       expect(updated.dueDate).toBe("2026-01-18T22:59:00.000Z");
       expect(updated.sourceDueDate).toBe("2026-01-20T22:59:00.000Z");
     });
@@ -273,7 +274,7 @@ describe("CanvasDeadlineBridge", () => {
 
     it("should not touch manually-created deadlines (without canvasAssignmentId)", () => {
       // Manually create a deadline
-      store.createDeadline({
+      store.createDeadline(userId, {
         course: "DAT520-1",
         task: "Manual deadline",
         dueDate: "2026-01-20T22:59:00.000Z",
@@ -305,7 +306,7 @@ describe("CanvasDeadlineBridge", () => {
 
       bridge.syncAssignments(courses, assignments);
 
-      const deadlines = store.getDeadlines(new Date(), false);
+      const deadlines = store.getDeadlines(userId, new Date(), false);
       expect(deadlines).toHaveLength(2);
 
       // Manual deadline should still exist and be unchanged
@@ -359,7 +360,7 @@ describe("CanvasDeadlineBridge", () => {
 
       bridge.syncAssignments(courses, assignments);
 
-      const deadlines = store.getDeadlines(new Date(), false);
+      const deadlines = store.getDeadlines(userId, new Date(), false);
       expect(deadlines).toHaveLength(3);
 
       const highPriorityDeadline = deadlines.find((d) => d.canvasAssignmentId === 1);
@@ -396,11 +397,11 @@ describe("CanvasDeadlineBridge", () => {
       ];
 
       bridge.syncAssignments(courses, assignments);
-      expect(store.getDeadlines(new Date(), false)).toHaveLength(1);
+      expect(store.getDeadlines(userId, new Date(), false)).toHaveLength(1);
 
       const result = bridge.syncAssignments(courses, []);
       expect(result.removed).toBe(1);
-      expect(store.getDeadlines(new Date(), false)).toHaveLength(0);
+      expect(store.getDeadlines(userId, new Date(), false)).toHaveLength(0);
     });
   });
 });

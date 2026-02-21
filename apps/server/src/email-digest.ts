@@ -13,11 +13,11 @@ export interface DigestContent {
   timeframeEnd: string;
 }
 
-export function buildDailyDigest(store: RuntimeStore, referenceDate: Date = new Date()): DigestContent {
+export function buildDailyDigest(store: RuntimeStore, userId: string, referenceDate: Date = new Date()): DigestContent {
   const start = startOfDay(referenceDate);
   const windowEndIso = referenceDate.toISOString();
 
-  const deadlines = store.getAcademicDeadlines();
+  const deadlines = store.getAcademicDeadlines(userId);
   const dueSoonLimit = new Date(referenceDate.getTime() + 2 * MS_IN_DAY);
   const dueSoon = deadlines.filter(
     (deadline) =>
@@ -27,8 +27,8 @@ export function buildDailyDigest(store: RuntimeStore, referenceDate: Date = new 
   );
   const overdue = deadlines.filter((deadline) => !deadline.completed && new Date(deadline.dueDate) < referenceDate);
 
-  const scheduleToday = store.getScheduleEvents().filter((event) => isSameDay(new Date(event.startTime), referenceDate));
-  const context = store.getUserContext();
+  const scheduleToday = store.getScheduleEvents(userId).filter((event) => isSameDay(new Date(event.startTime), referenceDate));
+  const context = store.getUserContext(userId);
 
   const bodyLines: string[] = [
     `Hi ${config.USER_NAME || "friend"},`,
@@ -52,10 +52,10 @@ export function buildDailyDigest(store: RuntimeStore, referenceDate: Date = new 
   };
 }
 
-export function buildWeeklyDigest(store: RuntimeStore, referenceDate: Date = new Date()): DigestContent {
-  const summary = store.getWeeklySummary(referenceDate.toISOString());
+export function buildWeeklyDigest(store: RuntimeStore, userId: string, referenceDate: Date = new Date()): DigestContent {
+  const summary = store.getWeeklySummary(userId, referenceDate.toISOString());
   const reflections = store
-    .getRecentChatMessages(200)
+    .getRecentChatMessages(userId, 200)
     .filter(
       (message) =>
         message.role === "user" &&
@@ -96,7 +96,7 @@ export class EmailDigestService {
   private readonly inactivityThresholdHours = 24;
   private readonly pushFailureWindowHours = 6;
 
-  constructor(private readonly store: RuntimeStore) {}
+  constructor(private readonly store: RuntimeStore, private readonly userId: string) {}
 
   start(intervalMs: number = 15 * MS_IN_MINUTES): void {
     if (this.timer) {
@@ -124,8 +124,8 @@ export class EmailDigestService {
     }
 
     if (this.shouldSendDaily(referenceDate)) {
-      const digest = buildDailyDigest(this.store, referenceDate);
-      this.store.recordEmailDigest({
+      const digest = buildDailyDigest(this.store, this.userId, referenceDate);
+      this.store.recordEmailDigest(this.userId, {
         type: "daily",
         reason,
         recipient: config.FALLBACK_EMAIL,
@@ -134,8 +134,8 @@ export class EmailDigestService {
     }
 
     if (this.shouldSendWeekly(referenceDate)) {
-      const digest = buildWeeklyDigest(this.store, referenceDate);
-      this.store.recordEmailDigest({
+      const digest = buildWeeklyDigest(this.store, this.userId, referenceDate);
+      this.store.recordEmailDigest(this.userId, {
         type: "weekly",
         reason,
         recipient: config.FALLBACK_EMAIL,
@@ -161,13 +161,13 @@ export class EmailDigestService {
     const windowStart = referenceDate.getTime() - this.pushFailureWindowHours * MS_IN_HOUR;
 
     const recentFailure = metrics.recentFailures.some((failure) => new Date(failure.failedAt).getTime() >= windowStart);
-    const missingSubscribers = this.store.getPushSubscriptions().length === 0 && metrics.attempted > 0;
+    const missingSubscribers = this.store.getPushSubscriptions(this.userId).length === 0 && metrics.attempted > 0;
 
     return recentFailure || missingSubscribers;
   }
 
   private isInactive(referenceDate: Date): boolean {
-    const lastInteraction = this.store.getNotificationInteractions({ limit: 1 })[0];
+    const lastInteraction = this.store.getNotificationInteractions(this.userId, { limit: 1 })[0];
 
     if (!lastInteraction) {
       return true;
@@ -178,7 +178,7 @@ export class EmailDigestService {
   }
 
   private shouldSendDaily(referenceDate: Date): boolean {
-    const last = this.store.getLastEmailDigest("daily");
+    const last = this.store.getLastEmailDigest(this.userId, "daily");
 
     if (!last) {
       return true;
@@ -192,7 +192,7 @@ export class EmailDigestService {
       return false;
     }
 
-    const last = this.store.getLastEmailDigest("weekly");
+    const last = this.store.getLastEmailDigest(this.userId, "weekly");
 
     if (!last) {
       return true;

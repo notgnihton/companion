@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RuntimeStore } from "./store.js";
 
 describe("RuntimeStore - export data", () => {
+  const userId = "test-user";
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-15T15:00:00.000Z"));
@@ -14,21 +16,21 @@ describe("RuntimeStore - export data", () => {
   it("exports all user data including journals, schedule, deadlines, context, and preferences", () => {
     const store = new RuntimeStore(":memory:");
 
-    const focusTag = store.createTag("focus");
-    const lectureTag = store.createTag("lecture");
+    const focusTag = store.createTag(userId, "focus");
+    const lectureTag = store.createTag(userId, "lecture");
 
     // Create test data
-    store.recordJournalEntry("Finished algorithms homework", [lectureTag.id]);
-    store.recordJournalEntry("Had a productive study session", [focusTag.id]);
+    store.recordJournalEntry(userId, "Finished algorithms homework", [lectureTag.id]);
+    store.recordJournalEntry(userId, "Had a productive study session", [focusTag.id]);
 
-    store.createLectureEvent({
+    store.createLectureEvent(userId, {
       title: "Algorithms Lecture",
       startTime: "2026-02-16T10:00:00.000Z",
       durationMinutes: 90,
       workload: "high"
     });
 
-    store.createDeadline({
+    store.createDeadline(userId, {
       course: "Systems",
       task: "Lab Report",
       dueDate: "2026-02-20T23:59:00.000Z",
@@ -36,36 +38,36 @@ describe("RuntimeStore - export data", () => {
       completed: false
     });
 
-    const habit = store.createHabit({
+    const habit = store.createHabit(userId, {
       name: "Evening review",
       cadence: "daily",
       targetPerWeek: 6,
       motivation: "Close the loop on the day"
     });
-    store.toggleHabitCheckIn(habit.id, { date: "2026-02-15T09:00:00.000Z", completed: true });
+    store.toggleHabitCheckIn(userId, habit.id, { date: "2026-02-15T09:00:00.000Z", completed: true });
 
-    const goal = store.createGoal({
+    const goal = store.createGoal(userId, {
       title: "Ship portfolio draft",
       cadence: "daily",
       targetCount: 4,
       dueDate: "2026-02-25T00:00:00.000Z"
     });
-    store.toggleGoalCheckIn(goal.id, { date: "2026-02-15T10:00:00.000Z", completed: true });
+    store.toggleGoalCheckIn(userId, goal.id, { date: "2026-02-15T10:00:00.000Z", completed: true });
 
-    store.setUserContext({
+    store.setUserContext(userId, {
       stressLevel: "medium",
       energyLevel: "high",
       mode: "focus"
     });
 
-    store.setNotificationPreferences({
+    store.setNotificationPreferences(userId, {
       quietHours: { enabled: true, startHour: 22, endHour: 7 },
       minimumPriority: "medium",
       allowCriticalInQuietHours: true
     });
 
     // Get export data
-    const exportData = store.getExportData();
+    const exportData = store.getExportData(userId);
 
     // Verify structure
     expect(exportData).toHaveProperty("exportedAt");
@@ -118,7 +120,7 @@ describe("RuntimeStore - export data", () => {
 
   it("exports empty arrays when no data exists", () => {
     const store = new RuntimeStore(":memory:");
-    const exportData = store.getExportData();
+    const exportData = store.getExportData(userId);
 
     expect(exportData.journals).toEqual([]);
     expect(exportData.schedule).toEqual([]);

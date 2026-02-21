@@ -19,6 +19,7 @@ function makeSession(overrides: Partial<StudyPlanSession>): StudyPlanSession {
 
 describe("RuntimeStore - study plan session check-ins", () => {
   let store: RuntimeStore;
+  const userId = "test-user";
 
   beforeEach(() => {
     store = new RuntimeStore(":memory:");
@@ -30,9 +31,9 @@ describe("RuntimeStore - study plan session check-ins", () => {
     const windowEnd = "2026-02-24T00:00:00.000Z";
     const session = makeSession({});
 
-    store.upsertStudyPlanSessions([session], generatedAt, { windowStart, windowEnd });
+    store.upsertStudyPlanSessions(userId, [session], generatedAt, { windowStart, windowEnd });
 
-    const stored = store.getStudyPlanSessions();
+    const stored = store.getStudyPlanSessions(userId);
     expect(stored).toHaveLength(1);
     expect(stored[0]).toMatchObject({
       id: session.id,
@@ -48,13 +49,13 @@ describe("RuntimeStore - study plan session check-ins", () => {
   it("updates session status and preserves checkedAt timestamps", () => {
     const generatedAt = "2026-02-17T08:00:00.000Z";
     const session = makeSession({});
-    store.upsertStudyPlanSessions([session], generatedAt, {
+    store.upsertStudyPlanSessions(userId, [session], generatedAt, {
       windowStart: "2026-02-17T00:00:00.000Z",
       windowEnd: "2026-02-24T00:00:00.000Z"
     });
 
     const doneAt = "2026-02-17T12:00:00.000Z";
-    const done = store.setStudyPlanSessionStatus(session.id, "done", doneAt, {
+    const done = store.setStudyPlanSessionStatus(userId, session.id, "done", doneAt, {
       energyLevel: 4,
       focusLevel: 5,
       checkInNote: "Strong focus once I started."
@@ -67,7 +68,7 @@ describe("RuntimeStore - study plan session check-ins", () => {
     expect(done?.checkInNote).toBe("Strong focus once I started.");
 
     const skippedAt = "2026-02-17T12:10:00.000Z";
-    const skipped = store.setStudyPlanSessionStatus(session.id, "skipped", skippedAt);
+    const skipped = store.setStudyPlanSessionStatus(userId, session.id, "skipped", skippedAt);
     expect(skipped).not.toBeNull();
     expect(skipped?.status).toBe("skipped");
     expect(skipped?.checkedAt).toBe(skippedAt);
@@ -75,7 +76,7 @@ describe("RuntimeStore - study plan session check-ins", () => {
     expect(skipped?.focusLevel).toBe(5);
     expect(skipped?.checkInNote).toBe("Strong focus once I started.");
 
-    const missing = store.setStudyPlanSessionStatus("missing-session-id", "done", doneAt);
+    const missing = store.setStudyPlanSessionStatus(userId, "missing-session-id", "done", doneAt);
     expect(missing).toBeNull();
   });
 
@@ -98,8 +99,8 @@ describe("RuntimeStore - study plan session check-ins", () => {
       durationMinutes: 60
     });
 
-    store.upsertStudyPlanSessions([first, second], generatedAt, { windowStart, windowEnd });
-    store.setStudyPlanSessionStatus(first.id, "done", "2026-02-17T11:05:00.000Z");
+    store.upsertStudyPlanSessions(userId, [first, second], generatedAt, { windowStart, windowEnd });
+    store.setStudyPlanSessionStatus(userId, first.id, "done", "2026-02-17T11:05:00.000Z");
 
     const replacement = makeSession({
       id: second.id,
@@ -110,9 +111,9 @@ describe("RuntimeStore - study plan session check-ins", () => {
       rationale: "Updated rationale"
     });
 
-    store.upsertStudyPlanSessions([replacement], "2026-02-17T09:00:00.000Z", { windowStart, windowEnd });
+    store.upsertStudyPlanSessions(userId, [replacement], "2026-02-17T09:00:00.000Z", { windowStart, windowEnd });
 
-    const sessions = store.getStudyPlanSessions({ windowStart, windowEnd });
+    const sessions = store.getStudyPlanSessions(userId, { windowStart, windowEnd });
     expect(sessions).toHaveLength(2);
     expect(sessions.find((session) => session.id === first.id)?.status).toBe("done");
     expect(sessions.find((session) => session.id === replacement.id)?.status).toBe("pending");
@@ -146,19 +147,19 @@ describe("RuntimeStore - study plan session check-ins", () => {
       })
     ];
 
-    store.upsertStudyPlanSessions(sessions, generatedAt, { windowStart, windowEnd });
-    store.setStudyPlanSessionStatus("study-session-a", "done", "2026-02-17T11:40:00.000Z", {
+    store.upsertStudyPlanSessions(userId, sessions, generatedAt, { windowStart, windowEnd });
+    store.setStudyPlanSessionStatus(userId, "study-session-a", "done", "2026-02-17T11:40:00.000Z", {
       energyLevel: 4,
       focusLevel: 3,
       checkInNote: "Good progress."
     });
-    store.setStudyPlanSessionStatus("study-session-b", "skipped", "2026-02-18T09:55:00.000Z", {
+    store.setStudyPlanSessionStatus(userId, "study-session-b", "skipped", "2026-02-18T09:55:00.000Z", {
       energyLevel: 2,
       focusLevel: 1,
       checkInNote: "Too tired after lectures."
     });
 
-    const metrics = store.getStudyPlanAdherenceMetrics({ windowStart, windowEnd });
+    const metrics = store.getStudyPlanAdherenceMetrics(userId, { windowStart, windowEnd });
 
     expect(metrics.sessionsPlanned).toBe(3);
     expect(metrics.sessionsDone).toBe(1);

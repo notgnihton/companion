@@ -23,6 +23,7 @@ export interface ProactiveTrigger {
 
 export interface TriggerContext {
   store: RuntimeStore;
+  userId: string;
   now: Date;
   todaySchedule: LectureEvent[];
   upcomingDeadlines: Deadline[];
@@ -47,8 +48,8 @@ function isWithinHours(date: Date, startHour: number, endHour: number): boolean 
 
 let lastUnreadEmailSignature = new WeakMap<RuntimeStore, string>();
 
-function buildUnreadEmailSignature(store: RuntimeStore): string {
-  const gmailData = store.getGmailData();
+function buildUnreadEmailSignature(store: RuntimeStore, userId: string): string {
+  const gmailData = store.getGmailData(userId);
   const unread = gmailData.messages
     .filter((message) => !message.isRead)
     .slice()
@@ -62,8 +63,8 @@ function buildUnreadEmailSignature(store: RuntimeStore): string {
   return `${unread.length}|${topIds}|${gmailData.lastSyncedAt ?? "unknown"}`;
 }
 
-function hasUnreadEmailDelta(store: RuntimeStore): boolean {
-  const signature = buildUnreadEmailSignature(store);
+function hasUnreadEmailDelta(store: RuntimeStore, userId: string): boolean {
+  const signature = buildUnreadEmailSignature(store, userId);
   const previous = lastUnreadEmailSignature.get(store);
   return signature !== "none" && signature !== previous;
 }
@@ -140,12 +141,13 @@ function findRecentlyCompletedLectures(schedule: LectureEvent[], now: Date): Lec
  */
 async function generateProactiveMessage(
   store: RuntimeStore,
+  userId: string,
   triggerType: ProactiveTriggerType,
   specificContext: string,
   now: Date
 ): Promise<string> {
   const gemini = getGeminiClient();
-  const { contextWindow } = buildChatContext(store, now, 5);
+  const { contextWindow } = buildChatContext(store, userId, now, 5);
 
   const promptMap: Record<ProactiveTriggerType, string> = {
     "morning-briefing": `Generate a brief, encouraging morning briefing for the user. Include their schedule for today and any urgent deadlines. Keep it conversational, positive, and helpful. 2-3 sentences max. ${specificContext}`,
@@ -196,7 +198,7 @@ const morningBriefingTrigger: ProactiveTrigger = {
 
     const specificContext = `Today's schedule: ${scheduleCount} lectures/events. Upcoming deadlines: ${deadlineCount}.`;
 
-    return generateProactiveMessage(context.store, "morning-briefing", specificContext, context.now);
+    return generateProactiveMessage(context.store, context.userId, "morning-briefing", specificContext, context.now);
   }
 };
 
@@ -222,7 +224,7 @@ const scheduleGapTrigger: ProactiveTrigger = {
 
     const specificContext = `Gap between ${beforeTitle} and ${afterTitle}. User might want to work on assignments or review material.`;
 
-    return generateProactiveMessage(context.store, "schedule-gap", specificContext, context.now);
+    return generateProactiveMessage(context.store, context.userId, "schedule-gap", specificContext, context.now);
   }
 };
 
@@ -247,7 +249,7 @@ const deadlineApproachingTrigger: ProactiveTrigger = {
 
     const specificContext = `Deadline: ${deadline.task} for ${deadline.course} is due in ${hoursLeft} hours. Priority: ${deadline.priority}.`;
 
-    return generateProactiveMessage(context.store, "deadline-approaching", specificContext, context.now);
+    return generateProactiveMessage(context.store, context.userId, "deadline-approaching", specificContext, context.now);
   }
 };
 
@@ -269,7 +271,7 @@ const postLectureTrigger: ProactiveTrigger = {
 
     const specificContext = `Just finished: ${recentLecture.title}. Check in about understanding, next steps, or how it went.`;
 
-    return generateProactiveMessage(context.store, "post-lecture", specificContext, context.now);
+    return generateProactiveMessage(context.store, context.userId, "post-lecture", specificContext, context.now);
   }
 };
 
@@ -290,7 +292,7 @@ const eveningReflectionTrigger: ProactiveTrigger = {
 
     const specificContext = `End of day. Completed ${todayDeadlines.length} deadlines today. Encourage reflection.`;
 
-    return generateProactiveMessage(context.store, "evening-reflection", specificContext, context.now);
+    return generateProactiveMessage(context.store, context.userId, "evening-reflection", specificContext, context.now);
   }
 };
 
@@ -301,10 +303,10 @@ const newEmailTrigger: ProactiveTrigger = {
   type: "new-email",
   priority: "medium",
   shouldFire: (context) => {
-    return hasUnreadEmailDelta(context.store);
+    return hasUnreadEmailDelta(context.store, context.userId);
   },
   generateMessage: async (context) => {
-    const gmailData = context.store.getGmailData();
+    const gmailData = context.store.getGmailData(context.userId);
     const unread = gmailData.messages
       .filter((message) => !message.isRead)
       .slice()
@@ -313,8 +315,8 @@ const newEmailTrigger: ProactiveTrigger = {
     const sender = newest?.from ?? "unknown sender";
     const subject = newest?.subject ?? "no subject";
     const specificContext = `Unread emails: ${unread.length}. Newest unread from ${sender} with subject "${subject}". Last Gmail sync: ${gmailData.lastSyncedAt ?? "unknown"}.`;
-    const message = await generateProactiveMessage(context.store, "new-email", specificContext, context.now);
-    lastUnreadEmailSignature.set(context.store, buildUnreadEmailSignature(context.store));
+    const message = await generateProactiveMessage(context.store, context.userId, "new-email", specificContext, context.now);
+    lastUnreadEmailSignature.set(context.store, buildUnreadEmailSignature(context.store, context.userId));
     return message;
   }
 };
@@ -334,31 +336,32 @@ export const ALL_TRIGGERS: ProactiveTrigger[] = [
 /**
  * Check all triggers and generate notifications for those that should fire
  */
-export async function checkProactiveTriggers(store: RuntimeStore, now: Date = new Date()): Promise<Notification[]> {
+export async function checkProactiveTriggers(store: RuntimeStore, userId: string, now: Date = new Date()): Promise<Notification[]> {
   const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(todayStart);
   todayEnd.setDate(todayEnd.getDate() + 1);
 
   const todaySchedule = store
-    .getScheduleEvents()
+    .getScheduleEvents(userId)
     .filter((event) => {
       const eventDate = new Date(event.startTime);
       return eventDate >= todayStart && eventDate < todayEnd;
     });
 
   const upcomingDeadlines = store
-    .getAcademicDeadlines(now)
+    .getAcademicDeadlines(userId, now)
     .filter((deadline) => {
       const dueDate = new Date(deadline.dueDate);
       return dueDate.getTime() > now.getTime();
     })
     .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
-  const userContext = store.getUserContext();
+  const userContext = store.getUserContext(userId);
 
   const context: TriggerContext = {
     store,
+    userId,
     now,
     todaySchedule,
     upcomingDeadlines,
@@ -472,9 +475,10 @@ export function clearTriggerCooldowns(): void {
  */
 export async function checkProactiveTriggersWithCooldown(
   store: RuntimeStore,
+  userId: string,
   now: Date = new Date()
 ): Promise<Notification[]> {
-  const allNotifications = await checkProactiveTriggers(store, now);
+  const allNotifications = await checkProactiveTriggers(store, userId, now);
 
   // Filter out triggers that are on cooldown
   const filtered = allNotifications.filter((notification) => {

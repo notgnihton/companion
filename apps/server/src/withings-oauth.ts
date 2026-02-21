@@ -27,10 +27,12 @@ interface WithingsTokenResponsePayload {
 
 export class WithingsOAuthService {
   private readonly store: RuntimeStore;
+  private readonly userId: string;
   private readonly pendingStates = new Map<string, number>();
 
-  constructor(store: RuntimeStore) {
+  constructor(store: RuntimeStore, userId: string) {
     this.store = store;
+    this.userId = userId;
     this.bootstrapTokensFromEnvironment();
   }
 
@@ -84,8 +86,8 @@ export class WithingsOAuthService {
       return;
     }
 
-    const existing = this.store.getWithingsTokens();
-    this.store.setWithingsTokens({
+    const existing = this.store.getWithingsTokens(this.userId);
+    this.store.setWithingsTokens(this.userId, {
       refreshToken: envRefreshToken || existing?.refreshToken,
       accessToken: envAccessToken || existing?.accessToken,
       tokenExpiresAt: existing?.tokenExpiresAt,
@@ -195,10 +197,10 @@ export class WithingsOAuthService {
       code
     });
 
-    const existing = this.store.getWithingsTokens();
+    const existing = this.store.getWithingsTokens(this.userId);
     const connectedAt = existing?.connectedAt ?? new Date().toISOString();
 
-    this.store.setWithingsTokens({
+    this.store.setWithingsTokens(this.userId, {
       refreshToken: token.refreshToken ?? existing?.refreshToken,
       accessToken: token.accessToken,
       tokenExpiresAt: token.expiresAt,
@@ -216,7 +218,7 @@ export class WithingsOAuthService {
   }
 
   async getValidAccessToken(): Promise<string> {
-    const tokens = this.store.getWithingsTokens();
+    const tokens = this.store.getWithingsTokens(this.userId);
     if (!tokens?.refreshToken && !tokens?.accessToken) {
       throw new Error("Withings not connected");
     }
@@ -239,7 +241,7 @@ export class WithingsOAuthService {
       refreshToken: tokens.refreshToken
     });
 
-    this.store.setWithingsTokens({
+    this.store.setWithingsTokens(this.userId, {
       refreshToken: refreshed.refreshToken ?? tokens.refreshToken,
       accessToken: refreshed.accessToken,
       tokenExpiresAt: refreshed.expiresAt,
@@ -253,7 +255,7 @@ export class WithingsOAuthService {
   }
 
   isConnected(): boolean {
-    const tokens = this.store.getWithingsTokens();
+    const tokens = this.store.getWithingsTokens(this.userId);
     return Boolean(tokens?.refreshToken || tokens?.accessToken);
   }
 
@@ -266,7 +268,7 @@ export class WithingsOAuthService {
     hasAccessToken?: boolean;
     tokenExpiresAt?: string;
   } {
-    const tokens = this.store.getWithingsTokens();
+    const tokens = this.store.getWithingsTokens(this.userId);
     if (!tokens) {
       return { connected: false };
     }

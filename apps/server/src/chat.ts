@@ -67,8 +67,8 @@ function isSameDay(dateA: Date, dateB: Date): boolean {
   );
 }
 
-function buildCanvasContextSummary(store: RuntimeStore, now: Date = new Date()): string {
-  const canvasData = store.getCanvasData();
+function buildCanvasContextSummary(store: RuntimeStore, userId: string, now: Date = new Date()): string {
+  const canvasData = store.getCanvasData(userId);
   
   if (!canvasData || canvasData.announcements.length === 0) {
     return "Canvas data: no synced courses yet. Connect Canvas to enrich responses with assignments, modules, and announcements.";
@@ -103,8 +103,8 @@ function buildCanvasContextSummary(store: RuntimeStore, now: Date = new Date()):
   return parts.join("\n");
 }
 
-function buildGmailContextSummary(store: RuntimeStore, now: Date = new Date()): string {
-  const gmailData = store.getGmailData();
+function buildGmailContextSummary(store: RuntimeStore, userId: string, now: Date = new Date()): string {
+  const gmailData = store.getGmailData(userId);
 
   if (!gmailData.messages || gmailData.messages.length === 0) {
     return "Gmail: No emails synced yet. Connect Gmail to see inbox summary.";
@@ -182,8 +182,8 @@ function buildGmailContextSummary(store: RuntimeStore, now: Date = new Date()): 
   return parts.join("\n");
 }
 
-function buildWithingsContextSummary(store: RuntimeStore, now: Date = new Date()): string {
-  const data = store.getWithingsData();
+function buildWithingsContextSummary(store: RuntimeStore, userId: string, now: Date = new Date()): string {
+  const data = store.getWithingsData(userId);
   if (data.weight.length === 0 && data.sleepSummary.length === 0) {
     return "";
   }
@@ -224,8 +224,8 @@ function buildWithingsContextSummary(store: RuntimeStore, now: Date = new Date()
   return parts.join("\n");
 }
 
-function buildNutritionContextSummary(store: RuntimeStore, now: Date = new Date()): string {
-  const summary = store.getNutritionDailySummary(now);
+function buildNutritionContextSummary(store: RuntimeStore, userId: string, now: Date = new Date()): string {
+  const summary = store.getNutritionDailySummary(userId, now);
   if (summary.mealsLogged === 0) {
     return "Nutrition: no meals logged for today yet.";
   }
@@ -245,13 +245,13 @@ function buildNutritionContextSummary(store: RuntimeStore, now: Date = new Date(
   return parts.join("\n");
 }
 
-export function buildChatContext(store: RuntimeStore, now: Date = new Date(), historyLimit = 10): ChatContextResult {
+export function buildChatContext(store: RuntimeStore, userId: string, now: Date = new Date(), historyLimit = 10): ChatContextResult {
   const todaySchedule = store
-    .getScheduleEvents()
+    .getScheduleEvents(userId)
     .filter((event) => isSameDay(new Date(event.startTime), now));
 
   const upcomingDeadlines = store
-    .getAcademicDeadlines(now)
+    .getAcademicDeadlines(userId, now)
     .filter((deadline) => {
       const due = parseDeadlineDueDateForComparison(deadline.dueDate);
       if (Number.isNaN(due.getTime())) {
@@ -262,11 +262,11 @@ export function buildChatContext(store: RuntimeStore, now: Date = new Date(), hi
     })
     .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
-  const userState: UserContext = store.getUserContext();
-  const canvasContext = buildCanvasContextSummary(store, now);
-  const gmailContext = buildGmailContextSummary(store, now);
-  const nutritionContext = buildNutritionContextSummary(store, now);
-  const withingsContext = buildWithingsContextSummary(store, now);
+  const userState: UserContext = store.getUserContext(userId);
+  const canvasContext = buildCanvasContextSummary(store, userId, now);
+  const gmailContext = buildGmailContextSummary(store, userId, now);
+  const nutritionContext = buildNutritionContextSummary(store, userId, now);
+  const withingsContext = buildWithingsContextSummary(store, userId, now);
 
   const contextWindow = buildContextWindow({
     todaySchedule,
@@ -282,7 +282,7 @@ export function buildChatContext(store: RuntimeStore, now: Date = new Date(), hi
       .join("\n\n")
   });
 
-  const history = store.getRecentChatMessages(historyLimit);
+  const history = store.getRecentChatMessages(userId, historyLimit);
 
   return { contextWindow, history };
 }
@@ -576,6 +576,7 @@ function findBestNameMatch<T extends { id: string }>(
 
 function detectHabitGoalAutocaptureSuggestion(
   store: RuntimeStore,
+  userId: string,
   userInput: string,
   history: ChatMessage[],
   pendingActions: ChatPendingAction[]
@@ -630,7 +631,7 @@ function detectHabitGoalAutocaptureSuggestion(
 
   if (!treatAsGoal) {
     const existingHabit = findBestNameMatch(
-      store.getHabitsWithStatus(),
+      store.getHabitsWithStatus(userId),
       (habit) => habit.name,
       tokens
     );
@@ -678,7 +679,7 @@ function detectHabitGoalAutocaptureSuggestion(
   }
 
   const existingGoal = findBestNameMatch(
-    store.getGoalsWithStatus(),
+    store.getGoalsWithStatus(userId),
     (goal) => goal.title,
     tokens
   );
@@ -726,9 +727,9 @@ function detectHabitGoalAutocaptureSuggestion(
   };
 }
 
-function buildHabitGoalNudgeContext(store: RuntimeStore): string {
-  const habits = store.getHabitsWithStatus();
-  const goals = store.getGoalsWithStatus();
+function buildHabitGoalNudgeContext(store: RuntimeStore, userId: string): string {
+  const habits = store.getHabitsWithStatus(userId);
+  const goals = store.getGoalsWithStatus(userId);
   const pendingHabits = habits.filter((habit) => !habit.todayCompleted);
   const pendingGoals = goals.filter((goal) => !goal.todayCompleted);
   const pendingHabitNames = pendingHabits.slice(0, 3).map((habit) => habit.name);
@@ -761,7 +762,7 @@ function formatInTimeZone(
   }
 }
 
-function buildRuntimeContextNudge(store: RuntimeStore, now: Date): string {
+function buildRuntimeContextNudge(store: RuntimeStore, userId: string, now: Date): string {
   const timezone = config.TIMEZONE || "UTC";
   const isoNow = now.toISOString();
   const localDate = formatInTimeZone(now, timezone, {
@@ -777,7 +778,7 @@ function buildRuntimeContextNudge(store: RuntimeStore, now: Date): string {
     hour12: false
   });
 
-  const gmailData = store.getGmailData();
+  const gmailData = store.getGmailData(userId);
   const unreadMessages = gmailData.messages
     .filter((message) => !message.isRead)
     .slice()
@@ -929,6 +930,7 @@ function normalizeJournalMemoryEntryType(
 async function evaluateReflectionCaptureGateWithGemini(
   geminiClient: GeminiClient,
   store: RuntimeStore,
+  userId: string,
   userMessage: ChatMessage,
   assistantMessage: ChatMessage,
   bufferContext?: string
@@ -943,7 +945,7 @@ async function evaluateReflectionCaptureGateWithGemini(
     return null;
   }
 
-  const userState = store.getUserContext();
+  const userState = store.getUserContext(userId);
   const systemInstruction = [
     "You decide whether a completed chat turn should be captured as structured journal memory.",
     "Never produce conversational text.",
@@ -1075,6 +1077,7 @@ export function getJournalSessionBufferSize(): number {
 
 async function bufferForJournalBatch(
   store: RuntimeStore,
+  userId: string,
   userMessage: ChatMessage,
   assistantMessage: ChatMessage,
   geminiClient?: GeminiClient
@@ -1104,6 +1107,7 @@ async function bufferForJournalBatch(
     gateDecision = await evaluateReflectionCaptureGateWithGemini(
       resolvedGeminiClient,
       store,
+      userId,
       userMessage,
       assistantMessage,
       bufferContext
@@ -1131,7 +1135,7 @@ async function bufferForJournalBatch(
 
   // If Gemini detected a topic shift, flush the existing session before starting a new one
   if (gateDecision.topicShift && journalSessionBuffer.length > 0) {
-    await flushJournalSessionBuffer(store, resolvedGeminiClient);
+    await flushJournalSessionBuffer(store, userId, resolvedGeminiClient);
   }
 
   // Add to buffer
@@ -1145,6 +1149,7 @@ async function bufferForJournalBatch(
 
 export async function flushJournalSessionBuffer(
   store: RuntimeStore,
+  userId: string,
   geminiClient?: GeminiClient
 ): Promise<void> {
   if (journalSessionBuffer.length === 0) {
@@ -1173,6 +1178,7 @@ export async function flushJournalSessionBuffer(
     extracted = await extractBatchedReflectionWithGemini(
       resolvedGeminiClient,
       store,
+      userId,
       entries
     );
   } catch {
@@ -1189,7 +1195,7 @@ export async function flushJournalSessionBuffer(
     `[journal] Flushing session: ${turnCount} turn(s), avg salience=${avgSalience.toFixed(2)}, topic="${textSnippet(extracted.event, 60)}"`
   );
 
-  store.upsertReflectionEntry({
+  store.upsertReflectionEntry(userId, {
     entryType: extracted.entryType,
     event: extracted.event,
     feelingStress: extracted.feelingStress,
@@ -1208,6 +1214,7 @@ export async function flushJournalSessionBuffer(
 async function extractBatchedReflectionWithGemini(
   geminiClient: GeminiClient,
   store: RuntimeStore,
+  userId: string,
   entries: JournalBufferEntry[]
 ): Promise<{
   entryType: JournalMemoryEntryType;
@@ -1222,7 +1229,7 @@ async function extractBatchedReflectionWithGemini(
     return null;
   }
 
-  const userState = store.getUserContext();
+  const userState = store.getUserContext(userId);
   const systemInstruction = [
     "You extract ONE internal structured journal memory entry from a batch of conversation turns.",
     "The batch represents a single conversation session. Synthesize it into one rich entry.",
@@ -2520,6 +2527,7 @@ function compactFunctionResponseForModel(functionName: string, response: unknown
 
 function collectToolCitations(
   store: RuntimeStore,
+  userId: string,
   functionName: string,
   response: unknown
 ): ChatCitation[] {
@@ -2942,7 +2950,7 @@ function collectToolCitations(
     const directDeadline = asRecord(payload?.deadline);
     const directDeadlineId = asNonEmptyString(directDeadline?.id);
     if (directDeadlineId) {
-      const deadline = store.getDeadlineById(directDeadlineId, false);
+      const deadline = store.getDeadlineById(userId, directDeadlineId, false);
       const course = asNonEmptyString(directDeadline?.course) ?? deadline?.course;
       const task = asNonEmptyString(directDeadline?.task) ?? deadline?.task;
       const dueDate = asNonEmptyString(directDeadline?.dueDate) ?? deadline?.dueDate;
@@ -2964,7 +2972,7 @@ function collectToolCitations(
     if (!deadlineId) {
       return [];
     }
-    const deadline = store.getDeadlineById(deadlineId, false);
+    const deadline = store.getDeadlineById(userId, deadlineId, false);
     if (!deadline) {
       return [];
     }
@@ -3132,14 +3140,15 @@ export interface CompressChatContextResult {
 
 export async function compressChatContext(
   store: RuntimeStore,
+  userId: string,
   options: CompressChatContextOptions = {}
 ): Promise<CompressChatContextResult> {
   const now = options.now ?? new Date();
   const maxMessages = clampNumber(options.maxMessages ?? 180, 10, 500);
   const preserveRecentMessages = clampNumber(options.preserveRecentMessages ?? 16, 0, 100);
   const targetSummaryChars = clampNumber(options.targetSummaryChars ?? 2800, 300, 12000);
-  const totalMessagesAtCompression = store.getChatMessageCount();
-  const allMessages = store.getRecentChatMessages(maxMessages);
+  const totalMessagesAtCompression = store.getChatMessageCount(userId);
+  const allMessages = store.getRecentChatMessages(userId, maxMessages);
 
   if (allMessages.length === 0) {
     return {
@@ -3169,7 +3178,7 @@ export async function compressChatContext(
   }
 
   const transcript = buildCompressionTranscript(summarySource);
-  const pendingActions = store.getPendingChatActions(now).slice(0, 5);
+  const pendingActions = store.getPendingChatActions(userId, now).slice(0, 5);
   const pendingActionContext =
     pendingActions.length === 0
       ? "No pending explicit confirmation actions."
@@ -3387,6 +3396,7 @@ function hydrateFunctionArgsForRequest(
 
 export async function sendChatMessage(
   store: RuntimeStore,
+  userId: string,
   userInput: string,
   options: SendChatOptions = {}
 ): Promise<SendChatResult> {
@@ -3398,11 +3408,11 @@ export async function sendChatMessage(
           attachments
         }
       : undefined;
-  const pendingActionsAtStart = store.getPendingChatActions(now);
+  const pendingActionsAtStart = store.getPendingChatActions(userId, now);
   const actionCommand = parseActionCommand(userInput, pendingActionsAtStart);
 
   if (!actionCommand && pendingActionsAtStart.length > 1 && isImplicitActionSignal(userInput)) {
-    const userMessage = store.recordChatMessage("user", userInput, userMetadata);
+    const userMessage = store.recordChatMessage(userId, "user", userInput, userMetadata);
     const lines = ["Multiple pending actions found. Please confirm with a specific action ID:"];
     pendingActionsAtStart.forEach((action) => {
       lines.push(`- ${action.summary}`);
@@ -3410,12 +3420,12 @@ export async function sendChatMessage(
       lines.push(`  Cancel: cancel ${action.id}`);
     });
 
-    const assistantMessage = store.recordChatMessage("assistant", lines.join("\n"), {
+    const assistantMessage = store.recordChatMessage(userId, "assistant", lines.join("\n"), {
       contextWindow: "",
       pendingActions: pendingActionsAtStart
     });
-    void bufferForJournalBatch(store, userMessage, assistantMessage);
-    const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
+    void bufferForJournalBatch(store, userId, userMessage, assistantMessage);
+    const historyPage = store.getChatHistory(userId, { page: 1, pageSize: 20 });
 
     return {
       reply: assistantMessage.content,
@@ -3428,8 +3438,8 @@ export async function sendChatMessage(
   }
 
   if (actionCommand) {
-    const userMessage = store.recordChatMessage("user", userInput, userMetadata);
-    const pendingAction = store.getPendingChatActionById(actionCommand.actionId, now);
+    const userMessage = store.recordChatMessage(userId, "user", userInput, userMetadata);
+    const pendingAction = store.getPendingChatActionById(userId, actionCommand.actionId, now);
 
     let assistantReply: string;
     let assistantMetadata: ChatMessageMetadata;
@@ -3438,10 +3448,10 @@ export async function sendChatMessage(
       assistantReply = `No pending action found for "${actionCommand.actionId}".`;
       assistantMetadata = {
         contextWindow: "",
-        pendingActions: store.getPendingChatActions(now)
+        pendingActions: store.getPendingChatActions(userId, now)
       };
     } else if (actionCommand.type === "cancel") {
-      store.deletePendingChatAction(pendingAction.id);
+      store.deletePendingChatAction(userId, pendingAction.id);
       assistantReply = `Cancelled action "${pendingAction.summary}".`;
       assistantMetadata = {
         contextWindow: "",
@@ -3451,11 +3461,11 @@ export async function sendChatMessage(
           status: "cancelled",
           message: "Cancelled by user confirmation command."
         },
-        pendingActions: store.getPendingChatActions(now)
+        pendingActions: store.getPendingChatActions(userId, now)
       };
     } else {
-      const execution = executePendingChatAction(pendingAction, store);
-      store.deletePendingChatAction(pendingAction.id);
+      const execution = executePendingChatAction(pendingAction, store, userId);
+      store.deletePendingChatAction(userId, pendingAction.id);
 
       assistantReply = execution.message;
       assistantMetadata = {
@@ -3466,13 +3476,13 @@ export async function sendChatMessage(
           status: execution.success ? "confirmed" : "failed",
           message: execution.message
         },
-        pendingActions: store.getPendingChatActions(now)
+        pendingActions: store.getPendingChatActions(userId, now)
       };
     }
 
-    const assistantMessage = store.recordChatMessage("assistant", assistantReply, assistantMetadata);
-    void bufferForJournalBatch(store, userMessage, assistantMessage);
-    const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
+    const assistantMessage = store.recordChatMessage(userId, "assistant", assistantReply, assistantMetadata);
+    void bufferForJournalBatch(store, userId, userMessage, assistantMessage);
+    const historyPage = store.getChatHistory(userId, { page: 1, pageSize: 20 });
     const citations = assistantMessage.metadata?.citations ?? [];
 
     return {
@@ -3485,17 +3495,18 @@ export async function sendChatMessage(
     };
   }
 
-  const recentHistoryForIntent = store.getRecentChatMessages(FUNCTION_CALL_HISTORY_LIMIT);
+  const recentHistoryForIntent = store.getRecentChatMessages(userId, FUNCTION_CALL_HISTORY_LIMIT);
   const habitGoalAutocapture = detectHabitGoalAutocaptureSuggestion(
     store,
+    userId,
     userInput,
     recentHistoryForIntent,
     pendingActionsAtStart
   );
 
   if (habitGoalAutocapture) {
-    const userMessage = store.recordChatMessage("user", userInput, userMetadata);
-    const pendingAction = store.createPendingChatAction({
+    const userMessage = store.recordChatMessage(userId, "user", userInput, userMetadata);
+    const pendingAction = store.createPendingChatAction(userId, {
       actionType: habitGoalAutocapture.actionType,
       summary: habitGoalAutocapture.summary,
       payload: {
@@ -3503,8 +3514,8 @@ export async function sendChatMessage(
         rationale: habitGoalAutocapture.rationale
       }
     });
-    const execution = executePendingChatAction(pendingAction, store);
-    store.deletePendingChatAction(pendingAction.id);
+    const execution = executePendingChatAction(pendingAction, store, userId);
+    store.deletePendingChatAction(userId, pendingAction.id);
 
     const assistantReply = execution.success
       ? [
@@ -3533,7 +3544,7 @@ export async function sendChatMessage(
         timestamp: now.toISOString()
       });
     }
-    const assistantMessage = store.recordChatMessage("assistant", assistantReply, {
+    const assistantMessage = store.recordChatMessage(userId, "assistant", assistantReply, {
       contextWindow: "",
       actionExecution: {
         actionId: execution.actionId,
@@ -3543,8 +3554,8 @@ export async function sendChatMessage(
       },
       ...(autoCitations.length > 0 ? { citations: autoCitations } : {})
     });
-    void bufferForJournalBatch(store, userMessage, assistantMessage);
-    const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
+    void bufferForJournalBatch(store, userId, userMessage, assistantMessage);
+    const historyPage = store.getChatHistory(userId, { page: 1, pageSize: 20 });
     const citations = assistantMessage.metadata?.citations ?? [];
 
     return {
@@ -3571,18 +3582,18 @@ export async function sendChatMessage(
   let streamedTokenChars = 0;
   const contextWindow = "";
   const history = recentHistoryForIntent;
-  let longTermMemory = store.getChatLongTermMemory();
-  const totalChatMessages = store.getChatMessageCount();
+  let longTermMemory = store.getChatLongTermMemory(userId);
+  const totalChatMessages = store.getChatMessageCount(userId);
   if (shouldRefreshLongTermMemory(totalChatMessages, longTermMemory, now)) {
     try {
-      const compressedMemory = await compressChatContext(store, {
+      const compressedMemory = await compressChatContext(store, userId, {
         now,
         geminiClient: gemini,
         maxMessages: 500,
         preserveRecentMessages: 24,
         targetSummaryChars: 6000
       });
-      longTermMemory = store.upsertChatLongTermMemory({
+      longTermMemory = store.upsertChatLongTermMemory(userId, {
         summary: compressedMemory.summary,
         sourceMessageCount: compressedMemory.sourceMessageCount,
         totalMessagesAtCompression: compressedMemory.totalMessagesAtCompression,
@@ -3599,13 +3610,13 @@ export async function sendChatMessage(
   const longTermMemoryNudge = buildLongTermMemoryNudge(longTermMemory);
   const systemInstruction = buildFunctionCallingSystemInstruction(
     config.USER_NAME,
-    buildHabitGoalNudgeContext(store),
-    buildRuntimeContextNudge(store, now),
+    buildHabitGoalNudgeContext(store, userId),
+    buildRuntimeContextNudge(store, userId, now),
     longTermMemoryNudge
   );
 
   const messages = toGeminiMessages(history, userInput, attachments);
-  const userMessage = store.recordChatMessage("user", userInput, userMetadata);
+  const userMessage = store.recordChatMessage(userId, "user", userInput, userMetadata);
   let response: Awaited<ReturnType<GeminiClient["generateChatResponse"]>> | null = null;
   let totalUsage: ChatUsage | undefined = undefined;
   let pendingActionsFromTooling: ChatPendingAction[] = [];
@@ -3673,7 +3684,7 @@ export async function sendChatMessage(
         console.log(`[tool] Round ${round + 1}/${callIndex + 1}: ${call.name}(${JSON.stringify(args).slice(0, 200)})`);
         let result: { name: string; response: unknown };
         try {
-          result = executeFunctionCall(call.name, args, store);
+          result = executeFunctionCall(call.name, args, store, userId);
           const resultSummary = JSON.stringify(result.response);
           console.log(`[tool] ${call.name} → ${resultSummary.length > 300 ? resultSummary.slice(0, 300) + "..." : resultSummary}`);
         } catch (error) {
@@ -3685,7 +3696,7 @@ export async function sendChatMessage(
             modelResponse: { error: message }
           };
         }
-        const nextCitations = collectToolCitations(store, result.name, result.response);
+        const nextCitations = collectToolCitations(store, userId, result.name, result.response);
         nextCitations.forEach((citation) => addCitation(citations, citation));
         return {
           id: `${round + 1}-${callIndex}`,
@@ -3774,14 +3785,14 @@ export async function sendChatMessage(
         finishReason: "rate_limit_fallback",
         usage: totalUsage,
         mood: rateLimitMood,
-        ...(pendingActionsFromTooling.length > 0 ? { pendingActions: store.getPendingChatActions(now) } : {}),
+        ...(pendingActionsFromTooling.length > 0 ? { pendingActions: store.getPendingChatActions(userId, now) } : {}),
         ...(citations.size > 0
           ? { citations: Array.from(citations.values()).slice(0, MAX_CHAT_CITATIONS) }
           : {})
       };
-      const assistantMessage = store.recordChatMessage("assistant", fallbackReply, assistantMetadata);
-      void bufferForJournalBatch(store, userMessage, assistantMessage, gemini);
-      const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
+      const assistantMessage = store.recordChatMessage(userId, "assistant", fallbackReply, assistantMetadata);
+      void bufferForJournalBatch(store, userId, userMessage, assistantMessage, gemini);
+      const historyPage = store.getChatHistory(userId, { page: 1, pageSize: 20 });
 
       return {
         reply: assistantMessage.content,
@@ -3838,14 +3849,14 @@ export async function sendChatMessage(
     finishReason: response?.finishReason,
     usage: totalUsage,
     mood: resolvedMood,
-    ...(pendingActionsFromTooling.length > 0 ? { pendingActions: store.getPendingChatActions(now) } : {}),
+    ...(pendingActionsFromTooling.length > 0 ? { pendingActions: store.getPendingChatActions(userId, now) } : {}),
     ...(citations.size > 0 ? { citations: Array.from(citations.values()).slice(0, MAX_CHAT_CITATIONS) } : {})
   };
 
-  const assistantMessage = store.recordChatMessage("assistant", finalReply, assistantMetadata);
-  void bufferForJournalBatch(store, userMessage, assistantMessage, gemini);
+  const assistantMessage = store.recordChatMessage(userId, "assistant", finalReply, assistantMetadata);
+  void bufferForJournalBatch(store, userId, userMessage, assistantMessage, gemini);
 
-  const historyPage = store.getChatHistory({ page: 1, pageSize: 20 });
+  const historyPage = store.getChatHistory(userId, { page: 1, pageSize: 20 });
 
   return {
     reply: assistantMessage.content,

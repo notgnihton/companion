@@ -24,8 +24,8 @@ export type { GitHubTrackedRepo as TrackedRepo };
  * Read user-configured tracked repos from the store.
  * Returns empty array if none configured yet.
  */
-export function getTrackedRepos(store: RuntimeStore): GitHubTrackedRepo[] {
-  return store.getGitHubTrackedRepos();
+export function getTrackedRepos(store: RuntimeStore, userId: string): GitHubTrackedRepo[] {
+  return store.getGitHubTrackedRepos(userId);
 }
 
 // ── Tool declarations for the agent ───────────────────────────────
@@ -309,6 +309,7 @@ export interface GitHubAgentResult {
 export async function runGitHubAgent(
   store: RuntimeStore,
   gemini: GeminiClient,
+  userId: string,
   changedRepos?: GitHubTrackedRepo[],
   /** Previous HEAD SHAs for diff-based scanning. Key: "owner/repo", value: previous SHA */
   previousShas?: Record<string, string>,
@@ -323,7 +324,7 @@ export async function runGitHubAgent(
     return { success: false, deadlinesCreated: 0, deadlinesUpdated: 0, documentsStored: 0, reposScanned: 0, error: "Gemini not configured" };
   }
 
-  const repos = changedRepos ?? getTrackedRepos(store);
+  const repos = changedRepos ?? getTrackedRepos(store, userId);
   if (repos.length === 0) {
     return { success: true, deadlinesCreated: 0, deadlinesUpdated: 0, documentsStored: 0, reposScanned: 0, error: "No tracked repos configured" };
   }
@@ -411,7 +412,7 @@ export async function runGitHubAgent(
   // Persist results
   let deadlinesCreated = 0;
   let deadlinesUpdated = 0;
-  const existingDeadlines = store.getDeadlines();
+  const existingDeadlines = store.getDeadlines(userId);
   const existingMap = new Map<string, Deadline>();
   for (const d of existingDeadlines) {
     existingMap.set(generateDeadlineKey(d.course, d.task), d);
@@ -423,7 +424,7 @@ export async function runGitHubAgent(
     const existing = existingMap.get(key);
 
     if (!existing) {
-      const created = store.createDeadline(newDeadline);
+      const created = store.createDeadline(userId, newDeadline);
       deadlinesCreated++;
       createdDeadlines.push(created);
     } else if (!existing.completed) {
@@ -436,21 +437,21 @@ export async function runGitHubAgent(
         if (!userOverrodeDueDate) {
           patch.dueDate = newDeadline.dueDate;
         }
-        store.updateDeadline(existing.id, patch);
+        store.updateDeadline(userId, existing.id, patch);
         deadlinesUpdated++;
       }
     }
   }
 
   if (createdDeadlines.length > 0) {
-    publishNewDeadlineReleaseNotifications(store, "github", createdDeadlines);
+    publishNewDeadlineReleaseNotifications(store, userId, "github", createdDeadlines);
   }
 
   // Store course documents and sync state
-  const previousData = store.getGitHubCourseData();
+  const previousData = store.getGitHubCourseData(userId);
   const mergedDocuments = mergeDocuments(previousData?.documents ?? [], results.documents);
 
-  store.setGitHubCourseData({
+  store.setGitHubCourseData(userId, {
     repositories: repos.map((r) => ({ owner: r.owner, repo: r.repo, courseCode: r.courseCode ?? "" })),
     documents: mergedDocuments,
     deadlinesSynced: results.deadlines.length,

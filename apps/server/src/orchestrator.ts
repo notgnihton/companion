@@ -23,7 +23,7 @@ export class OrchestratorRuntime {
     new AssignmentTrackerAgent()
   ];
 
-  constructor(private readonly store: RuntimeStore) {}
+  constructor(private readonly store: RuntimeStore, private readonly userId: string) {}
 
   start(): void {
     this.emitBootNotification();
@@ -38,7 +38,7 @@ export class OrchestratorRuntime {
           });
         } catch (error) {
           this.store.markAgentError(agent.name);
-          this.store.pushNotification({
+          this.store.pushNotification(this.userId, {
             source: "orchestrator",
             title: `${agent.name} failed`,
             message: error instanceof Error ? error.message : "unknown runtime error",
@@ -86,7 +86,7 @@ export class OrchestratorRuntime {
 
   private handleEvent(event: AgentEvent): void {
     this.store.recordEvent(event);
-    const context = this.store.getUserContext();
+    const context = this.store.getUserContext(this.userId);
     const nudge = buildContextAwareNudge(event, context);
 
     if (nudge) {
@@ -95,11 +95,11 @@ export class OrchestratorRuntime {
       // quiet hours) already controls whether the user actually sees them.
       // Only user-created reminders (via Gemini scheduleReminder tool) go
       // through the scheduled_notifications table.
-      this.store.pushNotification(nudge);
+      this.store.pushNotification(this.userId, nudge);
       return;
     }
 
-    this.store.pushNotification({
+    this.store.pushNotification(this.userId, {
       source: "orchestrator",
       title: "Unknown event",
       message: `Unhandled event type: ${event.eventType}`,
@@ -108,7 +108,7 @@ export class OrchestratorRuntime {
   }
 
   private emitBootNotification(): void {
-    this.store.pushNotification({
+    this.store.pushNotification(this.userId, {
       source: "orchestrator",
       title: "Companion online",
       message: "All agents scheduled and running.",
@@ -118,12 +118,13 @@ export class OrchestratorRuntime {
 
   private emitOverdueDeadlineReminders(): void {
     const overdueDeadlines = this.store.getOverdueDeadlinesRequiringReminder(
+      this.userId,
       new Date().toISOString(),
       this.deadlineReminderCooldownMinutes
     );
 
     for (const deadline of overdueDeadlines) {
-      const reminder = this.store.recordDeadlineReminder(deadline.id);
+      const reminder = this.store.recordDeadlineReminder(this.userId, deadline.id);
 
       if (!reminder) {
         continue;
@@ -133,7 +134,7 @@ export class OrchestratorRuntime {
       const overdueHours = Math.max(1, Math.floor(overdueMs / (60 * 60 * 1000)));
 
       // Overdue reminders are always urgent
-      this.store.pushNotification({
+      this.store.pushNotification(this.userId, {
         source: "assignment-tracker",
         title: "Deadline status check",
         message: `${deadline.task} for ${deadline.course} is overdue by ${overdueHours}h. Mark complete or let me know you're still working.`,
@@ -151,7 +152,7 @@ export class OrchestratorRuntime {
    * Process scheduled notifications that are now due
    */
   private processScheduledNotifications(): void {
-    const dueNotifications = this.store.getDueScheduledNotifications();
+    const dueNotifications = this.store.getDueScheduledNotifications(this.userId);
     if (dueNotifications.length === 0) {
       return;
     }
@@ -160,20 +161,20 @@ export class OrchestratorRuntime {
     const immediateNotifications = dueNotifications.filter((scheduled) => !isDigestCandidate(scheduled));
 
     for (const scheduled of immediateNotifications) {
-      this.store.pushNotification(scheduled.notification);
+      this.store.pushNotification(this.userId, scheduled.notification);
       this.rescheduleIfRecurring(scheduled);
-      this.store.removeScheduledNotification(scheduled.id);
+      this.store.removeScheduledNotification(this.userId, scheduled.id);
     }
 
     if (digestCandidates.length > 0) {
       const digest = buildDigestNotification(digestCandidates, new Date());
       if (digest) {
-        this.store.pushNotification(digest);
+        this.store.pushNotification(this.userId, digest);
       }
 
       for (const scheduled of digestCandidates) {
         this.rescheduleIfRecurring(scheduled);
-        this.store.removeScheduledNotification(scheduled.id);
+        this.store.removeScheduledNotification(this.userId, scheduled.id);
       }
     }
   }
@@ -211,6 +212,7 @@ export class OrchestratorRuntime {
     }
 
     this.store.scheduleNotification(
+      this.userId,
       scheduled.notification,
       next,
       scheduled.eventId,
@@ -225,10 +227,10 @@ export class OrchestratorRuntime {
   private checkProactiveTriggers(): void {
     void (async () => {
       try {
-        const notifications = await checkProactiveTriggersWithCooldown(this.store);
+        const notifications = await checkProactiveTriggersWithCooldown(this.store, this.userId);
 
         for (const notification of notifications) {
-          this.store.pushNotification(notification);
+          this.store.pushNotification(this.userId, notification);
         }
       } catch (error) {
         // Log error but don't crash the orchestrator

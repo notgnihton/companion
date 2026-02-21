@@ -6,11 +6,12 @@ import fs from "fs";
 describe("BackgroundSyncService", () => {
   let store: RuntimeStore;
   let syncService: BackgroundSyncService;
+  const userId = "test-user";
   const testDbPath = ":memory:";
 
   beforeEach(() => {
     store = new RuntimeStore(testDbPath);
-    syncService = new BackgroundSyncService(store);
+    syncService = new BackgroundSyncService(store, userId);
   });
 
   afterEach(() => {
@@ -88,7 +89,7 @@ describe("BackgroundSyncService", () => {
       expect(result.processed).toBe(1);
       expect(result.failed).toBe(0);
 
-      const deadlines = store.getDeadlines();
+      const deadlines = store.getDeadlines(userId);
       expect(deadlines.some((deadline) => deadline.course === "DAT560" && deadline.task === "Lab 3")).toBe(true);
     });
 
@@ -102,14 +103,14 @@ describe("BackgroundSyncService", () => {
       const result = await syncService.processQueue();
       expect(result.processed).toBe(1);
 
-      const context = store.getUserContext();
+      const context = store.getUserContext(userId);
       expect(context.stressLevel).toBe("low");
       expect(context.energyLevel).toBe("high");
       expect(context.mode).toBe("focus");
     });
 
     it("should process habit check-in sync operations", async () => {
-      const habit = store.createHabit({
+      const habit = store.createHabit(userId, {
         name: "Study sprint",
         cadence: "daily",
         targetPerWeek: 5
@@ -123,12 +124,12 @@ describe("BackgroundSyncService", () => {
       const result = await syncService.processQueue();
       expect(result.processed).toBe(1);
 
-      const updated = store.getHabitsWithStatus().find((item) => item.id === habit.id);
+      const updated = store.getHabitsWithStatus(userId).find((item) => item.id === habit.id);
       expect(updated?.todayCompleted).toBe(true);
     });
 
     it("should process goal check-in sync operations", async () => {
-      const goal = store.createGoal({
+      const goal = store.createGoal(userId, {
         title: "Ship assignment",
         cadence: "weekly",
         targetCount: 3,
@@ -143,12 +144,12 @@ describe("BackgroundSyncService", () => {
       const result = await syncService.processQueue();
       expect(result.processed).toBe(1);
 
-      const updated = store.getGoalsWithStatus().find((item) => item.id === goal.id);
+      const updated = store.getGoalsWithStatus(userId).find((item) => item.id === goal.id);
       expect(updated?.todayCompleted).toBe(true);
     });
 
     it("should process schedule update sync operations", async () => {
-      const block = store.createLectureEvent({
+      const block = store.createLectureEvent(userId, {
         title: "Focus block",
         startTime: "2026-02-18T10:00:00.000Z",
         durationMinutes: 60,
@@ -166,7 +167,7 @@ describe("BackgroundSyncService", () => {
       const result = await syncService.processQueue();
       expect(result.processed).toBe(1);
 
-      const updated = store.getScheduleEventById(block.id);
+      const updated = store.getScheduleEventById(userId, block.id);
       expect(updated?.durationMinutes).toBe(90);
       expect(updated?.workload).toBe("high");
     });
@@ -186,7 +187,7 @@ describe("BackgroundSyncService", () => {
       const result = await syncService.processQueue();
       expect(result.processed).toBe(1);
 
-      const deadlines = store.getDeadlines();
+      const deadlines = store.getDeadlines(userId);
       expect(deadlines.some(d => d.course === "CS101" && d.task === "Assignment 1")).toBe(true);
     });
 
@@ -329,7 +330,7 @@ describe("BackgroundSyncService", () => {
   describe("Deadline Update Operations", () => {
     it("should update existing deadlines", async () => {
       // Create a deadline first
-      const deadline = store.createDeadline({
+      const deadline = store.createDeadline(userId, {
         course: "MATH202",
         task: "Homework 5",
         dueDate: new Date(Date.now() + 86400000).toISOString(),
@@ -348,7 +349,7 @@ describe("BackgroundSyncService", () => {
 
       await syncService.processQueue();
 
-      const updated = store.getDeadlineById(deadline.id);
+      const updated = store.getDeadlineById(userId, deadline.id);
       expect(updated?.priority).toBe("high");
       expect(updated?.completed).toBe(true);
     });

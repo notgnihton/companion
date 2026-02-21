@@ -4,6 +4,7 @@ import { sendChatMessage, compressChatContext, RateLimitError } from "./chat.js"
 import type { GeminiClient } from "./gemini.js";
 
 describe("chat service", () => {
+  const userId = "test-user";
   let store: RuntimeStore;
   let fakeGemini: GeminiClient;
   let generateChatResponse: any;
@@ -87,14 +88,14 @@ describe("chat service", () => {
   it("builds chat context and stores conversation history", async () => {
     const now = new Date("2026-02-16T09:00:00.000Z");
 
-    store.createLectureEvent({
+    store.createLectureEvent(userId, {
       title: "DAT520 Lecture",
       startTime: "2026-02-16T10:15:00.000Z",
       durationMinutes: 90,
       workload: "medium"
     });
 
-    store.createDeadline({
+    store.createDeadline(userId, {
       course: "DAT560",
       task: "Assignment 1",
       dueDate: "2026-02-18T23:59:00.000Z",
@@ -102,9 +103,9 @@ describe("chat service", () => {
       completed: false
     });
 
-    store.recordJournalEntry("Reflected on yesterday's study session.");
+    store.recordJournalEntry(userId, "Reflected on yesterday's study session.");
 
-    const result = await sendChatMessage(store, "What should I focus on today?", {
+    const result = await sendChatMessage(store, userId, "What should I focus on today?", {
       geminiClient: fakeGemini,
       now,
     });
@@ -114,7 +115,7 @@ describe("chat service", () => {
     expect(result.assistantMessage.metadata?.contextWindow).toBe("");
     expect(result.assistantMessage.metadata?.usage?.totalTokens).toBe(18);
 
-    const history = store.getChatHistory({ page: 1, pageSize: 5 });
+    const history = store.getChatHistory(userId, { page: 1, pageSize: 5 });
     expect(history.messages).toHaveLength(2);
     expect(history.messages[0].role).toBe("assistant");
     expect(history.messages[1].role).toBe("user");
@@ -123,7 +124,7 @@ describe("chat service", () => {
   it("includes Canvas announcements in context when available", async () => {
     const now = new Date("2026-02-16T09:00:00.000Z");
 
-    store.setCanvasData({
+    store.setCanvasData(userId, {
       courses: [],
       assignments: [],
       modules: [],
@@ -148,7 +149,7 @@ describe("chat service", () => {
       lastSyncedAt: "2026-02-16T08:00:00.000Z"
     });
 
-    const result = await sendChatMessage(store, "What's new?", {
+    const result = await sendChatMessage(store, userId, "What's new?", {
       geminiClient: fakeGemini,
       now,
     });
@@ -162,7 +163,7 @@ describe("chat service", () => {
     const now = new Date("2026-02-16T09:00:00.000Z");
 
     // Add Gmail messages
-    store.setGmailMessages(
+    store.setGmailMessages(userId,
       [
         {
           id: "msg1",
@@ -204,7 +205,7 @@ describe("chat service", () => {
       "2026-02-16T08:00:00.000Z"
     );
 
-    const result = await sendChatMessage(store, "What's in my inbox?", {
+    const result = await sendChatMessage(store, userId, "What's in my inbox?", {
       geminiClient: fakeGemini,
       now,
     });
@@ -219,7 +220,7 @@ describe("chat service", () => {
   it("shows fallback message when no Gmail messages are synced", async () => {
     const now = new Date("2026-02-16T09:00:00.000Z");
 
-    const result = await sendChatMessage(store, "Check my emails", {
+    const result = await sendChatMessage(store, userId, "Check my emails", {
       geminiClient: fakeGemini,
       now,
     });
@@ -231,7 +232,7 @@ describe("chat service", () => {
 
   it("adds deadline citations when getDeadlines tool is used", async () => {
     const dueDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
-    const deadline = store.createDeadline({
+    const deadline = store.createDeadline(userId, {
       course: "DAT560",
       task: "Assignment 2",
       dueDate,
@@ -260,7 +261,7 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await sendChatMessage(store, "What is due this week?", {
+    const result = await sendChatMessage(store, userId, "What is due this week?", {
       geminiClient: fakeGemini,
     });
 
@@ -277,14 +278,14 @@ describe("chat service", () => {
 
   it("hydrates generic getDeadlines calls with inferred course code from user text", async () => {
     const dueSoon = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
-    const dat560 = store.createDeadline({
+    const dat560 = store.createDeadline(userId, {
       course: "DAT560",
       task: "Assignment 2",
       dueDate: dueSoon,
       priority: "high",
       completed: false
     });
-    store.createDeadline({
+    store.createDeadline(userId, {
       course: "DAT520",
       task: "Lab 4",
       dueDate: dueSoon,
@@ -313,7 +314,7 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    await sendChatMessage(store, "What deadlines do I have for DAT560?", {
+    await sendChatMessage(store, userId, "What deadlines do I have for DAT560?", {
       geminiClient: fakeGemini,
     });
 
@@ -334,7 +335,7 @@ describe("chat service", () => {
 
   it("adds GitHub course citations when getGitHubCourseContent tool is used", async () => {
     const nowIso = new Date().toISOString();
-    store.setGitHubCourseData({
+    store.setGitHubCourseData(userId, {
       repositories: [{ owner: "dat560-2026", repo: "info", courseCode: "DAT560" }],
       documents: [
         {
@@ -376,7 +377,7 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await sendChatMessage(store, "What does DAT560 say about deliverables?", {
+    const result = await sendChatMessage(store, userId, "What does DAT560 say about deliverables?", {
       geminiClient: fakeGemini,
     });
 
@@ -397,13 +398,13 @@ describe("chat service", () => {
 
   it("supports multiple tool-call rounds before returning final text", async () => {
     const now = new Date();
-    const schedule = store.createLectureEvent({
+    const schedule = store.createLectureEvent(userId, {
       title: "DAT520 Lecture",
       startTime: now.toISOString(),
       durationMinutes: 90,
       workload: "medium"
     });
-    const deadline = store.createDeadline({
+    const deadline = store.createDeadline(userId, {
       course: "DAT560",
       task: "Assignment 2",
       dueDate: new Date(now.getTime() + 26 * 60 * 60 * 1000).toISOString(),
@@ -442,7 +443,7 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await sendChatMessage(store, "What's up today and what's due?", {
+    const result = await sendChatMessage(store, userId, "What's up today and what's due?", {
       geminiClient: fakeGemini,
     });
 
@@ -458,7 +459,7 @@ describe("chat service", () => {
 
   it("returns a tool-data fallback instead of generic failure when final text is empty", async () => {
     const now = new Date();
-    store.createLectureEvent({
+    store.createLectureEvent(userId, {
       title: "DAT520 Lecture",
       startTime: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
       durationMinutes: 90,
@@ -486,7 +487,7 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await sendChatMessage(store, "What is my schedule today?", {
+    const result = await sendChatMessage(store, userId, "What is my schedule today?", {
       geminiClient: fakeGemini,
     });
 
@@ -496,7 +497,7 @@ describe("chat service", () => {
   });
 
   it("returns routine preset fallback details when getRoutinePresets is called and model returns empty text", async () => {
-    store.createRoutinePreset({
+    store.createRoutinePreset(userId, {
       title: "Morning gym",
       preferredStartTime: "07:00",
       durationMinutes: 60,
@@ -526,7 +527,7 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await sendChatMessage(store, "What routines do I have?", {
+    const result = await sendChatMessage(store, userId, "What routines do I have?", {
       geminiClient: fakeGemini,
     });
 
@@ -538,7 +539,7 @@ describe("chat service", () => {
   });
 
   it("uses model-driven tool routing instruction without local intent markers", async () => {
-    await sendChatMessage(store, "What's my lecture schedule today?", {
+    await sendChatMessage(store, userId, "What's my lecture schedule today?", {
       geminiClient: fakeGemini,
     });
 
@@ -549,7 +550,7 @@ describe("chat service", () => {
   });
 
   it("keeps generic tool-use behavior hints in function-calling instruction", async () => {
-    await sendChatMessage(store, "How do I export a backup and restore it later?", {
+    await sendChatMessage(store, userId, "How do I export a backup and restore it later?", {
       geminiClient: fakeGemini,
     });
 
@@ -571,7 +572,7 @@ describe("chat service", () => {
 
   it("injects runtime time and unread email status into system instruction", async () => {
     const now = new Date("2026-02-18T15:30:00.000Z");
-    store.setGmailMessages(
+    store.setGmailMessages(userId,
       [
         {
           id: "msg-new",
@@ -586,7 +587,7 @@ describe("chat service", () => {
       "2026-02-18T15:00:00.000Z"
     );
 
-    await sendChatMessage(store, "anything new?", {
+    await sendChatMessage(store, userId, "anything new?", {
       geminiClient: fakeGemini,
       now,
     });
@@ -609,7 +610,7 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await sendChatMessage(store, "How is my schedule looking?", {
+    const result = await sendChatMessage(store, userId, "How is my schedule looking?", {
       geminiClient: fakeGemini,
     });
 
@@ -619,7 +620,7 @@ describe("chat service", () => {
   });
 
   it("keeps email follow-up handling model-driven (no local email intent override marker)", async () => {
-    store.recordChatMessage("assistant", "Recent emails (1): DAT560 Assignment update", {
+    store.recordChatMessage(userId, "assistant", "Recent emails (1): DAT560 Assignment update", {
       citations: [
         {
           id: "gmail-1",
@@ -629,7 +630,7 @@ describe("chat service", () => {
       ]
     });
 
-    await sendChatMessage(store, "what did it contain?", {
+    await sendChatMessage(store, userId, "what did it contain?", {
       geminiClient: fakeGemini,
     });
 
@@ -639,7 +640,7 @@ describe("chat service", () => {
   });
 
   it("includes Gmail snippet/from/receivedAt in getEmails functionResponse payload", async () => {
-    store.setGmailMessages(
+    store.setGmailMessages(userId,
       [
         {
           id: "gmail-123",
@@ -675,7 +676,7 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    await sendChatMessage(store, "What did my last email contain?", {
+    await sendChatMessage(store, userId, "What did my last email contain?", {
       geminiClient: fakeGemini,
     });
 
@@ -703,7 +704,7 @@ describe("chat service", () => {
   it("compacts large tool responses before sending functionResponse payloads to Gemini", async () => {
     const now = Date.now();
     for (let index = 0; index < 40; index += 1) {
-      store.createDeadline({
+      store.createDeadline(userId, {
         course: "DAT560",
         task: `Assignment ${index + 1} with very long context details that are useful but should be bounded`,
         dueDate: new Date(now + (index + 1) * 24 * 60 * 60 * 1000).toISOString(),
@@ -733,7 +734,7 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    await sendChatMessage(store, "Give me all upcoming deadlines", {
+    await sendChatMessage(store, userId, "Give me all upcoming deadlines", {
       geminiClient: fakeGemini,
     });
 
@@ -758,7 +759,7 @@ describe("chat service", () => {
 
   it("returns a local fallback reply when second function-calling pass is rate limited", async () => {
     const now = new Date();
-    store.createLectureEvent({
+    store.createLectureEvent(userId, {
       title: "DAT520 Lecture",
       startTime: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
       durationMinutes: 90,
@@ -783,7 +784,7 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await sendChatMessage(store, "What's my schedule today?", {
+    const result = await sendChatMessage(store, userId, "What's my schedule today?", {
       geminiClient: fakeGemini,
     });
 
@@ -801,49 +802,49 @@ describe("chat service", () => {
   });
 
   it("executes pending action on explicit confirm command without Gemini call", async () => {
-    const deadline = store.createDeadline({
+    const deadline = store.createDeadline(userId, {
       course: "DAT520",
       task: "Lab 5",
       dueDate: "2026-02-20T12:00:00.000Z",
       priority: "high",
       completed: false
     });
-    const pending = store.createPendingChatAction({
+    const pending = store.createPendingChatAction(userId, {
       actionType: "complete-deadline",
       summary: "Complete DAT520 Lab 5",
       payload: { deadlineId: deadline.id }
     });
 
-    const result = await sendChatMessage(store, `confirm ${pending.id}`, {
+    const result = await sendChatMessage(store, userId, `confirm ${pending.id}`, {
       geminiClient: fakeGemini
     });
 
     expect(generateChatResponse).not.toHaveBeenCalled();
     expect(result.reply).toContain("Marked DAT520 Lab 5 as completed");
     expect(result.assistantMessage.metadata?.actionExecution?.status).toBe("confirmed");
-    expect(store.getDeadlineById(deadline.id, false)?.completed).toBe(true);
-    expect(store.getPendingChatActions()).toHaveLength(0);
+    expect(store.getDeadlineById(userId, deadline.id, false)?.completed).toBe(true);
+    expect(store.getPendingChatActions(userId)).toHaveLength(0);
   });
 
   it("cancels pending action on explicit cancel command without Gemini call", async () => {
-    const pending = store.createPendingChatAction({
+    const pending = store.createPendingChatAction(userId, {
       actionType: "create-habit",
       summary: "Create habit",
       payload: { name: "Morning run", cadence: "daily", targetPerWeek: 5 }
     });
 
-    const result = await sendChatMessage(store, `cancel ${pending.id}`, {
+    const result = await sendChatMessage(store, userId, `cancel ${pending.id}`, {
       geminiClient: fakeGemini
     });
 
     expect(generateChatResponse).not.toHaveBeenCalled();
     expect(result.reply).toContain("Cancelled action");
     expect(result.assistantMessage.metadata?.actionExecution?.status).toBe("cancelled");
-    expect(store.getPendingChatActions()).toHaveLength(0);
+    expect(store.getPendingChatActions(userId)).toHaveLength(0);
   });
 
   it("applies deadline completion immediately when Gemini calls queueDeadlineAction", async () => {
-    const deadline = store.createDeadline({
+    const deadline = store.createDeadline(userId, {
       course: "DAT560",
       task: "Assignment 2",
       dueDate: "2026-02-21T12:00:00.000Z",
@@ -882,19 +883,19 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await sendChatMessage(store, "Mark DAT560 Assignment 2 as complete", {
+    const result = await sendChatMessage(store, userId, "Mark DAT560 Assignment 2 as complete", {
       geminiClient: fakeGemini,
     });
 
     expect(generateChatResponse).toHaveBeenCalledTimes(2);
-    expect(store.getDeadlineById(deadline.id, false)?.completed).toBe(true);
+    expect(store.getDeadlineById(userId, deadline.id, false)?.completed).toBe(true);
     expect(result.assistantMessage.metadata?.pendingActions).toBeUndefined();
-    expect(store.getPendingChatActions()).toHaveLength(0);
+    expect(store.getPendingChatActions(userId)).toHaveLength(0);
     expect(result.reply).toContain("Done. Marked it complete.");
   });
 
   it("applies deadline reschedule immediately without creating pending confirmation", async () => {
-    const deadline = store.createDeadline({
+    const deadline = store.createDeadline(userId, {
       course: "DAT560",
       task: "Assignment 2",
       dueDate: "2026-02-18T12:00:00.000Z",
@@ -933,15 +934,15 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await sendChatMessage(store, "Extend DAT560 Assignment 2 to Feb 22 23:59", {
+    const result = await sendChatMessage(store, userId, "Extend DAT560 Assignment 2 to Feb 22 23:59", {
       geminiClient: fakeGemini
     });
 
     expect(generateChatResponse).toHaveBeenCalledTimes(2);
     expect(result.reply).toContain("Done. I moved that deadline");
     expect(result.assistantMessage.metadata?.pendingActions).toBeUndefined();
-    expect(store.getPendingChatActions()).toHaveLength(0);
-    expect(store.getDeadlineById(deadline.id, false)?.dueDate).toBe("2026-02-22T23:59:00.000Z");
+    expect(store.getPendingChatActions(userId)).toHaveLength(0);
+    expect(store.getDeadlineById(userId, deadline.id, false)?.dueDate).toBe("2026-02-22T23:59:00.000Z");
     expect(result.citations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -953,9 +954,9 @@ describe("chat service", () => {
   });
 
   it("autocaptures repeated commitment language and creates a habit immediately", async () => {
-    store.recordChatMessage("user", "I keep missing morning gym lately.");
+    store.recordChatMessage(userId, "user", "I keep missing morning gym lately.");
 
-    const result = await sendChatMessage(store, "I want to do morning gym consistently.", {
+    const result = await sendChatMessage(store, userId, "I want to do morning gym consistently.", {
       geminiClient: fakeGemini,
     });
 
@@ -963,35 +964,35 @@ describe("chat service", () => {
     expect(result.reply).toContain("Why I did this");
     expect(result.assistantMessage.metadata?.pendingActions).toBeUndefined();
     expect(result.assistantMessage.metadata?.actionExecution?.status).toBe("confirmed");
-    expect(store.getHabits().some((habit) => habit.name.toLowerCase().includes("morning gym"))).toBe(true);
+    expect(store.getHabits(userId).some((habit) => habit.name.toLowerCase().includes("morning gym"))).toBe(true);
   });
 
   it("autocaptures repeated struggle language and updates habit immediately", async () => {
-    const habit = store.createHabit({
+    const habit = store.createHabit(userId, {
       name: "Morning gym",
       cadence: "daily",
       targetPerWeek: 5
     });
 
-    store.recordChatMessage("user", "I keep missing morning gym.");
+    store.recordChatMessage(userId, "user", "I keep missing morning gym.");
 
-    const suggestion = await sendChatMessage(store, "I keep missing morning gym this week.", {
+    const suggestion = await sendChatMessage(store, userId, "I keep missing morning gym this week.", {
       geminiClient: fakeGemini,
     });
 
     expect(generateChatResponse).not.toHaveBeenCalled();
     expect(suggestion.assistantMessage.metadata?.pendingActions).toBeUndefined();
     expect(suggestion.assistantMessage.metadata?.actionExecution?.status).toBe("confirmed");
-    expect(store.getHabitById(habit.id)?.targetPerWeek).toBe(4);
+    expect(store.getHabitById(userId, habit.id)?.targetPerWeek).toBe(4);
   });
 
   it("adds habit/goal citations when getHabitsGoalsStatus tool is used", async () => {
-    const habit = store.createHabit({
+    const habit = store.createHabit(userId, {
       name: "Study sprint",
       cadence: "daily",
       targetPerWeek: 6
     });
-    const goal = store.createGoal({
+    const goal = store.createGoal(userId, {
       title: "Finish DAT560 assignment",
       cadence: "weekly",
       targetCount: 3,
@@ -1019,7 +1020,7 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await sendChatMessage(store, "How are my habits and goals going?", {
+    const result = await sendChatMessage(store, userId, "How are my habits and goals going?", {
       geminiClient: fakeGemini,
     });
 
@@ -1032,7 +1033,7 @@ describe("chat service", () => {
   });
 
   it("creates habit from empty state when Gemini calls createHabit", async () => {
-    expect(store.getHabitsWithStatus()).toHaveLength(0);
+    expect(store.getHabitsWithStatus(userId)).toHaveLength(0);
 
     generateChatResponse = vi
       .fn()
@@ -1059,12 +1060,12 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await sendChatMessage(store, "Create a habit called Study sprint", {
+    const result = await sendChatMessage(store, userId, "Create a habit called Study sprint", {
       geminiClient: fakeGemini,
     });
 
     expect(result.reply).toContain("Created a new habit");
-    expect(store.getHabitsWithStatus()).toHaveLength(1);
+    expect(store.getHabitsWithStatus(userId)).toHaveLength(1);
     expect(result.citations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: "habit", label: "Study sprint" })
@@ -1080,7 +1081,7 @@ describe("chat service", () => {
       fileName: "note.png"
     };
 
-    await sendChatMessage(store, "", {
+    await sendChatMessage(store, userId, "", {
       geminiClient: fakeGemini,
       attachments: [imageAttachment]
     });
@@ -1096,16 +1097,16 @@ describe("chat service", () => {
     expect(inlineData?.mimeType).toBe("image/png");
     expect(inlineData?.data).toBe("aGVsbG8=");
 
-    const history = store.getRecentChatMessages(2);
+    const history = store.getRecentChatMessages(userId, 2);
     const user = history.find((message) => message.role === "user");
     expect(user?.metadata?.attachments).toEqual([imageAttachment]);
   });
 
   it("compresses older chat context via Gemini", async () => {
-    store.recordChatMessage("user", "Need to finish DAT560 lab by Thursday evening.");
-    store.recordChatMessage("assistant", "Plan two focused blocks for DAT560 and one review block.");
-    store.recordChatMessage("user", "Latest short ping");
-    store.recordChatMessage("assistant", "Latest short pong");
+    store.recordChatMessage(userId, "user", "Need to finish DAT560 lab by Thursday evening.");
+    store.recordChatMessage(userId, "assistant", "Plan two focused blocks for DAT560 and one review block.");
+    store.recordChatMessage(userId, "user", "Latest short ping");
+    store.recordChatMessage(userId, "assistant", "Latest short pong");
 
     generateChatResponse = vi.fn().mockResolvedValue({
       text: "1) Active objectives\n- Finish DAT560 lab\n2) Deadlines and dates\n- DAT560 lab by Thursday evening",
@@ -1116,7 +1117,7 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await compressChatContext(store, {
+    const result = await compressChatContext(store, userId, {
       geminiClient: fakeGemini,
       maxMessages: 50,
       preserveRecentMessages: 2,
@@ -1139,9 +1140,9 @@ describe("chat service", () => {
   });
 
   it("falls back to heuristic compression when model call fails", async () => {
-    store.recordChatMessage("user", "I want to keep a daily study sprint after dinner.");
-    store.recordChatMessage("assistant", "Great, we can track this as a habit with check-ins.");
-    store.recordChatMessage("user", "Also keep gym at 07:00 before class.");
+    store.recordChatMessage(userId, "user", "I want to keep a daily study sprint after dinner.");
+    store.recordChatMessage(userId, "assistant", "Great, we can track this as a habit with check-ins.");
+    store.recordChatMessage(userId, "user", "Also keep gym at 07:00 before class.");
 
     generateChatResponse = vi.fn().mockRejectedValue(new RateLimitError("Temporary 429"));
     fakeGemini = {
@@ -1149,7 +1150,7 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    const result = await compressChatContext(store, {
+    const result = await compressChatContext(store, userId, {
       geminiClient: fakeGemini,
       maxMessages: 30,
       preserveRecentMessages: 0,
@@ -1164,8 +1165,8 @@ describe("chat service", () => {
 
   it("persists long-term memory and injects it into later chat turns", async () => {
     for (let index = 0; index < 12; index += 1) {
-      store.recordChatMessage("user", `Long-term preference ${index}: I prefer focused morning study.`);
-      store.recordChatMessage("assistant", `Acknowledged preference ${index}.`);
+      store.recordChatMessage(userId, "user", `Long-term preference ${index}: I prefer focused morning study.`);
+      store.recordChatMessage(userId, "assistant", `Acknowledged preference ${index}.`);
     }
 
     generateChatResponse = vi.fn(async () => ({
@@ -1177,11 +1178,11 @@ describe("chat service", () => {
       generateLiveChatResponse
     } as unknown as GeminiClient;
 
-    await sendChatMessage(store, "Can you plan tomorrow for me?", {
+    await sendChatMessage(store, userId, "Can you plan tomorrow for me?", {
       geminiClient: fakeGemini
     });
 
-    const memory = store.getChatLongTermMemory();
+    const memory = store.getChatLongTermMemory(userId);
     expect(memory).not.toBeNull();
     expect(memory?.summary).toContain("focused morning study");
 
