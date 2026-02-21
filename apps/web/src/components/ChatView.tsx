@@ -572,6 +572,9 @@ export function ChatView({ mood, onMoodChange }: ChatViewProps): JSX.Element {
     setIsSending(true);
     setError(null);
 
+    // Scroll immediately to show the user's own message
+    scheduleScrollToBottom("auto");
+
     const assistantPlaceholder: ChatMessage = {
       id: crypto.randomUUID(),
       role: "assistant",
@@ -584,7 +587,9 @@ export function ChatView({ mood, onMoodChange }: ChatViewProps): JSX.Element {
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches) {
       window.requestAnimationFrame(() => {
         inputRef.current?.blur();
-        scheduleScrollToBottom("auto");
+        // Delay scroll to let keyboard dismissal and layout shift settle
+        setTimeout(() => scrollToBottom("auto"), 120);
+        setTimeout(() => scrollToBottom("auto"), 300);
       });
     }
 
