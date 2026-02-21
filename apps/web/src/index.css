@@ -3161,6 +3161,9 @@ button:disabled {
 .settings-container {
   display: grid;
   gap: 24px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .settings-container h2 {
@@ -3182,6 +3185,7 @@ button:disabled {
 .settings-section {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .settings-section-title {
@@ -4334,6 +4338,8 @@ button:disabled {
 .tab-content-area {
   padding-bottom: var(--tab-bar-safe-space);
   min-height: calc(var(--app-viewport-height) - 120px);
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .tab-panel {
@@ -5994,6 +6000,9 @@ body.keyboard-open .pull-to-refresh-container {
 .settings-container {
   display: grid;
   gap: 24px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .settings-container h2 {
