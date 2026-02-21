@@ -11,7 +11,7 @@ import { TabBar, TabId } from "./components/TabBar";
 import { LockedFeatureOverlay, UpgradePrompt } from "./components/UpgradePrompt";
 import { useDashboard } from "./hooks/useDashboard";
 import { usePlan } from "./hooks/usePlan";
-import { getAuthMe, getAuthStatus, login, logout } from "./lib/api";
+import { getAuthMe, getAuthStatus, logout } from "./lib/api";
 import { enablePushNotifications, isPushEnabled, supportsPushNotifications } from "./lib/push";
 import { setupSyncListeners } from "./lib/sync";
 import { applyTheme } from "./lib/theme";
@@ -406,30 +406,6 @@ export default function App(): JSX.Element {
     saveChatMood(mood);
   }, []);
 
-  const pushButtonLabel =
-    pushState === "enabled"
-      ? "Push Enabled"
-      : pushState === "checking"
-        ? "Connecting..."
-        : "Enable Push";
-
-  const pushButtonDisabled =
-    pushState === "checking" || pushState === "enabled" || pushState === "unsupported";
-
-  const handleLogin = async (email: string, password: string): Promise<void> => {
-    setAuthSubmitting(true);
-    setAuthError(null);
-    try {
-      const session = await login(email, password);
-      setAuthUserEmail(session.user.email);
-      setAuthState("ready");
-    } catch (error) {
-      setAuthError(parseApiErrorMessage(error, "Sign in failed"));
-    } finally {
-      setAuthSubmitting(false);
-    }
-  };
-
   const handleLogout = async (): Promise<void> => {
     setAuthSubmitting(true);
     try {
@@ -467,7 +443,7 @@ export default function App(): JSX.Element {
   if (authState === "required-login") {
     return (
       <main className="app-shell">
-        <LoginView loading={authSubmitting} error={authError} onLogin={handleLogin} providers={authProviders} />
+        <LoginView loading={authSubmitting} error={authError} providers={authProviders} />
       </main>
     );
   }
@@ -475,26 +451,6 @@ export default function App(): JSX.Element {
   return (
     <main className={`app-shell chat-mood-${chatMood} ${activeTab === "chat" ? "app-shell-chat-active" : ""}`}>
       <InstallPrompt />
-
-      {/* Push setup messaging stays in Settings to avoid squashing chat layout */}
-      {activeTab === "settings" && (
-        <header className="hero-compact">
-          {authRequired && authUserEmail && <p className="muted auth-session-label">Signed in as {authUserEmail}</p>}
-          <div className="hero-actions">
-            {pushState !== "enabled" && (
-              <button type="button" onClick={() => void handleEnablePush()} disabled={pushButtonDisabled}>
-                {pushButtonLabel}
-              </button>
-            )}
-            {authRequired && (
-              <button type="button" onClick={() => void handleLogout()} disabled={authSubmitting}>
-                {authSubmitting ? "Signing out..." : "Sign out"}
-              </button>
-            )}
-          </div>
-        </header>
-      )}
-      {activeTab === "settings" && pushMessage && <p className="push-message">{pushMessage}</p>}
 
       {loading && <p>Loading...</p>}
       {error && <p className="error">{error}</p>}
@@ -533,6 +489,13 @@ export default function App(): JSX.Element {
                 onCalendarImported={() => setScheduleRevision((revision) => revision + 1)}
                 planInfo={planInfo}
                 onUpgrade={() => openUpgradeModal()}
+                userEmail={authUserEmail}
+                authRequired={authRequired}
+                onSignOut={() => void handleLogout()}
+                signingOut={authSubmitting}
+                pushState={pushState}
+                onEnablePush={() => void handleEnablePush()}
+                pushMessage={pushMessage}
               />
             )}
           </div>

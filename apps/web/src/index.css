@@ -3193,6 +3193,164 @@ button:disabled {
   letter-spacing: 0.04em;
 }
 
+/* ── Account bar ── */
+.settings-account-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+}
+
+.settings-account-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-account-email {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-account-email strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.settings-sign-out-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.settings-sign-out-btn:hover {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.settings-sign-out-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Push notification card ── */
+.settings-push-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.settings-push-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-push-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-push-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-push-desc {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.settings-push-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.settings-push-btn {
+  padding: 7px 18px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.settings-push-btn:hover {
+  opacity: 0.85;
+}
+
+.settings-push-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-push-message {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* Login loading state */
+.login-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.login-no-providers {
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+}
+
 /* ── Integrations Hub ── */
 .intg-hub {
   display: grid;
