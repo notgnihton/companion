@@ -580,26 +580,31 @@ export function ChatView({ mood, onMoodChange }: ChatViewProps): JSX.Element {
       streaming: true
     };
     setMessages((prev) => [...prev, assistantPlaceholder]);
-    scheduleScrollToBottom("auto");
-    if (typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches) {
+
+    const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches;
+
+    if (isMobile) {
+      // Blur FIRST so keyboard starts closing before we scroll
       inputRef.current?.blur();
-      // Wait for keyboard dismissal layout shift to settle, then scroll once
+
+      // Use ResizeObserver to continuously pin to bottom as keyboard animates closed
       const container = messagesContainerRef.current;
       if (container && typeof ResizeObserver !== "undefined") {
-        let settled: ReturnType<typeof setTimeout> | null = null;
         const ro = new ResizeObserver(() => {
-          if (settled) clearTimeout(settled);
-          settled = setTimeout(() => {
-            ro.disconnect();
-            scrollToBottom("auto");
-          }, 80);
+          // Scroll on EVERY resize frame — keeps pinned as keyboard shrinks
+          scrollToBottom("auto");
         });
         ro.observe(container);
-        // Safety: disconnect after 500ms max
-        setTimeout(() => { ro.disconnect(); }, 500);
+        // Also do an immediate scroll for the new messages
+        scheduleScrollToBottom("auto");
+        // Disconnect after keyboard animation completes (~400ms)
+        setTimeout(() => { ro.disconnect(); }, 600);
       } else {
-        setTimeout(() => scrollToBottom("auto"), 250);
+        scheduleScrollToBottom("auto");
+        setTimeout(() => scrollToBottom("auto"), 300);
       }
+    } else {
+      scheduleScrollToBottom("auto");
     }
 
     try {
