@@ -49,7 +49,7 @@ const defaultContext: UserContext = {
 };
 
 const defaultCanvasSettings: CanvasSettings = {
-  baseUrl: "https://stavanger.instructure.com",
+  baseUrl: "https://canvas.instructure.com",
   token: ""
 };
 

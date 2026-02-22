@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { config } from "./config.js";
 import { buildTPScheduleUrl, convertTPEventToLecture, diffScheduleEvents, generateTPEventKey } from "./tp-sync.js";
 import { LectureEvent } from "./types.js";
 
 describe("TP EduCloud sync", () => {
   it("builds default TP schedule URL with configured course list", () => {
     const url = new URL(buildTPScheduleUrl());
+    const expectedBase = new URL(config.TP_EDUCLOUD_BASE_URL);
 
-    expect(url.origin + url.pathname).toBe("https://tp.educloud.no/uis/timeplan/ical.php");
+    expect(url.origin + url.pathname).toBe(expectedBase.origin + expectedBase.pathname);
     expect(url.searchParams.get("type")).toBe("courseact");
     expect(url.searchParams.get("sem")).toBe("26v");
     expect(url.searchParams.getAll("id[]")).toEqual(["DAT520,1", "DAT560,1", "DAT600,1"]);

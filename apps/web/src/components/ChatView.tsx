@@ -842,7 +842,7 @@ export function ChatView({ mood, onMoodChange, onDataMutated }: ChatViewProps): 
           <div className="chat-welcome">
             <h2>👋 Hi there!</h2>
             <p>I'm your personal AI companion. I know your schedule, deadlines, and food plan context.</p>
-            <p>Ask me anything about your academic life!</p>
+            <p>Ask me anything about your day, plans, and goals!</p>
             <div className="chat-quick-actions">
               {quickActions.map((action) => (
                 <button

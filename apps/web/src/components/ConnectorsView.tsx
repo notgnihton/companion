@@ -33,7 +33,7 @@ const CONNECTORS: ConnectorMeta[] = [
     service: "canvas",
     label: "Canvas LMS",
     icon: "🎓",
-    description: "Courses, assignments, deadlines, and grades from UiS Canvas.",
+    description: "Courses, assignments, deadlines, and grades from your Canvas instance.",
     type: "token",
     placeholder: "Paste your Canvas access token"
   },

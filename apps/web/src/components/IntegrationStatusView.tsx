@@ -107,10 +107,10 @@ export function IntegrationStatusView(): JSX.Element {
     {
       id: "ical",
       name: "TP EduCloud (iCal)",
-      description: "Lecture schedule from UiS timetable",
+      description: "Schedule events from your iCal timetable feed",
       icon: "📅",
       status: "configured",
-      detail: "DAT520, DAT560, DAT600 · Syncs weekly"
+      detail: "Configured via your TP iCal subscription · Syncs weekly"
     },
     {
       id: "github",

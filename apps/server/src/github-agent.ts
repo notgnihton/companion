@@ -149,7 +149,7 @@ For each repository:
 Rules:
 - Only report deadlines that have a clear due date (skip "TBA" or "TBD")
 - Use YYYY-MM-DD format for dates. If only day.month.year format is given (e.g. "28.01.2026"), convert it.
-- If a date says "January 15" without a year, assume the current academic year (2026)
+- If a date says "January 15" without a year, infer the most likely year from surrounding context (semester, nearby dates, or repo timeline)
 - Set priority to "high" for exams, "medium" for assignments/labs, "low" for optional tasks
 - For documents, write a concise summary capturing the key info
 - Don't read binary files, images, or very large code files — focus on .md and text files

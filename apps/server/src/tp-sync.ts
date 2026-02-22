@@ -1,4 +1,5 @@
 import { parseICS, ImportedCalendarEvent } from "./calendar-import.js";
+import { config } from "./config.js";
 import { filterTPEventsByDateWindow } from "./integration-date-window.js";
 import { LectureEvent } from "./types.js";
 import { makeId } from "./utils.js";
@@ -12,7 +13,6 @@ export interface TPSyncResult {
   error?: string;
 }
 
-const TP_EDUCLOUD_BASE_URL = "https://tp.educloud.no/uis/timeplan/ical.php";
 const DEFAULT_TP_SEMESTER = "26v";
 const DEFAULT_TP_COURSE_IDS = ["DAT520,1", "DAT560,1", "DAT600,1"] as const;
 
@@ -41,7 +41,7 @@ export function buildTPScheduleUrl(options: Pick<TPScheduleFetchOptions, "semest
     params.append("id[]", courseId);
   }
 
-  return `${TP_EDUCLOUD_BASE_URL}?${params.toString()}`;
+  return `${config.TP_EDUCLOUD_BASE_URL}?${params.toString()}`;
 }
 
 export async function fetchTPSchedule(options: TPScheduleFetchOptions = {}): Promise<ImportedCalendarEvent[]> {
