@@ -2486,7 +2486,7 @@ button:disabled {
   flex-direction: column;
   gap: 12px;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: none;
+  overscroll-behavior: contain;
 }
 
 .chat-load-more {
@@ -2516,14 +2516,14 @@ button:disabled {
 }
 
 .chat-welcome {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
   text-align: center;
   padding: 40px 20px;
   color: var(--muted);
+}
+
+/* When only the welcome screen is shown, prevent touch-scroll bounce */
+.chat-messages:has(> .chat-welcome:only-child) {
+  overflow: hidden;
 }
 
 .chat-welcome h2 {
