@@ -882,6 +882,13 @@ export class RuntimeStore {
       DROP TABLE IF EXISTS nutrition_meal_plan_blocks;
     `);
 
+    // Add withingsUserId column if migrating from old schema where userId was the Withings API user ID
+    const withingsCols = this.db.prepare("PRAGMA table_info(withings_data)").all() as Array<{ name: string }>;
+    const hasWithingsUserId = withingsCols.some((col) => col.name === "withingsUserId");
+    if (!hasWithingsUserId) {
+      this.db.prepare("ALTER TABLE withings_data ADD COLUMN withingsUserId TEXT").run();
+    }
+
     const journalColumns = this.db.prepare("PRAGMA table_info(journal_entries)").all() as Array<{ name: string }>;
     const hasPhotosColumn = journalColumns.some((col) => col.name === "photos");
     if (!hasPhotosColumn) {
