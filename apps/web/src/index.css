@@ -2542,6 +2542,8 @@ body.keyboard-open .chat-overlay-panel {
   border-radius: 0;
   animation: none;
   background: transparent;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 body.keyboard-open .chat-overlay-panel .chat-view {
@@ -2567,9 +2569,10 @@ body.keyboard-open .chat-overlay-panel .chat-messages {
   padding-bottom: calc(72px + var(--keyboard-gap));
 }
 
-/* Blur background content visible between input and keyboard */
-body.keyboard-open.chat-overlay-active .tab-content-area {
-  filter: blur(8px);
+/* Blur all background content when overlay keyboard is open */
+body.keyboard-open.chat-overlay-active .tab-content-area,
+body.keyboard-open.chat-overlay-active .tab-bar {
+  filter: blur(10px);
   pointer-events: none;
 }
 
