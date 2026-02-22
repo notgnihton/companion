@@ -15,7 +15,6 @@ import {
   exchangeGitHubCode
 } from "./oauth-login.js";
 import { buildDeadlineDedupResult } from "./deadline-dedup.js";
-import { isAssignmentOrExamDeadline } from "./deadline-eligibility.js";
 import { generateDeadlineSuggestions } from "./deadline-suggestions.js";
 import { executePendingChatAction } from "./gemini-tools.js";
 import {
@@ -156,13 +155,6 @@ const bootstrappedAdmin = authService.bootstrapAdminUser();
 if (config.AUTH_REQUIRED && bootstrappedAdmin) {
   console.info(`[auth] Admin user ready: ${bootstrappedAdmin.email}`);
 }
-const prunedNonAcademicDeadlines = store.purgeNonAcademicDeadlines("");
-if (prunedNonAcademicDeadlines > 0) {
-  if (persistenceContext.postgresSnapshotStore) {
-    await persistenceContext.postgresSnapshotStore.persistSnapshot(store.serializeDatabase());
-  }
-  console.info(`[startup] Removed ${prunedNonAcademicDeadlines} non-assignment deadline entries.`);
-}
 const storageDiagnostics = (): PostgresPersistenceDiagnostics =>
   persistenceContext.postgresSnapshotStore
     ? persistenceContext.postgresSnapshotStore.getDiagnostics(persistenceContext.sqlitePath)
@@ -257,7 +249,7 @@ function buildAnalyticsCoachSignature(
   const cacheKey = `${periodDays}:${toDateKey(now)}`;
 
   const deadlines = store
-    .getAcademicDeadlines(userId, now, false)
+    .getDeadlines(userId, now, false)
     .filter((deadline) => isWithinWindow(deadline.dueDate, windowStartMs, nowMs))
     .map((deadline) => `${deadline.id}:${deadline.dueDate}:${deadline.completed ? 1 : 0}:${deadline.priority}`)
     .sort()
@@ -1886,16 +1878,7 @@ const deadlineBaseSchema = z.object({
   effortConfidence: z.enum(["low", "medium", "high"]).optional()
 });
 
-const deadlineCreateSchema = deadlineBaseSchema
-  .refine(
-    (value) =>
-      isAssignmentOrExamDeadline({
-        course: value.course,
-        task: value.task,
-        canvasAssignmentId: undefined
-      }),
-    "Deadlines must be assignment or exam work."
-  );
+const deadlineCreateSchema = deadlineBaseSchema;
 
 const deadlineUpdateSchema = deadlineBaseSchema.partial().refine(
   (value) => Object.keys(value).length > 0,
@@ -2571,18 +2554,18 @@ app.post("/api/deadlines", (req, res) => {
 app.get("/api/deadlines", async (req, res) => {
   const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   await maybeAutoSyncCanvasData();
-  return res.json({ deadlines: store.getAcademicDeadlines(userId) });
+  return res.json({ deadlines: store.getDeadlines(userId) });
 });
 
 app.get("/api/deadlines/duplicates", (req, res) => {
   const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
-  return res.json(buildDeadlineDedupResult(store.getAcademicDeadlines(userId)));
+  return res.json(buildDeadlineDedupResult(store.getDeadlines(userId)));
 });
 
 app.get("/api/deadlines/suggestions", async (req, res) => {
   const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   await maybeAutoSyncCanvasData();
-  const deadlines = store.getAcademicDeadlines(userId);
+  const deadlines = store.getDeadlines(userId);
   const scheduleEvents = store.getScheduleEvents(userId);
   const userContext = store.getUserContext(userId);
 
@@ -2604,7 +2587,7 @@ app.post("/api/study-plan/generate", (req, res) => {
     return res.status(400).json({ error: "Invalid study plan payload", issues: parsed.error.issues });
   }
 
-  const plan = generateWeeklyStudyPlan(store.getAcademicDeadlines(userId), store.getScheduleEvents(userId), {
+  const plan = generateWeeklyStudyPlan(store.getDeadlines(userId), store.getScheduleEvents(userId), {
     horizonDays: parsed.data.horizonDays,
     minSessionMinutes: parsed.data.minSessionMinutes,
     maxSessionMinutes: parsed.data.maxSessionMinutes,
@@ -2686,7 +2669,7 @@ app.get("/api/study-plan/export", (req, res) => {
     return res.status(400).json({ error: "Invalid study plan export query", issues: parsed.error.issues });
   }
 
-  const plan = generateWeeklyStudyPlan(store.getAcademicDeadlines(userId), store.getScheduleEvents(userId), {
+  const plan = generateWeeklyStudyPlan(store.getDeadlines(userId), store.getScheduleEvents(userId), {
     horizonDays: parsed.data.horizonDays,
     minSessionMinutes: parsed.data.minSessionMinutes,
     maxSessionMinutes: parsed.data.maxSessionMinutes,
@@ -2705,7 +2688,7 @@ app.get("/api/deadlines/:id", (req, res) => {
   const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const deadline = store.getDeadlineById(userId, req.params.id);
 
-  if (!deadline || !isAssignmentOrExamDeadline(deadline)) {
+  if (!deadline) {
     return res.status(404).json({ error: "Deadline not found" });
   }
 
@@ -2721,17 +2704,8 @@ app.patch("/api/deadlines/:id", (req, res) => {
   }
 
   const existing = store.getDeadlineById(userId, req.params.id, false);
-  if (!existing || !isAssignmentOrExamDeadline(existing)) {
+  if (!existing) {
     return res.status(404).json({ error: "Deadline not found" });
-  }
-
-  const mergedCandidate = {
-    ...existing,
-    ...parsed.data
-  };
-
-  if (!isAssignmentOrExamDeadline(mergedCandidate)) {
-    return res.status(400).json({ error: "Deadlines must stay assignment or exam work." });
   }
 
   const deadline = store.updateDeadline(userId, req.params.id, parsed.data);
@@ -2752,7 +2726,7 @@ app.post("/api/deadlines/:id/confirm-status", (req, res) => {
   }
 
   const existing = store.getDeadlineById(userId, req.params.id, false);
-  if (!existing || !isAssignmentOrExamDeadline(existing)) {
+  if (!existing) {
     return res.status(404).json({ error: "Deadline not found" });
   }
 
@@ -2768,7 +2742,7 @@ app.post("/api/deadlines/:id/confirm-status", (req, res) => {
 app.delete("/api/deadlines/:id", (req, res) => {
   const userId = (req as AuthenticatedRequest).authUser?.id ?? "";
   const existing = store.getDeadlineById(userId, req.params.id, false);
-  if (!existing || !isAssignmentOrExamDeadline(existing)) {
+  if (!existing) {
     return res.status(404).json({ error: "Deadline not found" });
   }
 

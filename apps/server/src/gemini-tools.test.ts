@@ -352,15 +352,15 @@ describe("gemini-tools", () => {
       expect((result as { deadline: { task: string } }).deadline.task).toBe("Assignment 5 report");
     });
 
-    it("rejects non-assignment/exam deadline titles", () => {
+    it("allows non-academic deadline titles", () => {
       const result = handleCreateDeadline(store, userId, {
         course: "DAT560",
         task: "Lunch with classmate",
         dueDate: "2026-03-01T22:00:00.000Z"
       });
 
-      expect(result).toHaveProperty("error");
-      expect((result as { error: string }).error).toContain("assignment or exam");
+      expect(result).toHaveProperty("success", true);
+      expect(result).toHaveProperty("created", true);
     });
 
     it("deletes a deadline by id", () => {

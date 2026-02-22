@@ -22,7 +22,6 @@ import {
   WithingsWeightEntry
 } from "./types.js";
 import { applyRoutinePresetPlacements } from "./routine-presets.js";
-import { isAssignmentOrExamDeadline } from "./deadline-eligibility.js";
 
 /**
  * Function declarations for Gemini function calling.
@@ -1483,7 +1482,7 @@ function buildTodayTimelineSuggestions(
 ): LectureEvent[] {
   const sorted = [...todaySchedule].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
   const pendingDeadlines = store
-    .getAcademicDeadlines(userId, now)
+    .getDeadlines(userId, now)
     .filter((deadline) => !deadline.completed)
     .filter((deadline) => {
       const due = new Date(deadline.dueDate);
@@ -1657,7 +1656,7 @@ export function handleGetDeadlines(
   };
 
   const deadlines = store
-    .getAcademicDeadlines(userId, now)
+    .getDeadlines(userId, now)
     .filter((deadline) => (includeCompleted ? true : !deadline.completed))
     .filter((deadline) => {
       const due = parseDueDate(deadline.dueDate);
@@ -1770,12 +1769,8 @@ export function handleCreateDeadline(
     ...(effortConfidence ? { effortConfidence } : {})
   };
 
-  if (!isAssignmentOrExamDeadline(candidate)) {
-    return { error: "Deadlines must be assignment or exam work." };
-  }
-
   const existing = store
-    .getAcademicDeadlines(userId, new Date(), false)
+    .getDeadlines(userId, new Date(), false)
     .find(
       (deadline) =>
         normalizeSearchText(deadline.course) === normalizeSearchText(course) &&
@@ -1811,7 +1806,7 @@ export function handleDeleteDeadline(
   deadline?: Deadline;
 } | { error: string } {
   const deadlines = store
-    .getAcademicDeadlines(userId, new Date(), false)
+    .getDeadlines(userId, new Date(), false)
     .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime());
   if (deadlines.length === 0) {
     return {

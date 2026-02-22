@@ -251,7 +251,7 @@ export function buildChatContext(store: RuntimeStore, userId: string, now: Date 
     .filter((event) => isSameDay(new Date(event.startTime), now));
 
   const upcomingDeadlines = store
-    .getAcademicDeadlines(userId, now)
+    .getDeadlines(userId, now)
     .filter((deadline) => {
       const due = parseDeadlineDueDateForComparison(deadline.dueDate);
       if (Number.isNaN(due.getTime())) {
