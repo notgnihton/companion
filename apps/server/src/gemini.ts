@@ -440,7 +440,7 @@ export class GeminiClient {
       toolsArray.push({ function_declarations: request.tools });
     }
     if (request.googleSearchGrounding) {
-      toolsArray.push({ google_search_retrieval: {} });
+      toolsArray.push({ google_search: {} });
     }
     if (toolsArray.length > 0) {
       body.tools = toolsArray;
