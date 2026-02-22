@@ -93,14 +93,14 @@ export class AuthService {
     const adminEmail = this.options.adminEmail ? normalizeEmail(this.options.adminEmail) : "";
     const adminPassword = this.options.adminPassword ?? "";
 
-    if (!this.options.required && (!adminEmail || !adminPassword)) {
-      return null;
-    }
-
     if (!adminEmail || !adminPassword) {
-      throw new Error(
-        "Authentication is enabled, but AUTH_ADMIN_EMAIL / AUTH_ADMIN_PASSWORD are not configured."
-      );
+      if (this.options.required) {
+        console.warn(
+          "[auth] Authentication is enabled but AUTH_ADMIN_EMAIL / AUTH_ADMIN_PASSWORD are not set. " +
+            "Admin user will not be created — users can still log in via OAuth providers."
+        );
+      }
+      return null;
     }
 
     const passwordHash = createPasswordHash(adminPassword);

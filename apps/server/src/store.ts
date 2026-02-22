@@ -196,46 +196,63 @@ export class RuntimeStore {
    * Auth tables (users, auth_sessions) are preserved.
    */
   private migrateToMultiTenant(): void {
-    // Check if migration is needed: does user_context have a userId column?
-    const tableExists = this.db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='user_context'")
-      .get() as { name: string } | undefined;
-
-    if (!tableExists) {
-      // Table doesn't exist yet — fresh DB, no migration needed
-      return;
-    }
-
-    const columns = this.db.prepare("PRAGMA table_info(user_context)").all() as Array<{ name: string }>;
-    const hasUserId = columns.some((col) => col.name === "userId");
-
-    if (hasUserId) {
-      // Already migrated
-      return;
-    }
-
-    console.info("[migration] Detected pre-multi-tenant schema — dropping user-data tables for fresh start...");
-
-    // Drop all user-data tables (NOT auth tables: users, auth_sessions, user_connections, daily_usage)
-    const tablesToDrop = [
-      "agent_events", "agent_states", "notifications", "scheduled_notifications",
-      "chat_messages", "chat_long_term_memory", "journal_memory",
-      "pending_chat_actions", "schedule_events", "deadlines",
-      "deadline_reminder_states", "deadline_suggestions",
+    // Collect tables that exist but are missing a required userId column.
+    // This handles both the initial migration AND partially-migrated DBs where
+    // an earlier migration missed some tables.
+    const tablesRequiringUserId = [
+      "notifications", "scheduled_notifications", "notification_interactions",
+      "notification_preferences", "chat_messages", "chat_long_term_memory",
+      "chat_pending_actions", "schedule_events", "schedule_suggestion_mutes",
+      "deadlines", "deadline_reminder_state",
       "habits", "habit_check_ins", "goals", "goal_check_ins",
       "journal_entries", "journal_entry_tags", "reflection_entries",
       "user_context", "context_history",
-      "notification_preferences", "push_subscriptions", "push_delivery_metrics",
-      "push_delivery_failures", "email_digests",
-      "locations", "location_history",
+      "push_subscriptions", "push_delivery_metrics", "push_delivery_failures",
+      "email_digests", "locations", "location_history",
       "nutrition_meals", "nutrition_custom_foods", "nutrition_target_profiles",
       "nutrition_plan_snapshots", "nutrition_plan_settings",
-      "study_plan_sessions", "study_plan_check_ins",
+      "study_plan_sessions",
       "canvas_data", "github_course_data", "github_tracked_repos",
       "gmail_data", "withings_data",
-      "routine_presets",
-      "integration_sync_attempts"
+      "routine_presets", "integration_sync_attempts",
+      "sync_queue", "tags"
     ];
+
+    const tablesToDrop: string[] = [];
+
+    for (const table of tablesRequiringUserId) {
+      const exists = this.db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+        .get(table) as { name: string } | undefined;
+
+      if (!exists) continue;
+
+      const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      const hasUserId = columns.some((col) => col.name === "userId");
+
+      if (!hasUserId) {
+        tablesToDrop.push(table);
+      }
+    }
+
+    // Also always try to drop legacy table names that may linger from older schemas
+    const legacyTables = [
+      "pending_chat_actions", "deadline_reminder_states",
+      "deadline_suggestions", "journal_memory", "study_plan_check_ins"
+    ];
+    for (const table of legacyTables) {
+      const exists = this.db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+        .get(table) as { name: string } | undefined;
+      if (exists) tablesToDrop.push(table);
+    }
+
+    if (tablesToDrop.length === 0) {
+      return;
+    }
+
+    console.info(`[migration] Found ${tablesToDrop.length} table(s) missing userId column — dropping for fresh recreate...`);
+    console.info(`[migration] Tables: ${tablesToDrop.join(", ")}`);
 
     for (const table of tablesToDrop) {
       this.db.exec(`DROP TABLE IF EXISTS ${table}`);
