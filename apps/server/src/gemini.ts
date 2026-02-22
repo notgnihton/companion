@@ -696,7 +696,7 @@ export class GeminiClient {
       streamToolsArray.push({ function_declarations: request.tools });
     }
     if (request.googleSearchGrounding) {
-      streamToolsArray.push({ google_search_retrieval: {} });
+      streamToolsArray.push({ google_search: {} });
     }
     if (streamToolsArray.length > 0) {
       body.tools = streamToolsArray;
