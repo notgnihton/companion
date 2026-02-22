@@ -2471,10 +2471,11 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   padding: 8px 8px 8px 16px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border-soft);
+  background: transparent;
   -webkit-tap-highlight-color: transparent;
   min-height: 40px;
+  position: relative;
+  z-index: 2;
 }
 
 .chat-overlay-title {
@@ -2491,8 +2492,8 @@ button:disabled {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: var(--surface-soft);
-  border: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
   color: var(--text-secondary);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -2528,6 +2529,7 @@ button:disabled {
   bottom: auto;
   border-radius: 0;
   flex-shrink: 0;
+  padding: 6px 8px 6px;
 }
 
 /* When keyboard is open, expand overlay to full screen like regular chat */
@@ -2556,6 +2558,12 @@ body.keyboard-open .chat-overlay-panel .chat-input-container {
 
 body.keyboard-open .chat-overlay-panel .chat-messages {
   padding-bottom: calc(72px + var(--keyboard-gap));
+}
+
+/* Blur background content visible between input and keyboard */
+body.keyboard-open.chat-overlay-active .tab-content-area {
+  filter: blur(6px);
+  pointer-events: none;
 }
 
 body.keyboard-open .chat-overlay-backdrop {
