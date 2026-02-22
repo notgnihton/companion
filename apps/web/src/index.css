@@ -3772,8 +3772,12 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100dvh;
+  height: 100dvh;
   padding: 16px;
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
+  touch-action: none;
 }
 
 .consent-card {
@@ -3797,20 +3801,17 @@ button:disabled {
 .consent-flow-card {
   width: 100%;
   max-width: 560px;
-  max-height: 90dvh;
+  max-height: calc(100dvh - 32px);
   display: flex;
   flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border-soft);
   border-radius: 20px;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
 }
 
 .consent-flow-header {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  flex-shrink: 0;
   background: var(--surface);
   padding: 20px 24px 14px;
   border-bottom: 1px solid var(--border-soft);
@@ -3838,17 +3839,32 @@ button:disabled {
 .consent-flow-body {
   padding: 20px 24px;
   flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .consent-flow-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
+  flex-shrink: 0;
   background: var(--surface);
   padding: 16px 24px 20px;
   border-top: 1px solid var(--border-soft);
   display: grid;
   gap: 8px;
+}
+
+.consent-scroll-hint {
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: center;
+  margin: 0;
+  animation: consent-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes consent-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 
 .consent-error {

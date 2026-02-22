@@ -12,6 +12,7 @@ export function ConsentGate({ onAccepted }: ConsentGateProps): JSX.Element {
   const [step, setStep] = useState<Step>("loading");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scrolledToBottom, setScrolledToBottom] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -33,9 +34,36 @@ export function ConsentGate({ onAccepted }: ConsentGateProps): JSX.Element {
     return () => { disposed = true; };
   }, [onAccepted]);
 
-  // Scroll to top when moving to next step
+  // Reset scroll tracking and scroll to top when moving to next step
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: 0 });
+    setScrolledToBottom(false);
+    const el = scrollRef.current;
+    if (el) {
+      el.scrollTop = 0;
+      // Check if content is short enough that no scrolling is needed
+      requestAnimationFrame(() => {
+        if (el.scrollHeight <= el.clientHeight + 20) {
+          setScrolledToBottom(true);
+        }
+      });
+    }
+  }, [step]);
+
+  // Track scroll position to detect when user reaches the bottom
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const handleScroll = (): void => {
+      const threshold = 40; // px from bottom
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - threshold;
+      if (atBottom) {
+        setScrolledToBottom(true);
+      }
+    };
+
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
   }, [step]);
 
   const handleAcceptPrivacy = useCallback(async () => {
@@ -68,19 +96,23 @@ export function ConsentGate({ onAccepted }: ConsentGateProps): JSX.Element {
     return (
       <main className="app-shell">
         <section className="consent-gate">
-          <div className="consent-flow-card" ref={scrollRef}>
+          <div className="consent-flow-card">
             <div className="consent-flow-header">
               <span className="consent-step-badge">Step 1 of 2</span>
               <h2 className="consent-flow-title">Terms of Service</h2>
             </div>
-            <div className="consent-flow-body">
+            <div className="consent-flow-body" ref={scrollRef}>
               <TermsOfService />
             </div>
             <div className="consent-flow-footer">
+              {!scrolledToBottom && (
+                <p className="consent-scroll-hint">↓ Scroll to read the full document</p>
+              )}
               <button
                 type="button"
                 className="consent-accept-btn"
                 onClick={() => setStep("privacy")}
+                disabled={!scrolledToBottom}
               >
                 I agree to the Terms of Service
               </button>
@@ -95,21 +127,24 @@ export function ConsentGate({ onAccepted }: ConsentGateProps): JSX.Element {
     return (
       <main className="app-shell">
         <section className="consent-gate">
-          <div className="consent-flow-card" ref={scrollRef}>
+          <div className="consent-flow-card">
             <div className="consent-flow-header">
               <span className="consent-step-badge">Step 2 of 2</span>
               <h2 className="consent-flow-title">Privacy Policy</h2>
             </div>
-            <div className="consent-flow-body">
+            <div className="consent-flow-body" ref={scrollRef}>
               <PrivacyPolicy />
             </div>
             <div className="consent-flow-footer">
               {error && <p className="consent-error">{error}</p>}
+              {!scrolledToBottom && (
+                <p className="consent-scroll-hint">↓ Scroll to read the full document</p>
+              )}
               <button
                 type="button"
                 className="consent-accept-btn"
                 onClick={() => void handleAcceptPrivacy()}
-                disabled={submitting}
+                disabled={!scrolledToBottom || submitting}
               >
                 {submitting ? "Accepting…" : "I agree to the Privacy Policy"}
               </button>
